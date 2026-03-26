@@ -33,6 +33,8 @@ Use only what is justified:
 
 Default to the smallest structure that can do the job well.
 
+If the folder where the new skill should be saved is not explicit and cannot be inferred safely from the current task or repository context, ask the user which folder should receive the skill before creating files.
+
 ### 3. Write minimal valid frontmatter
 
 Default to this pattern:
