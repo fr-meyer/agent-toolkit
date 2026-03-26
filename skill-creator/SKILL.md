@@ -131,6 +131,11 @@ When preparing a skill for publication, or when doing a stricter compliance revi
 
 Use that file for final checks on structure, triggering, progressive disclosure, portability, and unnecessary clutter.
 
+If `skills-ref` is available, run a final validator pass:
+- `skills-ref validate path/to/skill`
+
+If `skills-ref` was not run, or could not be used successfully, explicitly say so in the output and explain why validation was not possible.
+
 ## Rules for bundled resources
 
 ### `scripts/`
@@ -175,6 +180,7 @@ When using this skill to create or revise another skill, produce:
 6. any justified `scripts/`, `references/`, or `assets/`
 7. a short set of should-trigger and should-not-trigger eval prompts
 8. portability risks or publication concerns, if any
+9. the validation status, including whether `skills-ref` was run and, if not, why it was not possible
 
 ## Starter template
 

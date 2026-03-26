@@ -125,6 +125,11 @@ Typical anti-patterns:
 
 ## 9. Final release decision
 
+If `skills-ref` is available, run:
+- `skills-ref validate path/to/skill`
+
+If `skills-ref` was not run, or could not be used, say that explicitly in the output and explain why validation was not possible.
+
 A skill is ready to share when it is:
 - valid
 - coherent
