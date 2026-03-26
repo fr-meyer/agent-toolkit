@@ -121,6 +121,9 @@ Vary phrasing, explicitness, detail level, and realism. Improve the description 
 When evaluating this skill's own trigger behavior, read:
 - `references/eval-prompts.json`
 
+When reviewing this skill's output quality after it triggers, read:
+- `references/output-quality-eval.json`
+
 ### 9. Audit for publication quality
 
 When preparing a skill for publication, or when doing a stricter compliance review, read:
@@ -150,6 +153,7 @@ Add references only when they reduce context bloat in `SKILL.md`.
 Current references in this skill:
 - `references/agent-skills-publication-checklist.md` — read when preparing a skill for publication or doing a stricter compliance review
 - `references/eval-prompts.json` — read when testing whether `skill-creator` triggers on the right requests
+- `references/output-quality-eval.json` — read when checking whether `skill-creator` produces complete, publication-ready outputs after it triggers
 
 Reference requirements:
 - say exactly when to read each file

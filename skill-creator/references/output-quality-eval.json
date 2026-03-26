@@ -1,0 +1,73 @@
+{
+  "skill": "skill-creator",
+  "purpose": "Minimal output-quality review cases for the skill-creator Agent Skill.",
+  "usage": "Use these cases after the skill has triggered. Check whether the response produces a strong Agent Skill draft with the expected structure, boundaries, and portability discipline.",
+  "cases": [
+    {
+      "id": "oq-01",
+      "query": "Create a portable Agent Skill for reviewing CSV data quality issues across different agents.",
+      "expected": [
+        "proposed skill name",
+        "one-sentence scope statement",
+        "trigger description draft",
+        "recommended directory structure",
+        "SKILL.md draft",
+        "eval prompts",
+        "portability note"
+      ],
+      "must_not": [
+        "fuzzy catch-all scope",
+        "product-specific assumptions without request",
+        "unjustified extra files"
+      ],
+      "why": "Tests the core create-a-shareable-skill path."
+    },
+    {
+      "id": "oq-02",
+      "query": "Review this Agent Skill and tell me what should move from SKILL.md into references/ to improve progressive disclosure.",
+      "expected": [
+        "clear judgment about what stays in SKILL.md",
+        "specific recommendations for references/",
+        "reasoning tied to progressive disclosure",
+        "publication or portability concerns if relevant"
+      ],
+      "must_not": [
+        "generic advice with no file-level recommendations",
+        "moving core always-needed instructions out of SKILL.md"
+      ],
+      "why": "Tests whether the skill gives concrete structural editing guidance."
+    },
+    {
+      "id": "oq-03",
+      "query": "Audit this skill for publication quality and tell me what is still weak.",
+      "expected": [
+        "format or frontmatter review",
+        "trigger-quality review",
+        "scope/boundary review",
+        "portability review",
+        "clear list of weaknesses or pass/fail findings"
+      ],
+      "must_not": [
+        "empty praise without concrete findings",
+        "ignoring trigger quality or scope boundaries"
+      ],
+      "why": "Tests audit behavior rather than pure generation."
+    },
+    {
+      "id": "oq-04",
+      "query": "Turn this one-off internal workflow into an Agent Skill, but keep it generalizable and avoid local-machine assumptions.",
+      "expected": [
+        "generalized scope instead of literal one-off transcription",
+        "removal or warning about local-only assumptions",
+        "justified use or non-use of scripts/references/assets",
+        "shareable SKILL.md structure"
+      ],
+      "must_not": [
+        "hardcoded personal paths",
+        "private-context assumptions",
+        "copying one-off workflow details without generalization"
+      ],
+      "why": "Tests whether the skill can abstract from a specific workflow into a shareable one."
+    }
+  ]
+}
