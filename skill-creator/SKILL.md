@@ -9,7 +9,7 @@ description: Use this skill when creating, refining, reviewing, or auditing an A
 
 Create Agent Skills that are clear, portable, easy to trigger correctly, and worth sharing across different skills-compatible agents.
 
-Treat **Agent Skills** as the source framework. When you are unsure about the specification, triggering, progressive disclosure, scripts, validation, or publishing choices, check **Agent Skills documentation first**. Prefer an available **Agent Skills MCP** or equivalent integrated doc search. If that is unavailable, use official Agent Skills documentation through a docs or web search tool.
+Treat **Agent Skills** as the source framework. Use the **online Agent Skills source first**: prefer an available **Agent Skills MCP** or equivalent integrated doc search before relying on bundled or local skill documentation. If MCP is unavailable, use official Agent Skills documentation through a docs or web search tool. Treat the current skill files as secondary guidance that may lag behind the latest Agent Skills resources. If the online source shows that local skill-creator guidance is outdated or incorrect, update the local files directly.
 
 ## Default workflow
 

@@ -7,6 +7,8 @@ Read this file when:
 
 Use this checklist after drafting the main skill.
 
+Before relying on local guidance, prefer the current online Agent Skills source through MCP or equivalent docs search. If the online source conflicts with local skill files, trust the up-to-date online source and update the local files.
+
 ## 1. Basic format
 
 Confirm:
