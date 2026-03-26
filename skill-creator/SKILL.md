@@ -1,6 +1,6 @@
 ---
 name: skill-creator
-description: Use this skill when creating, refining, reviewing, or auditing an Agent Skill intended to be portable and shareable across agents. Apply it to scope definition, SKILL.md authoring, trigger descriptions, resource layout, progressive-disclosure decisions, and publication-quality checks.
+description: Use this skill when creating, updating, modernizing, refining, reviewing, or auditing an Agent Skill intended to be portable and shareable across agents. Apply it to scope definition, SKILL.md authoring, trigger descriptions, resource layout, progressive-disclosure decisions, publication-quality checks, and minimal justified updates to existing skills.
 ---
 
 # Skill Creator
@@ -9,7 +9,22 @@ description: Use this skill when creating, refining, reviewing, or auditing an A
 
 Create Agent Skills that are clear, portable, easy to trigger correctly, and worth sharing across different skills-compatible agents.
 
-Treat **Agent Skills** as the source framework. Use the **online Agent Skills source first**: prefer an available **Agent Skills MCP** or equivalent integrated doc search before relying on bundled or local skill documentation. If MCP is unavailable, use official Agent Skills documentation through a docs or web search tool. Treat the current skill files as secondary guidance that may lag behind the latest Agent Skills resources. If the online source shows that local skill-creator guidance is outdated or incorrect, update the local files directly.
+Treat **Agent Skills** as the source framework. Use the **online Agent Skills source first**: prefer **Agent Skills MCP** before relying on bundled or local skill documentation. Treat the current skill files as secondary guidance that may lag behind the latest Agent Skills resources. If the online source shows that local skill-creator guidance is outdated or incorrect, update the local files directly.
+
+## Required preconditions
+
+Before starting any create, update, review, or audit work with this skill, confirm all of the following:
+- the folder where the skill should be saved or edited has already been specified explicitly at least once, or is available from trusted memory/session context
+- **Agent Skills MCP** is accessible
+- `skills-ref` is executable in the current environment
+
+If any of these requirements are not satisfied:
+- do not start or continue the work
+- do not create or modify skill files yet
+- tell the user exactly which requirement is missing
+- explain clearly why the work is blocked
+- say what needs to be provided or fixed before proceeding
+- do not claim `skills-ref` validation unless it actually ran successfully
 
 ## Default workflow
 
@@ -33,7 +48,7 @@ Use only what is justified:
 
 Default to the smallest structure that can do the job well.
 
-If the folder where the new skill should be saved is not explicit and cannot be inferred safely from the current task or repository context, ask the user which folder should receive the skill before creating files.
+If the folder where the new skill should be saved is not explicit and is not available from trusted memory or session context, stop and ask the user which folder should receive the skill before creating files.
 
 ### 3. Write minimal valid frontmatter
 
@@ -74,7 +89,19 @@ Bad patterns:
 - too broad: `Use for anything related to software.`
 - implementation-led instead of intent-led
 
-### 5. Keep SKILL.md lean
+### 5. Update existing skills carefully
+
+When editing an existing skill:
+- inspect the current `SKILL.md` and bundled files first
+- use Agent Skills MCP as the primary source of truth
+- identify what is outdated, incorrect, redundant, or missing
+- prefer the smallest justified edit set
+- preserve the current skill name, folder, and scope unless a clear problem requires changing them
+- if the online Agent Skills source shows that local skill files are outdated or incorrect, update the local files directly
+- if `skills-ref` is available, run `skills-ref validate path/to/skill`
+- report what changed, why it changed, what was intentionally left unchanged, and whether validation succeeded
+
+### 6. Keep SKILL.md lean
 
 Put only always-needed guidance in the main file.
 
@@ -95,13 +122,13 @@ Move to `references/` when content is mainly for:
 
 Move to `scripts/` when behavior should be deterministic and reusable.
 
-### 6. Prefer defaults over menus
+### 7. Prefer defaults over menus
 
 Pick a default approach. Mention alternatives only as fallbacks with clear conditions.
 
 This reduces dithering and improves consistency across agents.
 
-### 7. Add boundaries and gotchas
+### 8. Add boundaries and gotchas
 
 Call out:
 - common mistakes
@@ -112,7 +139,7 @@ Call out:
 
 This section often matters more than extra explanation.
 
-### 8. Evaluate before calling it finished
+### 9. Evaluate before calling it finished
 
 Create a small trigger eval set:
 - should-trigger examples
@@ -126,7 +153,7 @@ When evaluating this skill's own trigger behavior, read:
 When reviewing this skill's output quality after it triggers, read:
 - `references/output-quality-eval.json`
 
-### 9. Audit for publication quality
+### 10. Audit for publication quality
 
 When preparing a skill for publication, or when doing a stricter compliance review, read:
 - `references/agent-skills-publication-checklist.md`
@@ -183,6 +210,8 @@ When using this skill to create or revise another skill, produce:
 7. a short set of should-trigger and should-not-trigger eval prompts
 8. portability risks or publication concerns, if any
 9. the validation status, including whether `skills-ref` was run and, if not, why it was not possible
+10. for update tasks, a change summary describing what was updated, what was intentionally left unchanged, and why
+11. if work could not start or continue because a prerequisite was missing, a clear blocked-status explanation naming the missing requirement and why it prevented the work
 
 ## Starter template
 
