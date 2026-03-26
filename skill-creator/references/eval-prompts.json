@@ -1,0 +1,79 @@
+{
+  "skill": "skill-creator",
+  "purpose": "Trigger-quality evaluation prompts for the skill-creator Agent Skill.",
+  "usage": "Use these prompts to test whether the skill triggers on genuine Agent Skill authoring and auditing tasks while avoiding false positives on adjacent creation, documentation, or coding tasks.",
+  "cases": [
+    {
+      "id": "pos-01",
+      "query": "Create a new Agent Skill for extracting structured tables from PDFs and make sure it is portable across agents.",
+      "should_trigger": true,
+      "why": "Explicit request to create a portable Agent Skill."
+    },
+    {
+      "id": "pos-02",
+      "query": "Help me rewrite this SKILL.md so the skill is easier to share publicly and follows Agent Skills best practices.",
+      "should_trigger": true,
+      "why": "Direct request to revise a SKILL.md for shareability and best-practice compliance."
+    },
+    {
+      "id": "pos-03",
+      "query": "Audit this skill folder for publication quality, trigger clarity, and progressive disclosure.",
+      "should_trigger": true,
+      "why": "Direct audit request for a skill folder."
+    },
+    {
+      "id": "pos-04",
+      "query": "Turn this one-off workflow into a reusable Agent Skill with scripts, references, and a clean trigger description.",
+      "should_trigger": true,
+      "why": "Explicit conversion of an ad hoc workflow into an Agent Skill."
+    },
+    {
+      "id": "pos-05",
+      "query": "Review my skill directory and tell me whether some content should move from SKILL.md into references/.",
+      "should_trigger": true,
+      "why": "Direct request about skill structure and progressive disclosure."
+    },
+    {
+      "id": "pos-06",
+      "query": "I want a generalizable and shareable Agent Skill for code-review workflows. Draft the folder structure and SKILL.md.",
+      "should_trigger": true,
+      "why": "Explicit request to draft a shareable Agent Skill."
+    },
+    {
+      "id": "neg-01",
+      "query": "Write a Python script to extract tables from PDFs.",
+      "should_trigger": false,
+      "why": "Implementation task only; no request to create or audit an Agent Skill."
+    },
+    {
+      "id": "neg-02",
+      "query": "Improve this README so contributors understand the repository layout.",
+      "should_trigger": false,
+      "why": "Documentation editing task, not skill authoring."
+    },
+    {
+      "id": "neg-03",
+      "query": "Create a reusable project template for a command-line tool.",
+      "should_trigger": false,
+      "why": "Project scaffolding request, not Agent Skill creation."
+    },
+    {
+      "id": "neg-04",
+      "query": "Clean up this markdown guide and split long sections into separate files.",
+      "should_trigger": false,
+      "why": "Similar restructuring pattern, but not in the context of an Agent Skill."
+    },
+    {
+      "id": "neg-05",
+      "query": "Review this spreadsheet of employee skills and group them into categories.",
+      "should_trigger": false,
+      "why": "Uses the word 'skills' in a human-resources sense, unrelated to Agent Skills."
+    },
+    {
+      "id": "neg-06",
+      "query": "Build a small library for validating YAML frontmatter in Markdown files.",
+      "should_trigger": false,
+      "why": "Tooling/code task adjacent to skill authoring, but not itself a request to create or audit an Agent Skill."
+    }
+  ]
+}

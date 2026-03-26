@@ -118,6 +118,9 @@ Create a small trigger eval set:
 
 Vary phrasing, explicitness, detail level, and realism. Improve the description based on false positives and false negatives. Do not overfit to one phrase.
 
+When evaluating this skill's own trigger behavior, read:
+- `references/eval-prompts.json`
+
 ### 9. Audit for publication quality
 
 When preparing a skill for publication, or when doing a stricter compliance review, read:
@@ -143,6 +146,10 @@ Script requirements:
 ### `references/`
 
 Add references only when they reduce context bloat in `SKILL.md`.
+
+Current references in this skill:
+- `references/agent-skills-publication-checklist.md` — read when preparing a skill for publication or doing a stricter compliance review
+- `references/eval-prompts.json` — read when testing whether `skill-creator` triggers on the right requests
 
 Reference requirements:
 - say exactly when to read each file
