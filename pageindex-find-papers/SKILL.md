@@ -1,38 +1,22 @@
 ---
 name: pageindex-find-papers
-description: Find papers already present in a Page Index collection from bibliography references, citations, or free-form reference text. Use when the user provides one or more paper references in any format and wants the agent to search only the existing Page Index collection, verify matches carefully, treat still-processing or inaccessible Page Index items as not found, and maintain or update a bibliography-to-Page-Index bridge mapping file for later reuse.
+description: Find papers already present in a Page Index collection from bibliography references, citations, or messy free-form reference text. Use when the user provides one or more paper references and wants the agent to search only the existing Page Index collection, verify matches conservatively, treat still-processing or inaccessible items as not found, and maintain a verified bibliography-to-Page-Index bridge mapping for reuse.
 ---
 
-# Pageindex Find Papers
+# PageIndex Find Papers
 
 ## Overview
 
-Find one or more papers already stored in a Page Index collection from bibliography-like input. Search only within the existing Page Index collection, verify matches conservatively, and maintain a reusable bridge mapping between bibliography entries and Page Index filenames.
+Find one or more papers already stored in a Page Index collection from bibliography-like input. Search only within the existing Page Index collection, verify matches conservatively, and maintain a reusable bridge mapping between bibliography entries and verified Page Index filenames.
 
 ## Hard Boundaries
 
 - Use only Page Index MCP tools.
-- Use only Page Index capabilities that inspect the existing collection, such as search, listing, lookup, metadata retrieval, and content reading.
+- Use only Page Index capabilities that inspect the existing collection: search, listing, lookup, metadata retrieval, and content reading.
 - Do not use web search, OCR tools, local file search, or any non-Page-Index retrieval method for this task.
 - Do not upload, ingest, process, or add papers to Page Index unless the user explicitly requests that as a separate action.
 - Treat still-processing, unavailable, or inaccessible Page Index items as not found for the current task.
 - If Page Index MCP tools are unavailable in the current runtime, stop and tell the user clearly.
-
-## Accepted Inputs
-
-Accept one or many references in any format, including:
-- formal bibliography entries
-- abbreviated citations
-- messy copied references
-- mixed-format batches
-
-For each requested paper, extract as much of the following as possible:
-- title
-- main author surname or surnames
-- publication year
-- other distinguishing clues such as journal, conference, subtitle, acronym, or topic phrase
-
-Process each requested paper independently, then summarize the batch.
 
 ## Required Preflight
 
@@ -47,12 +31,12 @@ Recommended file:
 Rules:
 - If `memory/pageindex/` does not exist, do not infer a substitute path.
 - Ask the user whether to create `memory/pageindex/` or whether another existing path should be used.
-- This strict first-run pause is intentional. Do not start fresh Page Index searching until that location question is resolved.
+- This first-run pause is intentional. Do not start fresh Page Index searching until that location question is resolved.
 - If the bridge mapping file exists, consult it first.
 
-## Bridge Mapping Rules
+## Bridge Mapping File
 
-Use the bridge mapping file to map bibliography content to one or more verified Page Index filenames.
+Use the bridge mapping file to store only successfully found and verified papers.
 
 Major identifying fields means, at minimum:
 - normalized title
@@ -62,22 +46,21 @@ Major identifying fields means, at minimum:
 Use additional evidence such as second author, source, subtitle, acronym, or visible content when needed to resolve ambiguity.
 
 Rules:
-- The bridge mapping file must contain only successfully found and verified papers.
-- Do not store not-found papers in the bridge mapping file.
-- Do not store ambiguous candidates in the bridge mapping file.
-- Do not store inaccessible or still-processing files in the bridge mapping file.
-- If a mapping exists, verify that each mapped Page Index file still exists and is accessible before trusting it.
+- Store only successfully found and verified papers.
+- Do not store not-found papers.
+- Do not store ambiguous candidates.
+- Do not store inaccessible or still-processing files.
+- If a mapping exists, verify that each mapped file still exists and is accessible before trusting it.
 - Even when a mapped file exists and is accessible, do a light re-verification against the major identifying fields before treating it as valid.
 - If a stored mapping is incomplete, contradictory, low-confidence, or malformed, do not treat it as authoritative. Use it only as a search lead, then verify normally.
-- If a stored mapping is still valid, report that the paper was resolved through the existing bridge mapping and that the mapped file remains accessible.
 - If a stored mapping is outdated, update it.
 - If multiple Page Index files truly match the same bibliography entry, record all verified files.
-- For multiple verified files, distinguish between duplicate library copies, alternate versions, and uncertain relation in the notes.
+- For multiple verified files, distinguish between duplicate library copies, alternate versions, and mixed verified sets in the notes.
 - Merge bibliography rows only when they match exactly on the major identifying fields.
 - Do not merge near-matches or uncertain duplicates.
 - If an old mapped filename no longer exists or is no longer accessible, do not silently keep it as valid.
 
-### Recommended mapping entry shape
+### Recommended entry shape
 
 Use a compact, auditable Markdown structure such as:
 
@@ -98,7 +81,7 @@ Use a compact, auditable Markdown structure such as:
 
 Keep the original bibliography text whenever possible so future searches can reuse it directly.
 
-## Batch Handling
+## Batch Rules
 
 When the user provides multiple references in one request:
 - preserve the user-visible order in the final output
@@ -117,13 +100,13 @@ For each requested paper:
 - isolate the publication year
 - note any distinctive journal, conference, subtitle, acronym, or uncommon title token
 
-Do not over-trust input formatting. Bibliography text may be noisy, incomplete, or inconsistent.
+Do not over-trust formatting. Bibliography text may be noisy, incomplete, or inconsistent.
 
 ### 2. Check the bridge mapping first
 
 If a bridge mapping file exists:
 - look for an exact or highly confident match to the bibliography entry
-- use the mapped Page Index filename as the first verification target
+- use the mapped filename as the first verification target
 - verify that the mapped file is still present and accessible in Page Index
 - lightly re-verify the mapped file against title, first author surname, and year before treating it as resolved
 
@@ -213,7 +196,7 @@ When relevant, say explicitly:
 - that the input was too sparse to run the full minimum search pass set
 - that duplicate input rows were grouped only because they matched exactly on the major identifying fields
 
-## Non-Negotiable Rules
+## Never Do This
 
 - Never search outside Page Index for this task.
 - Never upload or process papers on your own initiative.
