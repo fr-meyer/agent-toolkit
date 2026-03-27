@@ -47,18 +47,33 @@ Recommended file:
 Rules:
 - If `memory/pageindex/` does not exist, do not infer a substitute path.
 - Ask the user whether to create `memory/pageindex/` or whether another existing path should be used.
-- Do not start fresh Page Index searching until that location question is resolved.
+- This strict first-run pause is intentional. Do not start fresh Page Index searching until that location question is resolved.
 - If the bridge mapping file exists, consult it first.
 
 ## Bridge Mapping Rules
 
-Use the bridge mapping file to map bibliography content to one or more Page Index filenames.
+Use the bridge mapping file to map bibliography content to one or more verified Page Index filenames.
 
-- If a mapping exists, verify that the mapped Page Index file still exists and is accessible before trusting it.
+Major identifying fields means, at minimum:
+- normalized title
+- first author surname
+- publication year
+
+Use additional evidence such as second author, source, subtitle, acronym, or visible content when needed to resolve ambiguity.
+
+Rules:
+- The bridge mapping file must contain only successfully found and verified papers.
+- Do not store not-found papers in the bridge mapping file.
+- Do not store ambiguous candidates in the bridge mapping file.
+- Do not store inaccessible or still-processing files in the bridge mapping file.
+- If a mapping exists, verify that each mapped Page Index file still exists and is accessible before trusting it.
+- Even when a mapped file exists and is accessible, do a light re-verification against the major identifying fields before treating it as valid.
+- If a stored mapping is incomplete, contradictory, low-confidence, or malformed, do not treat it as authoritative. Use it only as a search lead, then verify normally.
 - If a stored mapping is still valid, report that the paper was resolved through the existing bridge mapping and that the mapped file remains accessible.
 - If a stored mapping is outdated, update it.
-- If multiple Page Index files truly match the same bibliography entry, record all of them.
-- Merge bibliography rows only when they are truly redundant and match exactly on the major identifying fields.
+- If multiple Page Index files truly match the same bibliography entry, record all verified files.
+- For multiple verified files, distinguish between duplicate library copies, alternate versions, and uncertain relation in the notes.
+- Merge bibliography rows only when they match exactly on the major identifying fields.
 - Do not merge near-matches or uncertain duplicates.
 - If an old mapped filename no longer exists or is no longer accessible, do not silently keep it as valid.
 
@@ -75,9 +90,10 @@ Use a compact, auditable Markdown structure such as:
 - Page Index filenames:
   - <filename 1>
   - <filename 2>
+- Match type:
+  - duplicate library copy | alternate version | mixed verified set
 - Last verified: <YYYY-MM-DD>
-- Status: verified | ambiguous | outdated
-- Notes: <why this mapping is trusted, updated, grouped, or ambiguous>
+- Notes: <why this mapping is trusted or why multiple verified files are grouped>
 ```
 
 Keep the original bibliography text whenever possible so future searches can reuse it directly.
@@ -87,9 +103,9 @@ Keep the original bibliography text whenever possible so future searches can reu
 When the user provides multiple references in one request:
 - preserve the user-visible order in the final output
 - process each reference independently
-- if two request rows are exact duplicates on the major identifying fields, you may reuse the same search result
-- if two rows are only similar, keep them separate unless the duplication is exact
-- if one search result helps resolve multiple truly identical references, say so explicitly in the output
+- if two request rows are exact duplicates on the major identifying fields, you may reuse the same verified search result
+- if two rows are only similar, keep them separate unless the duplication is exact on the major identifying fields
+- if one verified search result resolves multiple truly identical references, say so explicitly in the output
 
 ## Workflow
 
@@ -109,6 +125,7 @@ If a bridge mapping file exists:
 - look for an exact or highly confident match to the bibliography entry
 - use the mapped Page Index filename as the first verification target
 - verify that the mapped file is still present and accessible in Page Index
+- lightly re-verify the mapped file against title, first author surname, and year before treating it as resolved
 
 If the mapping resolves the paper and the file is accessible, treat the paper as found and say that the mapping file resolved it.
 
@@ -124,15 +141,20 @@ Preferred search style:
 
 Prefer single-keyword search because Page Index search beam may be more accurate that way.
 
-Reasonable pass order:
-1. rare title keyword
-2. second rare title keyword
+Minimum required search passes before concluding not found, unless the input is too sparse to support them:
+1. one rare or highly distinctive title keyword
+2. a second title keyword or subtitle fragment
 3. first author surname
-4. another author surname if available
-5. publication year
-6. alternate title tokens, subtitle fragments, acronyms, or common variants
+4. publication year
+5. one alternate token such as acronym, uncommon token, variant spelling, or another author surname when available
 
-If the first pass fails, continue with additional reasonable keyword passes until the search space is exhausted.
+Reasonable additional passes:
+- another author surname
+- another uncommon title token
+- acronym expansion or abbreviation form
+- subtitle fragment
+
+If the input is too sparse for the full minimum set, use every available major identifying field and say so in the output.
 
 ### 4. Verify candidates conservatively
 
@@ -158,13 +180,14 @@ If a candidate exists in Page Index but is still processing, unavailable, or ina
 - treat it as not found for the current task
 - report the exact reason to the user
 - do not count it as a successful match
-- do not store it as a verified bridge mapping
+- do not store it in the bridge mapping file
 
 ### 6. Update the bridge mapping
 
 After a verified result:
 - add or update the bibliography-to-filename mapping
 - include all verified filenames when there are multiple true matches
+- classify the multi-file relation as duplicate library copy, alternate version, or mixed verified set
 - update outdated filenames when the stored mapping no longer reflects the current Page Index collection
 - record a fresh verification date
 - keep notes short and factual
@@ -184,9 +207,11 @@ When relevant, say explicitly:
 - that the bridge mapping file was checked first
 - that the stored mapping was still valid
 - that the stored mapping was outdated and was updated
+- that a stored mapping existed but was treated only as a lead because it was incomplete, contradictory, or low-confidence
 - that a candidate existed but was still processing or inaccessible
 - that all reasonable Page Index-only search passes were exhausted
-- that duplicate input rows were grouped only because they were exact matches on the major identifying fields
+- that the input was too sparse to run the full minimum search pass set
+- that duplicate input rows were grouped only because they matched exactly on the major identifying fields
 
 ## Non-Negotiable Rules
 
@@ -195,5 +220,5 @@ When relevant, say explicitly:
 - Never treat a still-processing Page Index file as found.
 - Never skip verification when multiple candidates exist.
 - Never invent a bridge mapping location when `memory/pageindex/` is missing.
-- Never collapse distinct bibliography entries into one mapping unless the duplication is exact on the major identifying fields.
-- Never store an inaccessible or still-processing file as a verified bridge mapping.
+- Never collapse distinct bibliography entries into one mapping unless they match exactly on the major identifying fields.
+- Never store a not-found, ambiguous, inaccessible, or still-processing item in the bridge mapping file.
