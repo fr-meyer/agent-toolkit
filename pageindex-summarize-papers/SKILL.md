@@ -1,6 +1,6 @@
 ---
 name: pageindex-summarize-papers
-description: Summarize one or more papers stored in a Page Index collection into individual Markdown report files using a fixed paper-reading template. Use when the user wants structured per-paper summary reports saved under `memory/pageindex/summary/`, especially when the paper may be referenced by a verified Page Index filename, a bibliography entry, a citation, or messy free-form reference text. Resolve papers only through `pageindex-find-papers`, require full-paper coverage through `pageindex-read-papers`, and write one report file per successfully read paper. Do not use this skill for paper-finding alone, coverage-only reading, classification, or a single combined summary for multiple papers.
+description: Summarize one or more papers stored in a Page Index collection into individual Markdown report files using a fixed paper-reading template. Use when the user wants structured per-paper reading notes, paper memos, or summary reports saved under `memory/pageindex/summary/`, especially when the paper may be referenced by a verified Page Index filename, a bibliography entry, a citation, or messy free-form reference text. Apply it when requests involve summarizing a paper, writing a paper report, making detailed reading notes, or producing one report per paper from Page Index. Resolve papers only through `pageindex-find-papers`, require full-paper coverage through `pageindex-read-papers`, and write one report file per successfully read paper. Do not use this skill for paper-finding alone, coverage-only reading, classification, cross-paper synthesis, or a single combined summary for multiple papers.
 ---
 
 # Page Index Summarize Papers
@@ -10,6 +10,19 @@ description: Summarize one or more papers stored in a Page Index collection into
 Create one structured Markdown summary report per paper for papers stored in Page Index.
 
 This skill does **not** own paper finding and does **not** own full-document coverage verification. Use `pageindex-find-papers` for resolution and `pageindex-read-papers` for full-paper reading with page-coverage verification, then produce the summary report only after a paper has been fully read.
+
+## Example Prompts
+
+- Summarize this Page Index paper into the standard Markdown report format.
+- Find these cited papers in Page Index, read them fully, and create one summary file per paper.
+- Write structured reading notes for this paper and save them under `memory/pageindex/summary/`.
+- Make a detailed paper memo from this Page Index file using the fixed template.
+
+Do not use this skill for requests like:
+- just find this paper in Page Index
+- tell me whether this paper was fully read
+- classify this paper into the taxonomy
+- compare these five papers in one synthesis memo
 
 ## Required Output Location
 
@@ -48,6 +61,7 @@ Do not use this skill for:
 - classification or taxonomy placement
 - extracting only abstracts or metadata
 - producing one blended summary for multiple papers
+- cross-paper comparison, synthesis, or literature-review aggregation as the main output
 
 ## Dependencies and Hard Boundaries
 
@@ -135,8 +149,8 @@ For each requested paper, include:
 - original paper reference or normalized label
 - resolved Page Index filename used, when available
 - whether the paper was fully read and therefore eligible for summary generation
-- whether the summary file was written or skipped
-- output file path when written
+- whether the summary file was written, updated, or skipped
+- output file path when written or updated
 - concise failure reason when skipped
 
 ## Content Guidance For The Report
