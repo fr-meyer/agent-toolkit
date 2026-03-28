@@ -2,6 +2,7 @@
 
 > Fill as many fields as are available.
 > Leave fields blank when they do not exist for a given paper.
+> When highlighting a claim, result, limitation, definition, or especially useful passage, include the most precise page number or tight page range you can (for example `p. 4` or `pp. 4-5`).
 
 ---
 

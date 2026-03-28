@@ -30,7 +30,9 @@ Preferred output folder:
 - `memory/pageindex/summary/`
 
 Rules:
-- Create `memory/pageindex/summary/` if it does not already exist and the environment allows writing there.
+- If `memory/pageindex/summary/` does not exist, do not silently create it.
+- Ask the user whether that folder should be created or whether another existing path should be used because it already contains or should contain those summary documents.
+- Do not infer a substitute path on your own.
 - Write **one Markdown file per paper**.
 - Do not merge multiple papers into one combined summary file.
 - If a report file for the same paper already exists, update that file instead of creating a near-duplicate unless the user explicitly asks for versioned copies.
@@ -82,12 +84,14 @@ For each requested paper:
 - determine whether the paper is already provided as a verified Page Index file or still needs resolution
 - plan for a separate output file per paper
 
-### 2. Ensure the output folder exists
+### 2. Confirm the output folder
 
 Before writing any summary files:
 - check that `memory/pageindex/summary/` exists
-- create it if missing and writable
-- if the environment does not permit creating or writing that folder, stop and report the exact block
+- if it does not exist, ask the user whether to create it or whether another existing path should be used because it already contains or should contain those summary documents
+- do not silently create the folder
+- do not infer an alternate path on your own
+- if the chosen folder cannot be created or written, stop and report the exact block
 
 ### 3. Resolve papers only through `pageindex-find-papers`
 
@@ -190,6 +194,12 @@ Prioritize:
 - strongest evidence
 - major results or takeaways
 - limitations, cautions, and unresolved questions
+
+When highlighting a claim, contribution, result, limitation, definition, or especially important passage:
+- include the most precise page number or tight page range you can recover from the paper
+- prefer `p. X` for a single page and `pp. X-Y` for a short range
+- keep the page anchor close to the statement it supports so later searching is easier
+- do not invent page numbers when the source location is uncertain
 
 ### Summary From Memory section
 

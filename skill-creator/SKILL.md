@@ -9,13 +9,13 @@ description: Use this skill when creating, updating, modernizing, refining, revi
 
 Create Agent Skills that are clear, portable, easy to trigger correctly, and worth sharing across different skills-compatible agents.
 
-Treat **Agent Skills** as the source framework. Use the **online Agent Skills source first**: prefer **Agent Skills MCP** before relying on bundled or local skill documentation. Treat the current skill files as secondary guidance that may lag behind the latest Agent Skills resources. If the online source shows that local skill-creator guidance is outdated or incorrect, update the local files directly.
+Treat **Agent Skills** as the source framework. Use the **online Agent Skills source first**: prefer **Agent Skills MCP** before relying on bundled or local skill documentation. If Agent Skills MCP is not accessible, use the public Agent Skills website (`https://agentskills.io/home`, plus the relevant documentation pages under that site) or the GitHub repository (`https://github.com/agentskills/agentskills`) as the fallback source of truth. Treat the current skill files as secondary guidance that may lag behind the latest Agent Skills resources. If the online source shows that local skill-creator guidance is outdated or incorrect, update the local files directly.
 
 ## Required preconditions
 
 Before starting any create, update, review, or audit work with this skill, confirm all of the following:
 - the folder where the skill should be saved or edited has already been specified explicitly at least once, or is available from trusted memory/session context
-- **Agent Skills MCP** is accessible
+- at least one current Agent Skills reference source is accessible: prefer **Agent Skills MCP**, but otherwise use the Agent Skills website (`https://agentskills.io/home` and its relevant documentation pages) or the GitHub repository (`https://github.com/agentskills/agentskills`)
 - an Agent Skills validation CLI is executable in the current environment: prefer `agentskills`, but accept `skills-ref` when that is the exposed command name in the current environment
 
 If any of these requirements are not satisfied:
@@ -93,7 +93,8 @@ Bad patterns:
 
 When editing an existing skill:
 - inspect the current `SKILL.md` and bundled files first
-- use Agent Skills MCP as the primary source of truth
+- use Agent Skills MCP as the primary source of truth when available
+- if Agent Skills MCP is unavailable, use the Agent Skills website or GitHub repository as the fallback source of truth
 - identify what is outdated, incorrect, redundant, or missing
 - prefer the smallest justified edit set
 - preserve the current skill name, folder, and scope unless a clear problem requires changing them
@@ -303,4 +304,4 @@ Run only when needed:
 
 ## Final reminder
 
-When uncertain, check **Agent Skills** first. Prefer the official specification and best-practice guidance over habit or platform-specific folklore. If an **Agent Skills MCP** is available, use it for targeted searches before making authoring or publication decisions.
+When uncertain, check **Agent Skills** first. Prefer the official specification and best-practice guidance over habit or platform-specific folklore. If an **Agent Skills MCP** is available, use it for targeted searches before making authoring or publication decisions. If MCP is unavailable, use the public Agent Skills website or the GitHub repository instead of relying only on local copies.
