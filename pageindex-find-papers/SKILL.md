@@ -1,13 +1,15 @@
 ---
 name: pageindex-find-papers
-description: Find papers already present in a Page Index collection from bibliography references, citations, or messy free-form reference text. Use when the user provides one or more paper references and wants the agent to search only the existing Page Index collection, verify matches conservatively, treat still-processing or inaccessible items as not found, and maintain a verified bibliography-to-Page-Index bridge mapping for reuse.
+description: Resolve one or more papers to verified Page Index files using only the existing Page Index collection. Use when the user provides direct Page Index filenames, bibliography references, citations, or messy free-form reference text and the agent needs to determine which Page Index file or files should be treated as the correct resolved papers for later reading or analysis. Verify matches conservatively, treat still-processing or inaccessible items as not found, and maintain a verified bibliography-to-Page-Index bridge mapping for reuse.
 ---
 
-# PageIndex Find Papers
+# Page Index Find Papers
 
 ## Overview
 
-Find one or more papers already stored in a Page Index collection from bibliography-like input. Search only within the existing Page Index collection, verify matches conservatively, and maintain a reusable bridge mapping between bibliography entries and verified Page Index filenames.
+Resolve one or more requested papers to verified Page Index files using only the existing Page Index collection. This skill owns all paper resolution inside Page Index, whether the user starts from a direct Page Index filename, a verified mapping, or bibliography-like input.
+
+Use this skill before any later skill that needs resolved Page Index files for reading, extraction, analysis, or classification.
 
 ## Hard Boundaries
 
@@ -18,9 +20,24 @@ Find one or more papers already stored in a Page Index collection from bibliogra
 - Treat still-processing, unavailable, or inaccessible Page Index items as not found for the current task.
 - If Page Index MCP tools are unavailable in the current runtime, stop and tell the user clearly.
 
+## Input Types
+
+Handle either of these:
+
+1. **Direct Page Index targets**
+   - Page Index filename
+   - already-verified Page Index mapping
+   - any user-supplied Page Index file reference that can be checked directly against the collection
+
+2. **Bibliography-like targets**
+   - bibliography entries
+   - citations
+   - messy free-form reference text
+   - paper title + authors + year
+
 ## Required Preflight
 
-Before doing fresh Page Index search work, check the bridge mapping location first.
+Before doing fresh bibliography-style Page Index search work, check the bridge mapping location first.
 
 Preferred folder:
 - `memory/pageindex/`
@@ -31,7 +48,7 @@ Recommended file:
 Rules:
 - If `memory/pageindex/` does not exist, do not infer a substitute path.
 - Ask the user whether to create `memory/pageindex/` or whether another existing path should be used.
-- This first-run pause is intentional. Do not start fresh Page Index searching until that location question is resolved.
+- This first-run pause is intentional. Do not start fresh bibliography-style Page Index searching until that location question is resolved.
 - If the bridge mapping file exists, consult it first.
 
 ## Bridge Mapping File
@@ -83,18 +100,44 @@ Keep the original bibliography text whenever possible so future searches can reu
 
 ## Batch Rules
 
-When the user provides multiple references in one request:
+When the user provides multiple targets in one request:
 - preserve the user-visible order in the final output
-- process each reference independently
-- if two request rows are exact duplicates on the major identifying fields, you may reuse the same verified search result
+- process each target independently
+- if two request rows are exact duplicates on the major identifying fields, you may reuse the same verified resolution result
 - if two rows are only similar, keep them separate unless the duplication is exact on the major identifying fields
 - if one verified search result resolves multiple truly identical references, say so explicitly in the output
 
 ## Workflow
 
-### 1. Normalize the reference
+### 1. Classify the target type
 
-For each requested paper:
+For each requested target, decide whether it is:
+- a direct Page Index target, or
+- a bibliography-like target
+
+Preserve the user-visible order throughout the workflow and final output.
+
+### 2. Resolve direct Page Index targets
+
+If the user supplied a direct Page Index filename or already-verified Page Index mapping:
+- verify that the referenced file still exists in Page Index
+- verify that it is accessible
+- do a light verification that the target is the intended paper when enough identifying information is available
+- if the file is still valid, treat the paper as found
+
+If the direct target does not exist, is inaccessible, or cannot be trusted as the intended paper:
+- report the exact failure reason
+- treat it as `not found` or `ambiguous`, depending on the evidence
+- do not silently accept it as resolved
+
+If a direct target is still processing, unavailable, or inaccessible:
+- treat it as not found for the current task
+- report the exact reason
+- do not store it in the bridge mapping file
+
+### 3. Normalize bibliography-like references
+
+For each bibliography-like target:
 - isolate the likely title
 - isolate the main author surname or surnames
 - isolate the publication year
@@ -102,7 +145,7 @@ For each requested paper:
 
 Do not over-trust formatting. Bibliography text may be noisy, incomplete, or inconsistent.
 
-### 2. Check the bridge mapping first
+### 4. Check the bridge mapping first
 
 If a bridge mapping file exists:
 - look for an exact or highly confident match to the bibliography entry
@@ -112,7 +155,7 @@ If a bridge mapping file exists:
 
 If the mapping resolves the paper and the file is accessible, treat the paper as found and say that the mapping file resolved it.
 
-### 3. Search Page Index with mostly single-keyword passes
+### 5. Search Page Index with mostly single-keyword passes
 
 If no valid mapping resolves the paper, search Page Index using mostly single-keyword passes.
 
@@ -139,7 +182,7 @@ Reasonable additional passes:
 
 If the input is too sparse for the full minimum set, use every available major identifying field and say so in the output.
 
-### 4. Verify candidates conservatively
+### 6. Verify candidates conservatively
 
 When one or more candidates appear, verify them before declaring success.
 
@@ -157,7 +200,7 @@ If multiple candidates remain plausible after verification, report the result as
 
 If no candidate can be verified confidently, report not found or ambiguous, depending on the evidence.
 
-### 5. Handle still-processing or inaccessible items
+### 7. Handle still-processing or inaccessible items
 
 If a candidate exists in Page Index but is still processing, unavailable, or inaccessible:
 - treat it as not found for the current task
@@ -165,9 +208,9 @@ If a candidate exists in Page Index but is still processing, unavailable, or ina
 - do not count it as a successful match
 - do not store it in the bridge mapping file
 
-### 6. Update the bridge mapping
+### 8. Update the bridge mapping
 
-After a verified result:
+After a verified bibliography-based result:
 - add or update the bibliography-to-filename mapping
 - include all verified filenames when there are multiple true matches
 - classify the multi-file relation as duplicate library copy, alternate version, or mixed verified set
@@ -177,16 +220,19 @@ After a verified result:
 
 Keep the mapping conservative, reusable, and easy to audit later.
 
+Direct filename verification does not require creating a new bridge entry unless there is also a bibliography-like reference worth preserving.
+
 ## Output Requirements
 
-For each requested paper, report:
-- the original bibliography entry or a short normalized version of it
+For each requested target, report:
+- the original target text or a short normalized version of it
 - status: `found`, `found via bridge mapping`, `ambiguous`, or `not found`
 - matched Page Index filename or filenames when found
-- concise verification notes explaining why the match is correct
+- concise verification notes explaining why the resolution is correct
 - exact failure reason when not found, still processing, or inaccessible
 
 When relevant, say explicitly:
+- that the target was a direct Page Index filename or mapping and was verified directly
 - that the bridge mapping file was checked first
 - that the stored mapping was still valid
 - that the stored mapping was outdated and was updated
@@ -205,3 +251,4 @@ When relevant, say explicitly:
 - Never invent a bridge mapping location when `memory/pageindex/` is missing.
 - Never collapse distinct bibliography entries into one mapping unless they match exactly on the major identifying fields.
 - Never store a not-found, ambiguous, inaccessible, or still-processing item in the bridge mapping file.
+- Never accept a user-supplied direct filename as resolved without verifying that it still exists and is accessible in Page Index.
