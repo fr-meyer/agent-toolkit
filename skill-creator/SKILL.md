@@ -16,7 +16,7 @@ Treat **Agent Skills** as the source framework. Use the **online Agent Skills so
 Before starting any create, update, review, or audit work with this skill, confirm all of the following:
 - the folder where the skill should be saved or edited has already been specified explicitly at least once, or is available from trusted memory/session context
 - **Agent Skills MCP** is accessible
-- `skills-ref` is executable in the current environment
+- an Agent Skills validation CLI is executable in the current environment: prefer `agentskills`, but accept `skills-ref` when that is the exposed command name in the current environment
 
 If any of these requirements are not satisfied:
 - do not start or continue the work
@@ -24,7 +24,7 @@ If any of these requirements are not satisfied:
 - tell the user exactly which requirement is missing
 - explain clearly why the work is blocked
 - say what needs to be provided or fixed before proceeding
-- do not claim `skills-ref` validation unless it actually ran successfully
+- do not claim Agent Skills validation unless `agentskills validate` or `skills-ref validate` actually ran successfully in the current environment
 
 ## Default workflow
 
@@ -98,7 +98,8 @@ When editing an existing skill:
 - prefer the smallest justified edit set
 - preserve the current skill name, folder, and scope unless a clear problem requires changing them
 - if the online Agent Skills source shows that local skill files are outdated or incorrect, update the local files directly
-- if `skills-ref` is available, run `skills-ref validate path/to/skill`
+- if the Agent Skills validator is available, run `agentskills validate path/to/skill`
+- if the current environment exposes the older or alternate command name instead, run `skills-ref validate path/to/skill`
 - report what changed, why it changed, what was intentionally left unchanged, and whether validation succeeded
 
 ### 6. Keep SKILL.md lean
@@ -160,10 +161,11 @@ When preparing a skill for publication, or when doing a stricter compliance revi
 
 Use that file for final checks on structure, triggering, progressive disclosure, portability, and unnecessary clutter.
 
-If `skills-ref` is available, run a final validator pass:
-- `skills-ref validate path/to/skill`
+If an Agent Skills validator is available, run a final validator pass:
+- preferred: `agentskills validate path/to/skill`
+- alternative when that is the exposed command name in the current environment: `skills-ref validate path/to/skill`
 
-If `skills-ref` was not run, or could not be used successfully, explicitly say so in the output and explain why validation was not possible.
+If neither validator command was run, or the available one could not be used successfully, explicitly say so in the output and explain why validation was not possible.
 
 ## Rules for bundled resources
 
@@ -209,7 +211,7 @@ When using this skill to create or revise another skill, produce:
 6. any justified `scripts/`, `references/`, or `assets/`
 7. a short set of should-trigger and should-not-trigger eval prompts
 8. portability risks or publication concerns, if any
-9. the validation status, including whether `skills-ref` was run and, if not, why it was not possible
+9. the validation status, including whether `agentskills` or `skills-ref` was run and, if not, why validation was not possible
 10. for update tasks, a change summary describing what was updated, what was intentionally left unchanged, and why
 11. if work could not start or continue because a prerequisite was missing, a clear blocked-status explanation naming the missing requirement and why it prevented the work
 
