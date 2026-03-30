@@ -1,6 +1,6 @@
 ---
 name: classify-research-papers
-description: Classify one or more research papers into an existing two-layer taxonomy by choosing exactly one primary main collection and one primary subcollection, with evidence-based rationale, confidence, and escalation handling. Use when the user asks to classify papers, verify whether papers are correctly classified, adjudicate between competing taxonomy paths, prepare paper-level classification records, or flag taxonomy gaps and boundary conflicts. Apply it to title/abstract/full-text classification work where the taxonomy reference document is the primary authority and the decision must follow the paper's primary intellectual contribution rather than incidental keywords. Do not use it for paper discovery alone, whole-paper summarization, or designing an entire taxonomy from scratch.
+description: Use this skill when the user needs to classify one or more research papers into an existing two-layer taxonomy, verify whether papers are correctly classified, adjudicate between competing taxonomy paths, or prepare evidence-based classification records. Apply it to title/abstract/full-text classification work where the taxonomy reference document is the primary authority and each paper must receive exactly one primary main collection and one primary subcollection based on its primary intellectual contribution rather than incidental keywords. Do not use it for paper discovery alone, whole-paper summarization, or designing an entire taxonomy from scratch.
 ---
 
 # Classify Research Papers
@@ -82,6 +82,12 @@ Start lean. Read only the files needed for the current job.
 
 - `references/package-index.md`
   - Read only when you need the source package map.
+
+- `references/output-examples.md`
+  - Read when you want a concrete normal-case or escalation-case decision record format.
+
+- `references/eval-prompts.json`
+  - Read when testing trigger boundaries or refining the frontmatter description.
 
 ## Core Decision Rules
 
@@ -197,7 +203,9 @@ escalation_reason:
 next_owner:
 ```
 
-If the user wants a formal operating artifact, load `references/operating-artifact-template-library.md` and use the appropriate template.
+Use one consistent key set across papers. If no meaningful competing path exists, set `strongest_rejected_alternative` to `none` rather than omitting the field.
+
+If the user wants a formal operating artifact, load `references/operating-artifact-template-library.md` and use the appropriate template. For concrete examples of both a straightforward decision and an escalation case, read `references/output-examples.md`.
 
 ## Multi-Paper Handling
 
@@ -208,6 +216,7 @@ When classifying multiple papers:
 - do not let one paper's topic bleed into another decision
 - note repeated ambiguity patterns across papers
 - call out recurring taxonomy problems separately from paper-level decisions
+- return one decision record per paper, then a short cross-paper notes block only when it adds value
 
 If reviewing existing classifications, separate:
 - clearly correct placements

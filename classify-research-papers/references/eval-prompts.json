@@ -1,0 +1,82 @@
+[
+  {
+    "query": "Classify these three papers into my current taxonomy and explain the strongest rejected alternative for each one.",
+    "should_trigger": true,
+    "why": "Direct paper-classification request against an existing taxonomy."
+  },
+  {
+    "query": "Check whether these papers are misclassified in subcollection B and tell me which ones should move.",
+    "should_trigger": true,
+    "why": "Explicit misclassification audit."
+  },
+  {
+    "query": "I’m torn between two taxonomy paths for this paper — can you adjudicate and give me a confidence level?",
+    "should_trigger": true,
+    "why": "Boundary adjudication within an existing taxonomy."
+  },
+  {
+    "query": "Write a classification decision record for this paper using taxonomy version 2026-Q1.",
+    "should_trigger": true,
+    "why": "Formal classification artifact request."
+  },
+  {
+    "query": "Based on the abstract and introduction, assign one main collection and one subcollection in my taxonomy.",
+    "should_trigger": true,
+    "why": "Single-paper classification with explicit one-path constraint."
+  },
+  {
+    "query": "Review these already-labeled papers and separate the clearly correct ones from the ones that need reclassification or escalation.",
+    "should_trigger": true,
+    "why": "Audit/reclassification workflow."
+  },
+  {
+    "query": "Does this paper expose a taxonomy gap, or does one of the existing subcollections already fit?",
+    "should_trigger": true,
+    "why": "Taxonomy-gap evaluation is in scope."
+  },
+  {
+    "query": "Reclassify these papers under the latest version of the taxonomy, but only if the current labels are wrong.",
+    "should_trigger": true,
+    "why": "Reclassification against a versioned taxonomy."
+  },
+  {
+    "query": "Find this paper in my library and tell me whether I have the PDF.",
+    "should_trigger": false,
+    "why": "Paper discovery only; no classification task yet."
+  },
+  {
+    "query": "Summarize this paper in detail and list the key findings.",
+    "should_trigger": false,
+    "why": "Summarization is adjacent but out of scope."
+  },
+  {
+    "query": "Build me a new taxonomy for all cardiovascular machine-learning papers.",
+    "should_trigger": false,
+    "why": "Designing a taxonomy from scratch is out of scope."
+  },
+  {
+    "query": "Compare these ten papers and synthesize a literature review.",
+    "should_trigger": false,
+    "why": "Cross-paper synthesis is not the classification task."
+  },
+  {
+    "query": "Download the PDFs for these citations and rename the files consistently.",
+    "should_trigger": false,
+    "why": "Library/file management only."
+  },
+  {
+    "query": "Can you extract the methods section from this paper and turn it into bullet notes?",
+    "should_trigger": false,
+    "why": "Section extraction / note-taking, not taxonomy placement."
+  },
+  {
+    "query": "Which of these journals are the most prestigious in this field?",
+    "should_trigger": false,
+    "why": "Venue evaluation is unrelated to taxonomy classification."
+  },
+  {
+    "query": "Create Zotero collections for these topics and give them better names.",
+    "should_trigger": false,
+    "why": "Collection design/naming is not paper-by-paper classification into an existing taxonomy."
+  }
+]
