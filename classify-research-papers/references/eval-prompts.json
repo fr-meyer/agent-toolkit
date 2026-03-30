@@ -40,6 +40,16 @@
     "why": "Reclassification against a versioned taxonomy."
   },
   {
+    "query": "can you sort these papers into my taxonomy? a few are probably in the wrong bucket and i need the real best-fit subcollection",
+    "should_trigger": true,
+    "why": "Casual phrasing for ordinary classification plus misclassification review."
+  },
+  {
+    "query": "Need a yes/no on whether this paper really belongs under the current tag, and if not where it should go.",
+    "should_trigger": true,
+    "why": "Realistic audit phrasing without taxonomy jargon overload."
+  },
+  {
     "query": "Find this paper in my library and tell me whether I have the PDF.",
     "should_trigger": false,
     "why": "Paper discovery only; no classification task yet."
@@ -78,5 +88,15 @@
     "query": "Create Zotero collections for these topics and give them better names.",
     "should_trigger": false,
     "why": "Collection design/naming is not paper-by-paper classification into an existing taxonomy."
+  },
+  {
+    "query": "just give me the tl;dr of this paper",
+    "should_trigger": false,
+    "why": "Very short casual near-miss for summarization rather than classification."
+  },
+  {
+    "query": "Clean up my taxonomy labels and merge overlapping collections.",
+    "should_trigger": false,
+    "why": "Taxonomy redesign/cleanup is adjacent governance work, not paper classification itself."
   }
 ]

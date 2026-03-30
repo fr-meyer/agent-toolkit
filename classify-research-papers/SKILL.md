@@ -89,6 +89,12 @@ Start lean. Read only the files needed for the current job.
 - `references/eval-prompts.json`
   - Read when testing trigger boundaries or refining the frontmatter description.
 
+## Portability Notes
+
+- Use the user's active taxonomy artifact and terminology as the system of record; do not assume Zotero, spreadsheets, or a specific library manager unless the task explicitly provides one.
+- If precedent logs or prior adjudications are unavailable, proceed from the taxonomy reference plus paper evidence and explicitly note that precedent was unavailable.
+- Default to plain Markdown or YAML outputs unless the user requests a system-specific artifact format.
+
 ## Core Decision Rules
 
 Apply these rules in order:
@@ -259,6 +265,16 @@ For multi-agent or role-based workflows:
 4. read `references/leadership-roles-addendum.md` if approval rights or lead structure matters
 
 Use those references to separate analyst work, QA/adjudication, taxonomy governance, and operations.
+
+## Final Quality Checks
+
+Before finishing any classification task, verify all of the following:
+
+- the selected Level 1 / Level 2 path actually exists in the active taxonomy version
+- the rationale is anchored in direct paper evidence rather than keyword overlap
+- the strongest rejected alternative is the nearest plausible competitor, not a strawman
+- the confidence level matches the completeness of the evidence and the clarity of the boundary
+- any `escalated` or `taxonomy_gap` outcome names the exact blocker or structural issue
 
 ## Never Do This
 
