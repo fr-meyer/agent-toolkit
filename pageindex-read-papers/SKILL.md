@@ -1,6 +1,6 @@
 ---
 name: pageindex-read-papers
-description: Read one or more papers already resolved to verified Page Index files, with strict full-page coverage verification. Use when the user wants the agent to read papers stored in a Page Index collection all the way through, rather than only inspecting metadata, document structure, abstracts, or selected pages. This skill does not perform paper-finding; if the requested papers are not already resolved, first use pageindex-find-papers.
+description: Read one or more already-resolved Page Index papers from page 1 through page N with strict full-page coverage verification. Use when the user's primary goal is to establish whether verified Page Index files were fully read, or when another workflow needs coverage-verified full-paper reading as a prerequisite. Do not use this skill for paper finding, per-paper summaries, classification, extraction-only tasks, or selected-page reading; if the papers are not already resolved, first use pageindex-find-papers.
 ---
 
 # Page Index Read Papers
@@ -10,6 +10,8 @@ description: Read one or more papers already resolved to verified Page Index fil
 Read one or more papers stored in a Page Index collection from page 1 through page N, then verify that every page was actually read. This skill starts only after the requested papers have already been resolved to verified Page Index files.
 
 Use this skill only for full-document reading through Page Index, not for paper-finding, metadata inspection, structure-only review, abstract-only review, or selected-page reading.
+
+For trigger-boundary regression examples, see `references/eval-prompts.json`.
 
 ## Example Prompts
 

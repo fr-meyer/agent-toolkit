@@ -1,6 +1,6 @@
 ---
 name: pageindex-find-papers
-description: Resolve one or more papers to verified Page Index files using only the existing Page Index collection. Use when the user provides direct Page Index filenames, bibliography references, citations, or messy free-form reference text and the agent needs to determine which Page Index file or files should be treated as the correct resolved papers for later reading or analysis. Verify matches conservatively, treat still-processing or inaccessible items as not found, and maintain a verified bibliography-to-Page-Index bridge mapping for reuse.
+description: Resolve one or more paper references to verified Page Index files using only the existing Page Index collection. Use when the user's primary goal is to determine whether a paper is present in Page Index and which exact Page Index filename or filenames should be treated as the verified target, starting from a direct filename, bibliography reference, citation, or messy free-form reference text. Use this before later reading, summarization, extraction, or classification workflows that need verified Page Index targets. Do not use it for full-paper reading, coverage verification, per-paper summaries, or classification decisions themselves.
 ---
 
 # Page Index Find Papers
@@ -10,6 +10,8 @@ description: Resolve one or more papers to verified Page Index files using only 
 Resolve one or more requested papers to verified Page Index files using only the existing Page Index collection. This skill owns all paper resolution inside Page Index, whether the user starts from a direct Page Index filename, a verified mapping, or bibliography-like input.
 
 Use this skill before any later skill that needs resolved Page Index files for reading, extraction, analysis, or classification.
+
+For trigger-boundary regression examples, see `references/eval-prompts.json`.
 
 ## Hard Boundaries
 

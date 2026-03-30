@@ -1,0 +1,42 @@
+[
+  {
+    "query": "Read this verified Page Index file from page 1 through page N and confirm whether every page was covered.",
+    "should_trigger": true,
+    "why": "Direct full-read coverage-verification request."
+  },
+  {
+    "query": "After resolving these papers in Page Index, read them fully and report which ones were fully read versus partial.",
+    "should_trigger": true,
+    "why": "Coverage-verified reading is the primary goal."
+  },
+  {
+    "query": "Do a strict page-coverage pass on these verified Page Index filenames before I summarize them.",
+    "should_trigger": true,
+    "why": "Reading step as a prerequisite for later workflows is in scope."
+  },
+  {
+    "query": "Find this citation in Page Index and tell me which filename matches it.",
+    "should_trigger": false,
+    "why": "Resolution belongs to pageindex-find-papers."
+  },
+  {
+    "query": "Summarize this Page Index paper into a saved Markdown report.",
+    "should_trigger": false,
+    "why": "Per-paper Page Index summarization belongs to pageindex-summarize-papers."
+  },
+  {
+    "query": "Give me the methods section from pages 4-7 only.",
+    "should_trigger": false,
+    "why": "Selected-page extraction is outside full-paper coverage verification."
+  },
+  {
+    "query": "Classify this paper after reading it.",
+    "should_trigger": false,
+    "why": "Classification is not owned by the reading skill."
+  },
+  {
+    "query": "Just tell me what this paper is about.",
+    "should_trigger": false,
+    "why": "Content summary alone is not the same as coverage-verified reading."
+  }
+]

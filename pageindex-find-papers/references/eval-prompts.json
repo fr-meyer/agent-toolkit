@@ -1,0 +1,42 @@
+[
+  {
+    "query": "Find this citation in Page Index and tell me which exact filename matches it.",
+    "should_trigger": true,
+    "why": "Primary goal is Page Index resolution to a verified file."
+  },
+  {
+    "query": "I have this messy bibliography entry — can you resolve it to the correct Page Index paper?",
+    "should_trigger": true,
+    "why": "Bibliography-like input that needs conservative Page Index matching."
+  },
+  {
+    "query": "Check whether this Page Index filename is real and still points to the intended paper.",
+    "should_trigger": true,
+    "why": "Direct filename verification is in scope for the finder."
+  },
+  {
+    "query": "Find these three papers in Page Index first; I need the verified filenames before doing anything else.",
+    "should_trigger": true,
+    "why": "Explicit upstream resolution task before later workflows."
+  },
+  {
+    "query": "Read this verified Page Index file all the way through and tell me whether every page was covered.",
+    "should_trigger": false,
+    "why": "Coverage-verified reading belongs to pageindex-read-papers."
+  },
+  {
+    "query": "Summarize this paper from Page Index into a Markdown memo.",
+    "should_trigger": false,
+    "why": "Page Index summarization belongs to pageindex-summarize-papers."
+  },
+  {
+    "query": "Classify this Page Index paper into my taxonomy.",
+    "should_trigger": false,
+    "why": "Classification is downstream of finding and not owned here."
+  },
+  {
+    "query": "Download this paper from the web if it is missing from Page Index.",
+    "should_trigger": false,
+    "why": "External retrieval is outside the Page Index-only resolution boundary."
+  }
+]
