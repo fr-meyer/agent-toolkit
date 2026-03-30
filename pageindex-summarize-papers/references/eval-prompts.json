@@ -1,0 +1,42 @@
+[
+  {
+    "query": "Summarize this Page Index paper into the standard Markdown report format.",
+    "should_trigger": true,
+    "why": "Direct Page Index paper summary request."
+  },
+  {
+    "query": "Find these citations in Page Index, read them fully, and save one summary file per paper under memory/pageindex/summary/.",
+    "should_trigger": true,
+    "why": "Full Page Index-specific wrapper workflow: resolution, read verification, then per-paper summaries."
+  },
+  {
+    "query": "Use the verified Page Index filenames I already have and turn each one into a saved summary report.",
+    "should_trigger": true,
+    "why": "Page Index source is explicit even though resolution may already be done."
+  },
+  {
+    "query": "Summarize this local PDF into structured reading notes.",
+    "should_trigger": false,
+    "why": "General paper summarization outside Page Index should trigger summarize-research-papers instead."
+  },
+  {
+    "query": "Find this paper in Page Index and tell me whether it exists.",
+    "should_trigger": false,
+    "why": "Paper-finding only should trigger pageindex-find-papers, not the summary wrapper."
+  },
+  {
+    "query": "Read this verified Page Index file fully and report whether every page was covered.",
+    "should_trigger": false,
+    "why": "Coverage-only reading verification should trigger pageindex-read-papers."
+  },
+  {
+    "query": "Compare these five papers from Page Index in one synthesis memo.",
+    "should_trigger": false,
+    "why": "Cross-paper synthesis is out of scope even if the papers come from Page Index."
+  },
+  {
+    "query": "Classify this Page Index paper into my taxonomy.",
+    "should_trigger": false,
+    "why": "Classification is not the purpose of this skill."
+  }
+]

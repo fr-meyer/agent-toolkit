@@ -1,0 +1,52 @@
+[
+  {
+    "query": "Summarize this paper into a structured Markdown memo with strengths, limitations, and next reads.",
+    "should_trigger": true,
+    "why": "Direct per-paper summarization request."
+  },
+  {
+    "query": "Write detailed reading notes for these two papers and save one Markdown file per paper.",
+    "should_trigger": true,
+    "why": "Batch request for separate per-paper summary files."
+  },
+  {
+    "query": "I already extracted the PDF text. Turn it into a proper paper summary report using the standard template.",
+    "should_trigger": true,
+    "why": "Paper content is already accessible and the task is the report-writing step."
+  },
+  {
+    "query": "Give me a structured memo for this full paper, with page-anchored claims and a one-line verdict.",
+    "should_trigger": true,
+    "why": "Explicit request for the summary-writing standard this skill owns."
+  },
+  {
+    "query": "Summarize this paper from Page Index and save it under memory/pageindex/summary/.",
+    "should_trigger": false,
+    "why": "Page Index-specific orchestration should trigger pageindex-summarize-papers instead."
+  },
+  {
+    "query": "Find this citation in Page Index and tell me whether you have the PDF.",
+    "should_trigger": false,
+    "why": "Paper resolution only; no summarization task yet."
+  },
+  {
+    "query": "Verify whether every page of this paper was read.",
+    "should_trigger": false,
+    "why": "Coverage verification belongs to a reading workflow, not the summarization skill."
+  },
+  {
+    "query": "Compare these ten papers and write a literature review.",
+    "should_trigger": false,
+    "why": "Cross-paper synthesis is out of scope."
+  },
+  {
+    "query": "Classify this paper into my taxonomy.",
+    "should_trigger": false,
+    "why": "Classification is adjacent but outside summarization scope."
+  },
+  {
+    "query": "Just give me the abstract in bullet points.",
+    "should_trigger": false,
+    "why": "Abstract extraction only is below the intended scope of a full paper summary report."
+  }
+]
