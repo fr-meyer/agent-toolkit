@@ -40,6 +40,26 @@
     "why": "Reclassification against a versioned taxonomy."
   },
   {
+    "query": "No taxonomy exists yet. Build a usable two-layer taxonomy for this paper corpus, lock version 1, then classify a pilot set.",
+    "should_trigger": true,
+    "why": "Taxonomy-creation-first workflow is now in scope."
+  },
+  {
+    "query": "Our taxonomy is inconsistent and unusable. Redesign it from scratch and classify the corpus against the locked version.",
+    "should_trigger": true,
+    "why": "Explicit request to replace a weak taxonomy and continue into classification."
+  },
+  {
+    "query": "Create label definitions for a two-layer paper taxonomy and test them on a discovery sample before rollout.",
+    "should_trigger": true,
+    "why": "Taxonomy design for paper classification is now included when it is tied to classification use."
+  },
+  {
+    "query": "If worker agents are available, split this 12-paper audit across them and escalate boundary conflicts to review.",
+    "should_trigger": true,
+    "why": "Multi-agent classification orchestration request within paper-classification scope."
+  },
+  {
     "query": "can you sort these papers into my taxonomy? a few are probably in the wrong bucket and i need the real best-fit subcollection",
     "should_trigger": true,
     "why": "Casual phrasing for ordinary classification plus misclassification review."
@@ -58,11 +78,6 @@
     "query": "Summarize this paper in detail and list the key findings.",
     "should_trigger": false,
     "why": "Summarization is adjacent but out of scope."
-  },
-  {
-    "query": "Build me a new taxonomy for all cardiovascular machine-learning papers.",
-    "should_trigger": false,
-    "why": "Designing a taxonomy from scratch is out of scope."
   },
   {
     "query": "Compare these ten papers and synthesize a literature review.",
@@ -85,18 +100,18 @@
     "why": "Venue evaluation is unrelated to taxonomy classification."
   },
   {
-    "query": "Create Zotero collections for these topics and give them better names.",
-    "should_trigger": false,
-    "why": "Collection design/naming is not paper-by-paper classification into an existing taxonomy."
-  },
-  {
     "query": "just give me the tl;dr of this paper",
     "should_trigger": false,
     "why": "Very short casual near-miss for summarization rather than classification."
   },
   {
-    "query": "Clean up my taxonomy labels and merge overlapping collections.",
+    "query": "Design an ontology for product SKUs and warehouse bins.",
     "should_trigger": false,
-    "why": "Taxonomy redesign/cleanup is adjacent governance work, not paper classification itself."
+    "why": "Taxonomy design outside research-paper classification scope."
+  },
+  {
+    "query": "Reorganize my project folders and rename files so everything is easier to browse.",
+    "should_trigger": false,
+    "why": "General file organization, not paper classification or taxonomy design."
   }
 ]

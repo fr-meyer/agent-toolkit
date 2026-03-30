@@ -1,51 +1,124 @@
-# Research Paper Classification Package
+# Research Paper Classification Package — v6
 
-This package contains seven core markdown documents that together define the classification method, the taxonomy governance model, the operating team, the leadership structure, the day-to-day workflow, and the copy-paste operating templates required to run the system.
+This package now contains the full operating set for a research-paper classification program, including:
+- taxonomy design from scratch
+- paper-by-paper classification SOP
+- taxonomy reference documentation
+- staffing and leadership structure
+- agent persona prompts
+- workflow and communication rules
+- operating artifact templates
+- multi-agent orchestration rules
+- multi-agent handoff schema and prompt contracts
+- an explicit response to the subagent-support readiness audit
 
-## Included documents
+---
 
-1. **Paper Classification Tutorial**  
-   `01_paper_classification_tutorial.md`  
-   Chronological SOP for assigning each paper to a main collection and a subcollection in a two-layer hierarchy.
+## Package Contents
 
-2. **Taxonomy Reference Document Template**  
-   `02_taxonomy_reference_template.md`  
-   Canonical reference template that defines what each main collection and subcollection should contain, what is in scope, and what is out of scope.
+### 01. Paper Classification Tutorial
+`01_paper_classification_tutorial.md`
 
-3. **Classification Team Blueprint**  
-   `03_classification_team_blueprint.md`  
-   Detailed staffing model, role charters, capacity assumptions, scaling logic, and mission definitions.
+Chronological SOP for assigning each paper to exactly one main collection and one subcollection.
 
-4. **Agent Persona Prompts**  
-   `04_agent_persona_prompts.md`  
-   Ready-to-deploy system prompts, task prompts, and output structures for the core role agents.
+### 02. Taxonomy Reference Document Template
+`02_taxonomy_reference_template.md`
 
-5. **Leadership Roles Addendum**  
-   `05_leadership_roles_addendum.md`  
-   Defines the program-level lead and the optional team-lead layer, including ownership boundaries and decision rights.
+Fillable reference template that defines what each collection and subcollection should contain.
 
-6. **Workflow and Communication Playbook**  
-   `06_workflow_and_communication_playbook.md`  
-   End-to-end lifecycle, handoffs, SLAs, escalation rules, pairwise communication matrix, RACI, and meeting cadence.
+### 03. Classification Team Blueprint
+`03_classification_team_blueprint.md`
 
-7. **Operating Artifact Template Library**  
-   `07_operating_artifact_template_library.md`  
-   Copy-paste markdown templates for the operational artifacts the team must use to execute, review, escalate, report, and improve classification work.
+Recommended staffing model, role charters, production assumptions, and scaling logic.
 
-## Recommended reading order
+### 04. Agent Persona Prompts
+`04_agent_persona_prompts.md`
 
-1. Read the taxonomy reference template first.
-2. Read the paper classification tutorial second.
-3. Read the team blueprint to define capacity and role structure.
-4. Read the leadership addendum to define single-point accountability.
-5. Read the workflow and communication playbook to operationalize the process.
-6. Read the operating artifact template library to install the daily working documents.
-7. Use the agent persona prompts to instantiate role-specific human or AI agents.
+Ready-to-deploy role prompts for the classification organization.
 
-## Recommended organization choices
+### 05. Leadership Roles Addendum
+`05_leadership_roles_addendum.md`
 
-### Lean but governed model
+Defines the overall program owner and the optional analyst team-lead layer.
 
+### 06. Workflow and Communication Playbook
+`06_workflow_and_communication_playbook.md`
+
+Detailed role-by-role workflow, handoffs, escalation triggers, SLAs, meeting cadence, and RACI.
+
+### 07. Operating Artifact Template Library
+`07_operating_artifact_template_library.md`
+
+Ready-to-use markdown templates for decision records, QA forms, reports, escalation tickets, precedent logs, and governance artifacts.
+
+### 08. Taxonomy Creation from Scratch Playbook
+`08_taxonomy_creation_from_scratch_playbook.md`
+
+Defines how to create a usable 2-layer taxonomy when no taxonomy exists, including corpus discovery, label drafting, pilot validation, bounded multi-turn convergence, and version locking.
+
+### 09. Multi-Agent Orchestration and Decision Governance
+`09_multi_agent_orchestration_and_decision_governance.md`
+
+Defines when to stay single-agent versus switch to multi-agent mode, agent-count policy, role topology, conflict resolution, and the recommended final decision model.
+
+### 10. Multi-Agent Handoff Schema and Prompt Contracts
+`10_multi_agent_handoff_schema_and_prompt_contracts.md`
+
+Defines normalized handoff packages, required output schemas, routing rules, and prompt contracts for coordinator, classifier, QA, and taxonomy-lead roles.
+
+### 11. Subagent-Support Readiness Response
+`11_subagent_support_readiness_response.md`
+
+Maps the user-provided audit findings to the new package documents and explains how the orchestration and taxonomy gaps are now covered.
+
+### Appendix A. User Audit Report
+`classify-research-papers-subagent-support-audit-2026-03-30.md`
+
+The user-provided audit that identified the missing orchestration layer and multi-agent readiness gaps.
+
+---
+
+## Recommended Reading Order
+
+1. Start with `08_taxonomy_creation_from_scratch_playbook.md` if no taxonomy exists.
+2. Then use `02_taxonomy_reference_template.md` to publish the approved taxonomy.
+3. Then read `01_paper_classification_tutorial.md` for the operating SOP.
+4. Then use `03_classification_team_blueprint.md` and `05_leadership_roles_addendum.md` to define structure and accountability.
+5. Then read `06_workflow_and_communication_playbook.md` to operationalize daily work and escalation.
+6. Then use `09_multi_agent_orchestration_and_decision_governance.md` and `10_multi_agent_handoff_schema_and_prompt_contracts.md` if agents or subagents will be used.
+7. Then read `11_subagent_support_readiness_response.md` as the bridge from the audit to the operating package.
+8. Then use `04_agent_persona_prompts.md` to instantiate role agents.
+9. Keep `07_operating_artifact_template_library.md` open as the template library for day-to-day execution.
+10. Keep the audit report as a reference appendix when validating subagent-support readiness.
+
+---
+
+## Recommended Governance Choices
+
+### Best final decision model
+Use **bounded distributed proposal with centralized adjudication**:
+- classifiers propose
+- QA reviews contested items
+- taxonomy lead adjudicates structural conflicts
+- program lead owns policy and program-level governance
+
+This is better than simple democracy and better than routing everything to one judge.
+
+### Best agreement rule
+Seek convergence, but do **not** require unanimity.
+Use bounded multi-turn review and then escalate to the correct decision owner.
+
+### Best taxonomy rule
+Do not start batch classification before:
+- the taxonomy basis is chosen
+- the labels are defined
+- the taxonomy version is locked
+
+---
+
+## Recommended Organization Choices
+
+### Lean but well-governed model
 - 1 Classification Program Director / Program Lead
 - 1 Taxonomy Lead / Knowledge Architect
 - 1 Classification Operations Manager
@@ -56,7 +129,6 @@ This package contains seven core markdown documents that together define the cla
 **Total = 11 FTE**
 
 ### Fully supervised model
-
 - 1 Classification Program Director / Program Lead
 - 1 Taxonomy Lead / Knowledge Architect
 - 1 Classification Operations Manager
@@ -67,33 +139,14 @@ This package contains seven core markdown documents that together define the cla
 
 **Total = 12 FTE**
 
-## What the operating artifact library adds
+---
 
-The new markdown template library turns the package into an execution kit. It provides ready-to-use templates for:
+## Recommended Multi-Agent Scaling Rule
 
-- paper-level classification decision records,
-- analyst review requests and handoff payloads,
-- escalation tickets,
-- precedent log entries,
-- taxonomy change requests,
-- QA sample plans,
-- QA disposition forms,
-- adjudication records,
-- weekly operational reporting,
-- monthly governance reporting,
-- SLA breach tracking,
-- calibration minutes,
-- incident and root-cause reviews,
-- onboarding and certification checklists,
-- KPI definitions and standard calculations.
+If subagent support is available:
+- 4–6 papers → up to 2 classifier workers
+- 7–12 papers → up to 3 classifier workers
+- 13+ papers → up to 4 classifier workers by default
+- add QA and taxonomy-lead review roles only when needed
 
-## Canonical file list for the current package version
-
-- `00_package_index.md`
-- `01_paper_classification_tutorial.md`
-- `02_taxonomy_reference_template.md`
-- `03_classification_team_blueprint.md`
-- `04_agent_persona_prompts.md`
-- `05_leadership_roles_addendum.md`
-- `06_workflow_and_communication_playbook.md`
-- `07_operating_artifact_template_library.md`
+Keep the default ceiling conservative to protect merge quality and taxonomy consistency.
