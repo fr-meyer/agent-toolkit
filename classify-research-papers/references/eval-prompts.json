@@ -113,5 +113,15 @@
     "query": "Reorganize my project folders and rename files so everything is easier to browse.",
     "should_trigger": false,
     "why": "General file organization, not paper classification or taxonomy design."
+  },
+  {
+    "query": "Brainstorm a few possible taxonomy names for this field; I do not need a classification workflow yet.",
+    "should_trigger": false,
+    "why": "Standalone taxonomy ideation without a real paper-classification objective should stay out of scope."
+  },
+  {
+    "query": "Design a generic multi-agent review pipeline for my team.",
+    "should_trigger": false,
+    "why": "Generic orchestration outside research-paper classification should not trigger this skill."
   }
 ]

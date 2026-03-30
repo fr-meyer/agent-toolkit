@@ -1,6 +1,6 @@
 ---
 name: classify-research-papers
-description: Use this skill when the user needs to classify one or more research papers within a two-layer taxonomy, either by applying an existing taxonomy or by creating and locking one first when no usable taxonomy exists. Apply it to paper-by-paper classification, misclassification review, taxonomy-gap analysis, adjudication between competing paths, and taxonomy design for a new paper corpus when the end goal is stable two-layer classification. Do not use it for paper discovery alone, whole-paper summarization, or general literature-review synthesis unrelated to taxonomy design or classification.
+description: Use this skill when the user needs to classify one or more research papers within a two-layer taxonomy, either by applying an existing taxonomy or by creating and locking one first when no usable taxonomy exists. Apply it to paper-by-paper classification, misclassification review, taxonomy-gap analysis, adjudication between competing paths, and taxonomy design for a research-paper corpus only when that design work is a prerequisite to stable paper classification. Do not use it for paper discovery alone, whole-paper summarization, general literature-review synthesis, standalone taxonomy or ontology design outside research-paper classification, or generic multi-agent orchestration unrelated to this workflow.
 ---
 
 # Classify Research Papers
@@ -34,6 +34,8 @@ Read:
 
 In this mode, do **not** jump directly to batch classification. First create and lock a usable two-layer taxonomy version, then classify papers against it.
 
+Use taxonomy-creation-first mode only when taxonomy design is a prerequisite to the paper-classification job itself. Do **not** use this skill for standalone taxonomy ideation, generic ontology architecture, or label brainstorming unrelated to an actual research-paper classification workflow.
+
 ### 3. Multi-agent mode
 
 Use this mode only when the environment explicitly supports worker or subagent execution, the taxonomy version is locked, and the task is large or ambiguity-heavy enough that parallel review is worth the merge overhead.
@@ -43,6 +45,8 @@ Read:
 - `references/multi-agent-handoff-schema.md`
 
 If the environment does not support worker execution, remain in single-agent mode and work serially.
+
+Use multi-agent mode only to support the paper-classification workflow defined by this skill. Do **not** treat this skill as a generic orchestration guide for unrelated agent teams or non-classification tasks.
 
 ## Example Prompts
 
@@ -136,6 +140,9 @@ Start lean. Read only the files needed for the current job.
 
 - `references/multi-agent-handoff-schema.md`
   - Read when assigning papers to workers, packaging handoffs, validating worker outputs, or merging multiple agent results.
+
+- `references/taxonomy-creation-output-examples.md`
+  - Read when taxonomy-creation-first mode needs concrete deliverable shapes such as a taxonomy charter, label-definition card, or locked-version handoff summary.
 
 - `references/package-index.md`
   - Read only when you need the source package map.
@@ -292,7 +299,7 @@ next_owner:
 
 Use one consistent key set across papers. If no meaningful competing path exists, set `strongest_rejected_alternative` to `none` rather than omitting the field.
 
-If the user wants a formal operating artifact, load `references/operating-artifact-template-library.md` and use the appropriate template. For concrete examples of both a straightforward decision and an escalation case, read `references/output-examples.md`.
+If the user wants a formal operating artifact, load `references/operating-artifact-template-library.md` and use the appropriate template. For concrete examples of both a straightforward decision and an escalation case, read `references/output-examples.md`. If the task is taxonomy-creation-first rather than paper-level classification, read `references/taxonomy-creation-output-examples.md` for concrete deliverable shapes.
 
 ## Multi-Agent Operation
 
@@ -421,5 +428,7 @@ Before finishing any taxonomy or classification task, verify all of the followin
 - Never hide ambiguity behind inflated confidence.
 - Never claim a taxonomy gap without checking whether an existing node already fits.
 - Never start large-scale batch classification without a locked taxonomy version.
+- Never use taxonomy-creation-first mode for standalone ontology or taxonomy design outside research-paper classification.
 - Never assume worker execution exists or exceed host limits when using multi-agent mode.
+- Never use this skill as a generic multi-agent orchestration manual for unrelated tasks.
 - Never treat chat as the system of record when the task requires a durable artifact.
