@@ -3,7 +3,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 TOOLKIT="$HOME/.agent-toolkit"
-if [ ! -e "$TOOLKIT" ]; then
+if [ -L "$TOOLKIT" ] || [ -e "$TOOLKIT" ]; then
+  if [ ! -d "$TOOLKIT" ]; then
+    echo "ERROR: ~/.agent-toolkit exists but is not a valid directory (toolkit root must be a directory). Remove or replace it, then: ln -s /path/to/repo ~/.agent-toolkit"
+    exit 1
+  fi
+else
   echo "ERROR: ~/.agent-toolkit does not exist or does not resolve. Create it first: ln -s /path/to/repo ~/.agent-toolkit"
   exit 1
 fi
@@ -18,6 +23,11 @@ if [ -z "$GIT_ROOT" ]; then
 fi
 
 TARGET="$HOME/.agent-toolkit/cursor/rules"
+if [ ! -d "$TARGET" ]; then
+  echo "ERROR: ~/.agent-toolkit/cursor/rules is missing or not a directory. Ensure your toolkit checkout includes cursor/rules, or fix ~/.agent-toolkit to point at the repository root."
+  exit 1
+fi
+
 LINK=".cursor/rules"
 
 if [ -L "$LINK" ]; then

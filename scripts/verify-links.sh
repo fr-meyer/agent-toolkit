@@ -9,8 +9,7 @@ OK=0
 check_link() {
   local label=$1
   local link_path=$2
-  # shellcheck disable=SC2034
-  local _expected_target=$3
+  local expected_target=$3
 
   CHECKED=$((CHECKED + 1))
 
@@ -21,12 +20,21 @@ check_link() {
   fi
 
   if [ -L "$link_path" ]; then
-    local ACTUAL
+    local ACTUAL actual_canon expected_canon
     ACTUAL="$(readlink "$link_path")"
     if [ ! -e "$link_path" ]; then
       echo "BROKEN   $label ($link_path → $ACTUAL [target unreachable])"
       ISSUES=$((ISSUES + 1))
       return
+    fi
+    if [ -n "$expected_target" ]; then
+      actual_canon="$(readlink -f "$link_path")"
+      expected_canon="$(readlink -f "$expected_target")"
+      if [ "$actual_canon" != "$expected_canon" ]; then
+        echo "BROKEN   $label ($link_path → $ACTUAL; expected $expected_target) [resolved actual: $actual_canon, resolved expected: $expected_canon]"
+        ISSUES=$((ISSUES + 1))
+        return
+      fi
     fi
     echo "OK       $label ($link_path → $ACTUAL)"
     OK=$((OK + 1))
