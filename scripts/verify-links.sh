@@ -1,5 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+resolve_path() {
+  local out dir base resolved_dir
+
+  if out=$(readlink -f "$1" 2>/dev/null) && [ -n "$out" ] && [ -e "$out" ]; then
+    printf '%s\n' "$out"
+    return 0
+  fi
+  if out=$(python3 -c 'import os, sys
+r = os.path.realpath(sys.argv[1])
+if os.path.exists(r):
+    print(r)
+else:
+    sys.exit(1)' "$1" 2>/dev/null) && [ -n "$out" ]; then
+    printf '%s\n' "$out"
+    return 0
+  fi
+  dir=$(dirname "$1")
+  base=$(basename "$1")
+  if resolved_dir=$(cd "$dir" && pwd -P 2>/dev/null) && [ -n "$resolved_dir" ]; then
+    out="$resolved_dir/$base"
+    if [ -e "$out" ]; then
+      printf '%s\n' "$out"
+      return 0
+    fi
+  fi
+  return 1
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ISSUES=0
@@ -28,8 +57,8 @@ check_link() {
       return
     fi
     if [ -n "$expected_target" ]; then
-      actual_canon="$(readlink -f "$link_path" || true)"
-      expected_canon="$(readlink -f "$expected_target" || true)"
+      actual_canon="$(resolve_path "$link_path" || true)"
+      expected_canon="$(resolve_path "$expected_target" || true)"
       if [ -z "$expected_canon" ]; then
         echo "BROKEN   $label ($link_path → $ACTUAL; expected target $expected_target could not be resolved)"
         ISSUES=$((ISSUES + 1))
