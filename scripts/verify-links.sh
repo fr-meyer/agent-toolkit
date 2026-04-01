@@ -28,8 +28,13 @@ check_link() {
       return
     fi
     if [ -n "$expected_target" ]; then
-      actual_canon="$(readlink -f "$link_path")"
-      expected_canon="$(readlink -f "$expected_target")"
+      actual_canon="$(readlink -f "$link_path" || true)"
+      expected_canon="$(readlink -f "$expected_target" || true)"
+      if [ -z "$expected_canon" ]; then
+        echo "BROKEN   $label ($link_path → $ACTUAL; expected target $expected_target could not be resolved)"
+        ISSUES=$((ISSUES + 1))
+        return
+      fi
       if [ "$actual_canon" != "$expected_canon" ]; then
         echo "BROKEN   $label ($link_path → $ACTUAL; expected $expected_target) [resolved actual: $actual_canon, resolved expected: $expected_canon]"
         ISSUES=$((ISSUES + 1))
