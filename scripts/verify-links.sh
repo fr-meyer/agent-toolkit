@@ -17,16 +17,38 @@ else:
     printf '%s\n' "$out"
     return 0
   fi
-  dir=$(dirname "$1")
-  base=$(basename "$1")
-  if resolved_dir=$(cd "$dir" && pwd -P 2>/dev/null) && [ -n "$resolved_dir" ]; then
-    out="$resolved_dir/$base"
-    if [ -e "$out" ]; then
-      printf '%s\n' "$out"
-      return 0
-    fi
+  local path target i
+  path=$1
+  if [ "${path#/}" = "$path" ]; then
+    path="${PWD}/${path}"
   fi
-  return 1
+  i=0
+  while [ "$i" -lt 64 ]; do
+    if [ ! -L "$path" ]; then
+      break
+    fi
+    i=$((i + 1))
+    target=$(readlink "$path")
+    if [ -z "$target" ]; then
+      return 1
+    fi
+    if [ "${target#/}" = "$target" ]; then
+      target="$(dirname "$path")/${target}"
+    fi
+    path=$target
+  done
+  if [ -L "$path" ]; then
+    return 1
+  fi
+  if [ ! -e "$path" ]; then
+    return 1
+  fi
+  if ! resolved_dir=$(cd "$(dirname "$path")" && pwd -P 2>/dev/null) || [ -z "$resolved_dir" ]; then
+    return 1
+  fi
+  out="$resolved_dir/$(basename "$path")"
+  printf '%s\n' "$out"
+  return 0
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
