@@ -81,7 +81,7 @@ function Resolve-CanonicalPath {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$p)
 
-    Ensure-Kernel32FinalPathTypeLoaded | Out-Null
+    Ensure-Kernel32FinalPathType | Out-Null
 
     try {
         $share = [LinkUtilsKernel32FinalPath.Native]::FILE_SHARE_READ -bor
