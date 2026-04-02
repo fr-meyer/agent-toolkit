@@ -10,4 +10,4 @@
 <project>/.cursor/rules → ~/.agent-toolkit/cursor/rules
 ```
 
-The `~/.agent-toolkit` alias must point to the local clone of this repo. The `connect-cursor.sh` script (added in a later ticket) automates creating this symlink.
+The `~/.agent-toolkit` alias must point to the local clone of this repo. The `connect-cursor.sh` script (under `scripts/`) automates creating this symlink.
