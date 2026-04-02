@@ -73,20 +73,16 @@ else
 fi
 
 make_absolute() {
-  case "$1" in
-    /*)
-      printf '%s\n' "$1"
-      ;;
-    '~')
-      printf '%s\n' "$HOME"
-      ;;
-    '~/'*)
-      printf '%s\n' "${HOME}/${1#~/}"
-      ;;
-    *)
-      printf '%s\n' "${PWD}/$1"
-      ;;
-  esac
+  local p=$1
+  if [[ "$p" == /* ]]; then
+    printf '%s\n' "$p"
+  elif [[ "$p" == '~' ]]; then
+    printf '%s\n' "$HOME"
+  elif [[ "${p:0:2}" == '~/' ]]; then
+    printf '%s\n' "${HOME}/${p:2}"
+  else
+    printf '%s\n' "${PWD}/$p"
+  fi
 }
 
 TOOLKIT_ROOT="$(make_absolute "$TOOLKIT_ROOT")"
