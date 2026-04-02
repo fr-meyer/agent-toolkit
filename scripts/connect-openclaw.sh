@@ -69,6 +69,26 @@ else
   OPENCLAW_HOME_DIR="$HOME/.openclaw"
 fi
 
+make_absolute() {
+  case "$1" in
+    /*)
+      printf '%s\n' "$1"
+      ;;
+    '~')
+      printf '%s\n' "$HOME"
+      ;;
+    '~/'*)
+      printf '%s\n' "${HOME}/${1#~/}"
+      ;;
+    *)
+      printf '%s\n' "${PWD}/$1"
+      ;;
+  esac
+}
+
+TOOLKIT_ROOT="$(make_absolute "$TOOLKIT_ROOT")"
+OPENCLAW_HOME_DIR="$(make_absolute "$OPENCLAW_HOME_DIR")"
+
 TARGET="$TOOLKIT_ROOT/skills"
 LINK="$OPENCLAW_HOME_DIR/skills"
 

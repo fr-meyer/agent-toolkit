@@ -72,6 +72,26 @@ else
   CURSOR_TARGET="$TOOLKIT_ROOT/cursor/rules"
 fi
 
+make_absolute() {
+  case "$1" in
+    /*)
+      printf '%s\n' "$1"
+      ;;
+    '~')
+      printf '%s\n' "$HOME"
+      ;;
+    '~/'*)
+      printf '%s\n' "${HOME}/${1#~/}"
+      ;;
+    *)
+      printf '%s\n' "${PWD}/$1"
+      ;;
+  esac
+}
+
+TOOLKIT_ROOT="$(make_absolute "$TOOLKIT_ROOT")"
+CURSOR_TARGET="$(make_absolute "$CURSOR_TARGET")"
+
 resolve_path() {
   local out dir base resolved_dir
 
