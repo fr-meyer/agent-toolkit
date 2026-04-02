@@ -12,6 +12,18 @@ Create the default alias manually (substitute your actual clone path):
 ln -s /path/to/your/clone ~/.agent-toolkit
 ```
 
+> **Windows (PowerShell 7+):** Create the symlink with PowerShell (substitute your clone path):
+>
+> ```powershell
+> New-Item -ItemType SymbolicLink -Path "$HOME\.agent-toolkit" -Target "C:\path\to\your\clone"
+> ```
+>
+> Or equivalently from elevated `cmd.exe`: `mklink /D "%USERPROFILE%\.agent-toolkit" "C:\path\to\your\clone"`.
+>
+> **Junction is not used as a fallback** — the alias must be a symbolic link.
+>
+> If symlink creation is blocked, enable **Developer Mode** (Settings → Privacy & security → For developers) or run PowerShell as Administrator. The script will fail with a clear error if this step is skipped.
+
 This symlink step is only needed when you want the default layout. The repository cannot know where it is cloned on each machine, so each developer who uses the default path creates this symlink once, locally.
 
 ## Runtime Path Overrides
@@ -26,6 +38,17 @@ This symlink step is only needed when you want the default layout. The repositor
 
 CLI flags take precedence over environment variables, which take precedence over built-in defaults.
 
+> **Windows (PowerShell 7+):** The PowerShell scripts use the **same environment variables** (`AGENT_TOOLKIT_ROOT`, `OPENCLAW_HOME`, `CURSOR_RULES_TARGET`) and accept these named parameters in place of the Bash flags:
+>
+> | Bash flag | PowerShell parameter |
+> | --- | --- |
+> | `--toolkit-root <path>` | `-ToolkitRoot <path>` |
+> | `--openclaw-home <path>` | `-OpenclawHome <path>` |
+> | `--cursor-rules-target <path>` | `-CursorRulesTarget <path>` |
+> | `--yes` | `-Yes` (switch) |
+>
+> Precedence semantics are identical: CLI parameter → env var → default.
+
 ### Applicability per script
 
 | Variable / flag         | `connect-openclaw.sh` | `connect-cursor.sh` | `verify-links.sh` |
@@ -34,6 +57,8 @@ CLI flags take precedence over environment variables, which take precedence over
 | `--openclaw-home`       | ✓                     | —                   | ✓                 |
 | `--cursor-rules-target` | —                     | ✓                   | ✓                 |
 | `--yes`                 | ✓                     | ✓                   | —                 |
+
+> **Windows (PowerShell 7+):** The PowerShell equivalents follow the same applicability matrix, with `-ToolkitRoot`, `-OpenclawHome`, `-CursorRulesTarget`, and `-Yes` mapping one-to-one. `verify-links.ps1` additionally accepts `-ProjectDir` (and a positional project path), matching `verify-links.sh`’s `--project-dir` / positional argument.
 
 ### Non-default usage examples
 
@@ -54,6 +79,25 @@ CLI flags take precedence over environment variables, which take precedence over
   --cursor-rules-target /opt/my-toolkit/cursor/rules
 ```
 
+> **Windows (PowerShell 7+):** Equivalent overrides:
+>
+> ```powershell
+> # connect-openclaw.ps1 with custom toolkit root and OpenClaw home
+> & "$HOME\.agent-toolkit\scripts\connect-openclaw.ps1" `
+>   -ToolkitRoot C:\opt\my-toolkit `
+>   -OpenclawHome C:\opt\my-openclaw
+>
+> # connect-cursor.ps1 with an explicit Cursor rules target
+> & "$HOME\.agent-toolkit\scripts\connect-cursor.ps1" `
+>   -CursorRulesTarget C:\opt\my-toolkit\cursor\rules
+>
+> # verify-links.ps1 with matching overrides
+> & "$HOME\.agent-toolkit\scripts\verify-links.ps1" `
+>   -ToolkitRoot C:\opt\my-toolkit `
+>   -OpenclawHome C:\opt\my-openclaw `
+>   -CursorRulesTarget C:\opt\my-toolkit\cursor\rules
+> ```
+
 ### `--yes` (non-interactive mode)
 
 `--yes` suppresses all interactive confirmation prompts. It applies to `connect-openclaw.sh` and `connect-cursor.sh`; `verify-links.sh` is read-only and has no prompts.
@@ -61,6 +105,8 @@ CLI flags take precedence over environment variables, which take precedence over
 Prompts it suppresses include: overwriting a symlink that points to the wrong target, and proceeding when the current directory is not a git repository (Cursor script only).
 
 It does **not** suppress the fail-safe error when the destination is a real directory or file—that always exits non-zero regardless of `--yes`.
+
+> **Windows (PowerShell 7+):** The equivalent is the `-Yes` switch passed to `connect-openclaw.ps1` or `connect-cursor.ps1`; behavior is identical.
 
 ## Connect OpenClaw
 
@@ -76,6 +122,14 @@ Alternatively, `cd` to the root of your clone of this repo, then run `./scripts/
 
 The script validates that the effective toolkit root is set up, then creates `<openclaw-home>/skills` as a symlink into the toolkit’s `skills` directory. It is idempotent: you can run it again safely.
 
+> **Windows (PowerShell 7+):** From any directory, run:
+>
+> ```powershell
+> & "$HOME\.agent-toolkit\scripts\connect-openclaw.ps1"
+> ```
+>
+> The script accepts `-ToolkitRoot`, `-OpenclawHome`, and `-Yes` (same semantics as the Bash flags). It creates `<openclaw-home>\skills` as a **directory symbolic link** — there is no automatic junction fallback. If symlink creation fails, the script exits with remediation guidance (Developer Mode or elevated PowerShell). It is idempotent: safe to re-run.
+
 ## Connect Cursor (per project)
 
 `cd` into the **project** directory where you want shared Cursor rules (the git root of that project), then run:
@@ -89,6 +143,14 @@ The script accepts `--toolkit-root`, `--cursor-rules-target`, and `--yes`; see [
 (Relative `scripts/connect-cursor.sh` only resolves if your current directory is the clone root; from a project directory, call the script through `~/.agent-toolkit/scripts/` as shown—or invoke it from the clone with matching `--toolkit-root` if you use overrides.)
 
 The script detects the git project root and creates `.cursor/rules` as a symlink to the effective Cursor rules target. If you run it outside a git repository, you will get a confirmation prompt before it proceeds (unless you pass `--yes`).
+
+> **Windows (PowerShell 7+):** `cd` into the project directory, then run:
+>
+> ```powershell
+> & "$HOME\.agent-toolkit\scripts\connect-cursor.ps1"
+> ```
+>
+> The script accepts `-ToolkitRoot`, `-CursorRulesTarget`, and `-Yes`. The `.cursor\rules` link is created in **`$PWD`** (strict parity with Bash — not at the detected git root, even if git is available). If the current directory is not a git repository, the script prints a warning and prompts for confirmation; `-Yes` suppresses the prompt and proceeds automatically. It creates a **directory symbolic link** only; there is no junction fallback. Developer Mode or elevated PowerShell is required if symlink creation is blocked.
 
 ## Verify links
 
@@ -116,11 +178,29 @@ You can pass an optional project path so the script checks that project’s Curs
 ~/.agent-toolkit/scripts/verify-links.sh --project-dir /path/to/project
 ```
 
+> **Windows (PowerShell 7+):**
+>
+> ```powershell
+> # positional form
+> & "$HOME\.agent-toolkit\scripts\verify-links.ps1" C:\path\to\project
+>
+> # flag form
+> & "$HOME\.agent-toolkit\scripts\verify-links.ps1" -ProjectDir C:\path\to\project
+> ```
+
 If both forms are provided with **different** values, the script exits immediately with an argument error.
 
 Without a project argument, the script uses the current directory when it looks like a project; if it does not, it skips the Cursor-related check and says so explicitly.
 
 Exit codes: `0` means all required checks passed; a non-zero exit code means at least one issue was found.
+
+> **Windows (PowerShell 7+):** From any directory:
+>
+> ```powershell
+> & "$HOME\.agent-toolkit\scripts\verify-links.ps1"
+> ```
+>
+> The script accepts `-ToolkitRoot`, `-OpenclawHome`, `-CursorRulesTarget`, and `-ProjectDir` (or a positional project path). Output tokens (`OK`, `MISSING`, `BROKEN`, `SKIPPED`) and the one-line summary format are identical to Bash output. **Strict git parity:** if `git rev-parse --show-toplevel` cannot run and no explicit project path is provided, the Cursor check is reported as `SKIPPED` (not a failure). Canonical path comparisons use `GetFinalPathNameByHandle` raw outputs (via `Resolve-CanonicalPath` in `LinkUtils.psm1`) — not `realpath` or PowerShell’s `Resolve-Path`. Use the same override-matching rule as on Bash: invoke with the same `-ToolkitRoot`, `-OpenclawHome`, and `-CursorRulesTarget` values you used during connect, or verification will target wrong paths.
 
 ## Remediation — destination already exists as a real directory or file
 
@@ -133,6 +213,8 @@ If a script refuses to create a link because something already exists:
 3. Re-run the connect script.
 
 This behavior is intentional: the scripts protect existing data on your machine.
+
+> **Windows (PowerShell 7+):** The fail-safe behavior (refusing to overwrite a real directory or file at the link destination) is **identical on Windows** — the `.ps1` scripts exit non-zero with the same remediation message, and no automatic fallback is attempted.
 
 ## Migration — existing clones after the repo rename
 
