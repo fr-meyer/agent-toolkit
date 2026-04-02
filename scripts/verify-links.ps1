@@ -1,4 +1,4 @@
-[CmdletBinding(PositionalBinding = $false)]
+[CmdletBinding()]
 param(
     [Parameter()]
     [string]$ToolkitRoot,
