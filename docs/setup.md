@@ -4,27 +4,77 @@ This guide helps you wire this repo into your machine and projects. It assumes y
 
 ## Prerequisites
 
-Before you run any script here, `~/.agent-toolkit` must exist and point at your clone of this repo.
+By default, scripts resolve toolkit content from `~/.agent-toolkit`, which should point at your clone of this repo. That path is the **default** toolkit root; you can bypass it when you pass `--toolkit-root` or set `AGENT_TOOLKIT_ROOT` (see [Runtime Path Overrides](#runtime-path-overrides)).
 
-Create the alias manually (substitute your actual clone path):
+Create the default alias manually (substitute your actual clone path):
 
 ```bash
 ln -s /path/to/your/clone ~/.agent-toolkit
 ```
 
-This is the only step that is not scripted. The repository cannot know where it is cloned on each machine, so each developer creates this symlink once, locally.
+This symlink step is only needed when you want the default layout. The repository cannot know where it is cloned on each machine, so each developer who uses the default path creates this symlink once, locally.
+
+## Runtime Path Overrides
+
+### Configurable variables
+
+| Variable           | CLI flag                      | Env var               | Default                          |
+| ------------------ | ----------------------------- | --------------------- | -------------------------------- |
+| Toolkit root       | `--toolkit-root <path>`       | `AGENT_TOOLKIT_ROOT`  | `$HOME/.agent-toolkit`           |
+| OpenClaw home      | `--openclaw-home <path>`      | `OPENCLAW_HOME`       | `$HOME/.openclaw`                |
+| Cursor rules target | `--cursor-rules-target <path>` | `CURSOR_RULES_TARGET` | `<toolkit-root>/cursor/rules` |
+
+CLI flags take precedence over environment variables, which take precedence over built-in defaults.
+
+### Applicability per script
+
+| Variable / flag         | `connect-openclaw.sh` | `connect-cursor.sh` | `verify-links.sh` |
+| ----------------------- | --------------------- | ------------------- | ----------------- |
+| `--toolkit-root`        | ✓                     | ✓                   | ✓                 |
+| `--openclaw-home`       | ✓                     | —                   | ✓                 |
+| `--cursor-rules-target` | —                     | ✓                   | ✓                 |
+| `--yes`                 | ✓                     | ✓                   | —                 |
+
+### Non-default usage examples
+
+```bash
+# connect-openclaw.sh with custom toolkit root and OpenClaw home
+~/.agent-toolkit/scripts/connect-openclaw.sh \
+  --toolkit-root /opt/my-toolkit \
+  --openclaw-home /opt/my-openclaw
+
+# connect-cursor.sh with an explicit Cursor rules target
+~/.agent-toolkit/scripts/connect-cursor.sh \
+  --cursor-rules-target /opt/my-toolkit/cursor/rules
+
+# verify-links.sh with matching overrides (use the same values as during connect)
+~/.agent-toolkit/scripts/verify-links.sh \
+  --toolkit-root /opt/my-toolkit \
+  --openclaw-home /opt/my-openclaw \
+  --cursor-rules-target /opt/my-toolkit/cursor/rules
+```
+
+### `--yes` (non-interactive mode)
+
+`--yes` suppresses all interactive confirmation prompts. It applies to `connect-openclaw.sh` and `connect-cursor.sh`; `verify-links.sh` is read-only and has no prompts.
+
+Prompts it suppresses include: overwriting a symlink that points to the wrong target, and proceeding when the current directory is not a git repository (Cursor script only).
+
+It does **not** suppress the fail-safe error when the destination is a real directory or file—that always exits non-zero regardless of `--yes`.
 
 ## Connect OpenClaw
 
-From any directory, run the script via the stable toolkit alias (requires `~/.agent-toolkit` from [Prerequisites](#prerequisites)):
+From any directory, run the script via the stable toolkit alias (requires an effective toolkit root—either the default `~/.agent-toolkit` alias or an explicit `--toolkit-root` override):
 
 ```bash
 ~/.agent-toolkit/scripts/connect-openclaw.sh
 ```
 
+The script accepts `--toolkit-root`, `--openclaw-home`, and `--yes`; see [Runtime Path Overrides](#runtime-path-overrides) for the full table and precedence.
+
 Alternatively, `cd` to the root of your clone of this repo, then run `./scripts/connect-openclaw.sh`.
 
-The script validates that `~/.agent-toolkit` is set up, then creates `~/.openclaw/skills` as a symlink to `~/.agent-toolkit/skills`. It is idempotent: you can run it again safely.
+The script validates that the effective toolkit root is set up, then creates `<openclaw-home>/skills` as a symlink into the toolkit’s `skills` directory. It is idempotent: you can run it again safely.
 
 ## Connect Cursor (per project)
 
@@ -34,13 +84,15 @@ The script validates that `~/.agent-toolkit` is set up, then creates `~/.opencla
 ~/.agent-toolkit/scripts/connect-cursor.sh
 ```
 
-(Relative `scripts/connect-cursor.sh` only resolves if your current directory is the clone root; from a project directory, call the script through `~/.agent-toolkit/scripts/` as shown.)
+The script accepts `--toolkit-root`, `--cursor-rules-target`, and `--yes`; see [Runtime Path Overrides](#runtime-path-overrides) for the full table. When `--cursor-rules-target` is provided explicitly, the toolkit root check is skipped—the script does not need the default alias in that case.
 
-The script detects the git project root and creates `.cursor/rules` as a symlink to `~/.agent-toolkit/cursor/rules`. If you run it outside a git repository, you will get a confirmation prompt before it proceeds.
+(Relative `scripts/connect-cursor.sh` only resolves if your current directory is the clone root; from a project directory, call the script through `~/.agent-toolkit/scripts/` as shown—or invoke it from the clone with matching `--toolkit-root` if you use overrides.)
+
+The script detects the git project root and creates `.cursor/rules` as a symlink to the effective Cursor rules target. If you run it outside a git repository, you will get a confirmation prompt before it proceeds (unless you pass `--yes`).
 
 ## Verify links
 
-From any directory (with `~/.agent-toolkit` set up):
+From any directory (with the toolkit root accessible—default alias or matching overrides):
 
 ```bash
 ~/.agent-toolkit/scripts/verify-links.sh
@@ -48,15 +100,25 @@ From any directory (with `~/.agent-toolkit` set up):
 
 Alternatively, `cd` to your clone root and run `./scripts/verify-links.sh`.
 
+The script accepts `--toolkit-root`, `--openclaw-home`, and `--cursor-rules-target`; see [Runtime Path Overrides](#runtime-path-overrides).
+
+> **Note:** Invoke `verify-links.sh` with the **same override values** you used when running the connect scripts. If overrides differ (or are omitted when non-default paths were used), verification targets the wrong paths and can report false failures.
+
 Output includes per-link status (`OK`, `MISSING`, or `BROKEN`) and a one-line summary.
 
-You can pass an optional project path so the script checks that project’s Cursor link explicitly:
+You can pass an optional project path so the script checks that project’s Cursor link explicitly. Both of these forms are accepted:
 
 ```bash
+# positional form
 ~/.agent-toolkit/scripts/verify-links.sh /path/to/project
+
+# flag form
+~/.agent-toolkit/scripts/verify-links.sh --project-dir /path/to/project
 ```
 
-Without that argument, the script uses the current directory when it looks like a project; if it does not, it skips the Cursor-related check and says so explicitly.
+If both forms are provided with **different** values, the script exits immediately with an argument error.
+
+Without a project argument, the script uses the current directory when it looks like a project; if it does not, it skips the Cursor-related check and says so explicitly.
 
 Exit codes: `0` means all required checks passed; a non-zero exit code means at least one issue was found.
 
@@ -80,7 +142,7 @@ If you already had a clone and the remote URL changed:
 
 1. Update the remote: `git remote set-url origin <new-url>`
 2. Confirm it works: `git pull`
-3. **Verify the alias**: confirm `~/.agent-toolkit` resolves to the clone you intend (for example `readlink -f ~/.agent-toolkit` or `ls -l ~/.agent-toolkit`). The printed path should be your updated local repository root.
-4. **Verify links** (final health check): `~/.agent-toolkit/scripts/verify-links.sh`
+3. **Verify the alias** (or your chosen toolkit root): confirm `~/.agent-toolkit` (or `readlink`/path for your `--toolkit-root`) resolves to the clone you intend—for example `readlink -f ~/.agent-toolkit` or `ls -l ~/.agent-toolkit`. The printed path should be your updated local repository root.
+4. **Verify links** (final health check): `~/.agent-toolkit/scripts/verify-links.sh` (using the same overrides if non-default paths are in use).
 
-Your `~/.agent-toolkit` symlink is unaffected by the rename: it points at a path on your filesystem, not at the git remote URL. If you ever pointed the symlink at a different directory, step 3 catches that before link checks run.
+Your default `~/.agent-toolkit` symlink is unaffected by the rename: it points at a path on your filesystem, not at the git remote URL. If you ever pointed the symlink (or override) at a different directory, step 3 catches that before link checks run.
