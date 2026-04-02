@@ -23,6 +23,6 @@ agent-toolkit/
 
 ## Attachment model
 
-Point `~/.agent-toolkit` at your local clone of this repository (for example with a symlink). The `connect-openclaw.sh` and `connect-cursor.sh` scripts (under `scripts/` when added) wire up OpenClaw and Cursor to use this tree.
+Point `~/.agent-toolkit` at your local clone of this repository (for example with a symlink). The `connect-openclaw.sh` and `connect-cursor.sh` scripts (under `scripts/`) wire up OpenClaw and Cursor to use this tree. Run `verify-links.sh` to validate all symlinks after setup.
 
-For full setup instructions, see `docs/setup.md` (coming in a later ticket).
+For full setup instructions, see `docs/setup.md`. For an overview of what this repo covers, see `docs/repo-scope.md`.
