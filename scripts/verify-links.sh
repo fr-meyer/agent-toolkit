@@ -53,8 +53,21 @@ else:
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+make_absolute() {
+  local p=$1
+  if [[ "$p" == /* ]]; then
+    printf '%s\n' "$p"
+  elif [[ "$p" == '~' ]]; then
+    printf '%s\n' "$HOME"
+  elif [[ "${p:0:2}" == '~/' ]]; then
+    printf '%s\n' "${HOME}/${p:2}"
+  else
+    printf '%s\n' "${PWD}/$p"
+  fi
+}
+
 usage() {
-  echo "Usage: ${0##*/} [--toolkit-root <path>] [--openclaw-home <path>] [--cursor-rules-target <path>] [--project-dir <path>] [project-dir]" >&2
+  echo "Usage: ${0##*/} [--toolkit-root <path>] [--openclaw-home <path>] [--openclaw-scripts-dir <path>] [--cursor-rules-target <path>] [--project-dir <path>] [project-dir]" >&2
 }
 
 require_value_for_flag() {
@@ -76,6 +89,7 @@ require_value_for_flag() {
 
 FLAG_TOOLKIT_ROOT=""
 FLAG_OPENCLAW_HOME=""
+FLAG_OPENCLAW_SCRIPTS_DIR=""
 FLAG_CURSOR_RULES_TARGET=""
 FLAG_PROJECT_DIR=""
 POSITIONAL_PROJECT_DIR=""
@@ -89,6 +103,11 @@ while [ $# -gt 0 ]; do
     --openclaw-home)
       require_value_for_flag "$1" "${2:-}"
       FLAG_OPENCLAW_HOME="$2"
+      shift 2
+      ;;
+    --openclaw-scripts-dir)
+      require_value_for_flag "$1" "${2:-}"
+      FLAG_OPENCLAW_SCRIPTS_DIR="$2"
       shift 2
       ;;
     --cursor-rules-target)
@@ -144,6 +163,15 @@ else
   OPENCLAW_HOME_DIR="$HOME/.openclaw"
 fi
 
+if [ -n "$FLAG_OPENCLAW_SCRIPTS_DIR" ]; then
+  OPENCLAW_SCRIPTS_DIR_RAW="$FLAG_OPENCLAW_SCRIPTS_DIR"
+elif [ -n "${OPENCLAW_SCRIPTS_DIR:-}" ]; then
+  OPENCLAW_SCRIPTS_DIR_RAW="$OPENCLAW_SCRIPTS_DIR"
+else
+  OPENCLAW_SCRIPTS_DIR_RAW="$OPENCLAW_HOME_DIR/scripts"
+fi
+OPENCLAW_SCRIPTS_DIR_ABS="$(make_absolute "$OPENCLAW_SCRIPTS_DIR_RAW")"
+
 if [ -n "$FLAG_CURSOR_RULES_TARGET" ]; then
   CURSOR_TARGET="$FLAG_CURSOR_RULES_TARGET"
 elif [ -n "${CURSOR_RULES_TARGET:-}" ]; then
@@ -153,6 +181,7 @@ else
 fi
 
 OPENCLAW_SKILLS="$OPENCLAW_HOME_DIR/skills"
+OPENCLAW_SCRIPTS="$OPENCLAW_SCRIPTS_DIR_ABS"
 
 ISSUES=0
 CHECKED=0
@@ -240,6 +269,7 @@ check_link() {
 
 check_toolkit_root "toolkit-root" "$TOOLKIT_ROOT"
 check_link "openclaw/skills" "$OPENCLAW_SKILLS" "$TOOLKIT_ROOT/skills"
+check_link "openclaw/scripts" "$OPENCLAW_SCRIPTS" "$TOOLKIT_ROOT/scripts"
 
 if [ -n "${PROJECT_DIR:-}" ]; then
   check_link ".cursor/rules" "$PROJECT_DIR/.cursor/rules" "$CURSOR_TARGET"

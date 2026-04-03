@@ -2,6 +2,7 @@
 param(
     [string]$ToolkitRoot,
     [string]$OpenclawHome,
+    [string]$OpenclawScriptsDir,
     [switch]$Yes
 )
 
@@ -23,10 +24,88 @@ if ($OpenclawHome) {
     $openclawRaw = "$HOME\.openclaw"
 }
 
+if ($OpenclawScriptsDir) {
+    $scriptsDirRaw = $OpenclawScriptsDir
+} elseif ($env:OPENCLAW_SCRIPTS_DIR) {
+    $scriptsDirRaw = $env:OPENCLAW_SCRIPTS_DIR
+} else {
+    $scriptsDirRaw = $null
+}
+
 $ToolkitRoot = ConvertTo-AbsolutePath $toolkitRaw
 $OpenclawHome = ConvertTo-AbsolutePath $openclawRaw
+if ($scriptsDirRaw) {
+    $OpenclawScriptsDir = ConvertTo-AbsolutePath $scriptsDirRaw
+} else {
+    $OpenclawScriptsDir = Join-Path $OpenclawHome 'scripts'
+}
+
 $SkillsLink = Join-Path $OpenclawHome 'skills'
 $SkillsTarget = Join-Path $ToolkitRoot 'skills'
+$ScriptsLink = $OpenclawScriptsDir
+$ScriptsTarget = Join-Path $ToolkitRoot 'scripts'
+
+function Invoke-LinkAttempt {
+    param(
+        [string]$LinkPath,
+        [string]$TargetPath
+    )
+
+    if (-not (Test-Path -LiteralPath $TargetPath -PathType Container)) {
+        Write-Output "ERROR: $TargetPath is missing or not a directory. Ensure your toolkit checkout includes the required tree, or fix your toolkit root."
+        $script:linkFailed = $true
+        return
+    }
+
+    if (Test-IsReparsePoint $LinkPath) {
+        $currentCanon = Resolve-CanonicalPath $LinkPath
+        $targetCanon = Resolve-CanonicalPath $TargetPath
+        if ($currentCanon -and $targetCanon -and $currentCanon -eq $targetCanon) {
+            Write-Output "Already linked: $LinkPath → $TargetPath"
+            return
+        }
+        Write-Output "Warning: $LinkPath currently points to $(Get-LinkTarget $LinkPath)"
+        if ($Yes) {
+            try {
+                Remove-LinkSafely $LinkPath
+            } catch {
+                $script:linkFailed = $true
+                return
+            }
+        } else {
+            $answer = Read-Host 'Overwrite? [y/N] '
+            if ($answer -eq 'y' -or $answer -eq 'Y') {
+                try {
+                    Remove-LinkSafely $LinkPath
+                } catch {
+                    $script:linkFailed = $true
+                    return
+                }
+            } else {
+                $script:linkFailed = $true
+                return
+            }
+        }
+    }
+
+    if ((Test-Path -LiteralPath $LinkPath) -and -not (Test-IsReparsePoint $LinkPath)) {
+        Write-Output "ERROR: $LinkPath exists as a real directory/file. Remove or rename it manually, then re-run this script."
+        $script:linkFailed = $true
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $LinkPath)) {
+        $parent = Split-Path -Parent $LinkPath
+        $null = New-Item -ItemType Directory -Force -Path $parent
+        $fail = New-DirectoryLink $LinkPath $TargetPath
+        if ($null -ne $fail) {
+            $script:linkFailed = $true
+            return
+        }
+    }
+
+    Write-Host "Linked: $LinkPath → $TargetPath"
+}
 
 $toolkit = $ToolkitRoot
 $toolkitPathExists = Test-Path -LiteralPath $toolkit
@@ -41,43 +120,18 @@ if ($toolkitPathExists -or $toolkitIsReparse) {
     exit 1
 }
 
-if (-not (Test-Path -LiteralPath $SkillsTarget -PathType Container)) {
-    Write-Output "ERROR: $SkillsTarget is missing or not a directory. Ensure your toolkit checkout includes the skills tree, or fix $toolkit to point at the repository root."
+if ($SkillsLink -eq $ScriptsLink) {
+    Write-Output "ERROR: skills link path and scripts link path are identical ($SkillsLink). Provide -OpenclawScriptsDir to set a distinct path."
     exit 1
 }
 
-if (Test-IsReparsePoint $SkillsLink) {
-    $currentCanon = Resolve-CanonicalPath $SkillsLink
-    $targetCanon = Resolve-CanonicalPath $SkillsTarget
-    if ($currentCanon -and $targetCanon -and $currentCanon -eq $targetCanon) {
-        Write-Output "Already linked: $SkillsLink → $SkillsTarget"
-        exit 0
-    }
-    Write-Output "Warning: $SkillsLink currently points to $(Get-LinkTarget $SkillsLink)"
-    if ($Yes) {
-        Remove-LinkSafely $SkillsLink
-    } else {
-        $answer = Read-Host 'Overwrite? [y/N] '
-        if ($answer -eq 'y' -or $answer -eq 'Y') {
-            Remove-LinkSafely $SkillsLink
-        } else {
-            exit 1
-        }
-    }
-}
+$script:linkFailed = $false
 
-if ((Test-Path -LiteralPath $SkillsLink) -and -not (Test-IsReparsePoint $SkillsLink)) {
-    Write-Output "ERROR: $SkillsLink exists as a real directory/file. Remove or rename it manually, then re-run this script."
+Invoke-LinkAttempt $SkillsLink $SkillsTarget
+Invoke-LinkAttempt $ScriptsLink $ScriptsTarget
+
+if ($script:linkFailed) {
     exit 1
+} else {
+    exit 0
 }
-
-if (-not (Test-Path -LiteralPath $SkillsLink)) {
-    $parent = Split-Path -Parent $SkillsLink
-    $null = New-Item -ItemType Directory -Force -Path $parent
-    $fail = New-DirectoryLink $SkillsLink $SkillsTarget
-    if ($null -ne $fail) {
-        exit 1
-    }
-}
-
-Write-Host "Linked: $SkillsLink → $SkillsTarget"

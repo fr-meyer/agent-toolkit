@@ -5,6 +5,8 @@ param(
     [Parameter()]
     [string]$OpenclawHome,
     [Parameter()]
+    [string]$OpenclawScriptsDir,
+    [Parameter()]
     [string]$CursorRulesTarget,
     [Parameter()]
     [string]$ProjectDir,
@@ -41,6 +43,14 @@ if ($OpenclawHome) {
     $openclawRaw = "$HOME\.openclaw"
 }
 
+if ($OpenclawScriptsDir) {
+    $scriptsDirRaw = $OpenclawScriptsDir
+} elseif ($env:OPENCLAW_SCRIPTS_DIR) {
+    $scriptsDirRaw = $env:OPENCLAW_SCRIPTS_DIR
+} else {
+    $scriptsDirRaw = $null
+}
+
 if ($CursorRulesTarget) {
     $cursorRaw = $CursorRulesTarget
 } elseif ($env:CURSOR_RULES_TARGET) {
@@ -51,6 +61,11 @@ if ($CursorRulesTarget) {
 
 $ToolkitRoot = ConvertTo-AbsolutePath $toolkitRaw
 $OpenclawHome = ConvertTo-AbsolutePath $openclawRaw
+if ($scriptsDirRaw) {
+    $OpenclawScriptsDir = ConvertTo-AbsolutePath $scriptsDirRaw
+} else {
+    $OpenclawScriptsDir = Join-Path $OpenclawHome 'scripts'
+}
 if (-not $cursorRaw) {
     $CursorRulesTarget = ConvertTo-AbsolutePath (Join-Path $ToolkitRoot 'cursor\rules')
 } else {
@@ -58,6 +73,7 @@ if (-not $cursorRaw) {
 }
 
 $OpenclawSkills = Join-Path $OpenclawHome 'skills'
+$OpenclawScripts = $OpenclawScriptsDir
 
 $script:checked = 0
 $script:ok = 0
@@ -145,6 +161,7 @@ function Check-Link {
 
 Check-ToolkitRoot 'toolkit-root' $ToolkitRoot
 Check-Link 'openclaw/skills' $OpenclawSkills (Join-Path $ToolkitRoot 'skills')
+Check-Link 'openclaw/scripts' $OpenclawScripts (Join-Path $ToolkitRoot 'scripts')
 
 if ($effectiveProjectDir) {
     $proj = ConvertTo-AbsolutePath $effectiveProjectDir

@@ -3,7 +3,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
-  echo "Usage: ${0##*/} [--toolkit-root <path>] [--openclaw-home <path>] [--yes]" >&2
+  echo "Usage: ${0##*/} [--toolkit-root <path>] [--openclaw-home <path>] [--openclaw-scripts-dir <path>] [--yes]" >&2
 }
 
 require_value_for_flag() {
@@ -25,6 +25,7 @@ require_value_for_flag() {
 
 FLAG_TOOLKIT_ROOT=""
 FLAG_OPENCLAW_HOME=""
+FLAG_OPENCLAW_SCRIPTS_DIR=""
 FLAG_YES=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,6 +37,11 @@ while [ $# -gt 0 ]; do
     --openclaw-home)
       require_value_for_flag "$1" "${2:-}"
       FLAG_OPENCLAW_HOME="$2"
+      shift 2
+      ;;
+    --openclaw-scripts-dir)
+      require_value_for_flag "$1" "${2:-}"
+      FLAG_OPENCLAW_SCRIPTS_DIR="$2"
       shift 2
       ;;
     --yes)
@@ -69,6 +75,14 @@ else
   OPENCLAW_HOME_DIR="$HOME/.openclaw"
 fi
 
+if [ -n "$FLAG_OPENCLAW_SCRIPTS_DIR" ]; then
+  OPENCLAW_SCRIPTS_DIR_RAW="$FLAG_OPENCLAW_SCRIPTS_DIR"
+elif [ -n "${OPENCLAW_SCRIPTS_DIR:-}" ]; then
+  OPENCLAW_SCRIPTS_DIR_RAW="$OPENCLAW_SCRIPTS_DIR"
+else
+  OPENCLAW_SCRIPTS_DIR_RAW="$OPENCLAW_HOME_DIR/scripts"
+fi
+
 make_absolute() {
   local p=$1
   if [[ "$p" == /* ]]; then
@@ -84,9 +98,12 @@ make_absolute() {
 
 TOOLKIT_ROOT="$(make_absolute "$TOOLKIT_ROOT")"
 OPENCLAW_HOME_DIR="$(make_absolute "$OPENCLAW_HOME_DIR")"
+OPENCLAW_SCRIPTS_DIR_ABS="$(make_absolute "$OPENCLAW_SCRIPTS_DIR_RAW")"
 
 TARGET="$TOOLKIT_ROOT/skills"
 LINK="$OPENCLAW_HOME_DIR/skills"
+SCRIPTS_TARGET="$TOOLKIT_ROOT/scripts"
+SCRIPTS_LINK="$OPENCLAW_SCRIPTS_DIR_ABS"
 
 resolve_path() {
   local out dir base resolved_dir
@@ -138,6 +155,64 @@ else:
   return 0
 }
 
+attempt_link() {
+  local link=$1
+  local target=$2
+
+  if [ ! -d "$target" ]; then
+    echo "ERROR: $target is missing or not a directory. Ensure your toolkit checkout includes the required tree, or fix your toolkit root." >&2
+    LINK_FAILED=1
+    return
+  fi
+
+  if [ -L "$link" ]; then
+    local CURRENT_CANON TARGET_CANON
+    CURRENT_CANON="$(resolve_path "$link" || true)"
+    TARGET_CANON="$(resolve_path "$target" || true)"
+    if [ -n "$CURRENT_CANON" ] && [ -n "$TARGET_CANON" ] && [ "$CURRENT_CANON" = "$TARGET_CANON" ]; then
+      echo "Already linked: $link → $target"
+      return
+    fi
+    echo "Warning: $link currently points to $(readlink "$link")"
+    if [ "$FLAG_YES" -eq 1 ]; then
+      if ! rm "$link"; then
+        LINK_FAILED=1
+        return
+      fi
+    else
+      read -r -p "Overwrite? [y/N] " answer
+      if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
+        if ! rm "$link"; then
+          LINK_FAILED=1
+          return
+        fi
+      else
+        LINK_FAILED=1
+        return
+      fi
+    fi
+  fi
+
+  if [ -e "$link" ] && [ ! -L "$link" ]; then
+    echo "ERROR: $link exists as a real directory/file. Remove or rename it manually, then re-run this script." >&2
+    LINK_FAILED=1
+    return
+  fi
+
+  if [ ! -e "$link" ]; then
+    if ! mkdir -p "$(dirname "$link")"; then
+      LINK_FAILED=1
+      return
+    fi
+    if ! ln -s "$target" "$link"; then
+      LINK_FAILED=1
+      return
+    fi
+  fi
+
+  echo "Linked: $link → $(readlink "$link")"
+}
+
 TOOLKIT="$TOOLKIT_ROOT"
 if [ -L "$TOOLKIT" ] || [ -e "$TOOLKIT" ]; then
   if [ ! -d "$TOOLKIT" ]; then
@@ -149,39 +224,16 @@ else
   exit 1
 fi
 
-if [ ! -d "$TARGET" ]; then
-  echo "ERROR: $TARGET is missing or not a directory. Ensure your toolkit checkout includes the skills tree, or fix $TOOLKIT to point at the repository root."
+if [ "$LINK" = "$SCRIPTS_LINK" ]; then
+  echo "ERROR: skills link path and scripts link path are identical ($LINK). Provide --openclaw-scripts-dir to set a distinct path." >&2
   exit 1
 fi
 
-if [ -L "$LINK" ]; then
-  CURRENT_CANON="$(resolve_path "$LINK" || true)"
-  TARGET_CANON="$(resolve_path "$TARGET" || true)"
-  if [ -n "$CURRENT_CANON" ] && [ -n "$TARGET_CANON" ] && [ "$CURRENT_CANON" = "$TARGET_CANON" ]; then
-    echo "Already linked: $LINK → $TARGET"
-    exit 0
-  fi
-  echo "Warning: $LINK currently points to $(readlink "$LINK")"
-  if [ "$FLAG_YES" -eq 1 ]; then
-    rm "$LINK"
-  else
-    read -r -p "Overwrite? [y/N] " answer
-    if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
-      rm "$LINK"
-    else
-      exit 1
-    fi
-  fi
-fi
+LINK_FAILED=0
+attempt_link "$LINK" "$TARGET"
+attempt_link "$SCRIPTS_LINK" "$SCRIPTS_TARGET"
 
-if [ -e "$LINK" ] && [ ! -L "$LINK" ]; then
-  echo "ERROR: $LINK exists as a real directory/file. Remove or rename it manually, then re-run this script."
+if [ "$LINK_FAILED" -ne 0 ]; then
   exit 1
 fi
-
-if [ ! -e "$LINK" ]; then
-  mkdir -p "$(dirname "$LINK")"
-  ln -s "$TARGET" "$LINK"
-fi
-
-echo "Linked: $LINK → $(readlink "$LINK")"
+exit 0
