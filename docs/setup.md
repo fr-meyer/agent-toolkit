@@ -39,7 +39,7 @@ This symlink step is only needed when you want the default layout. The repositor
 
 CLI flags take precedence over environment variables, which take precedence over built-in defaults.
 
-> **Windows (PowerShell 7+):** The PowerShell scripts use the **same environment variables** (`AGENT_TOOLKIT_ROOT`, `OPENCLAW_HOME`, `CURSOR_RULES_TARGET`) and accept these named parameters in place of the Bash flags:
+> **Windows (PowerShell 7+):** The PowerShell scripts use the **same environment variables** (`AGENT_TOOLKIT_ROOT`, `OPENCLAW_HOME`, `OPENCLAW_SCRIPTS_DIR`, `CURSOR_RULES_TARGET`) and accept these named parameters in place of the Bash flags:
 >
 > | Bash flag | PowerShell parameter |
 > | --- | --- |
