@@ -34,6 +34,7 @@ This symlink step is only needed when you want the default layout. The repositor
 | ------------------ | ----------------------------- | --------------------- | -------------------------------- |
 | Toolkit root       | `--toolkit-root <path>`       | `AGENT_TOOLKIT_ROOT`  | `$HOME/.agent-toolkit`           |
 | OpenClaw home      | `--openclaw-home <path>`      | `OPENCLAW_HOME`       | `$HOME/.openclaw`                |
+| OpenClaw scripts dir | `--openclaw-scripts-dir <path>` | `OPENCLAW_SCRIPTS_DIR` | `<openclaw-home>/scripts`   |
 | Cursor rules target | `--cursor-rules-target <path>` | `CURSOR_RULES_TARGET` | `<toolkit-root>/cursor/rules` |
 
 CLI flags take precedence over environment variables, which take precedence over built-in defaults.
@@ -44,6 +45,7 @@ CLI flags take precedence over environment variables, which take precedence over
 > | --- | --- |
 > | `--toolkit-root <path>` | `-ToolkitRoot <path>` |
 > | `--openclaw-home <path>` | `-OpenclawHome <path>` |
+> | `--openclaw-scripts-dir <path>` | `-OpenclawScriptsDir <path>` |
 > | `--cursor-rules-target <path>` | `-CursorRulesTarget <path>` |
 > | `--yes` | `-Yes` (switch) |
 >
@@ -55,37 +57,41 @@ CLI flags take precedence over environment variables, which take precedence over
 | ----------------------- | --------------------- | ------------------- | ----------------- |
 | `--toolkit-root`        | ✓                     | ✓                   | ✓                 |
 | `--openclaw-home`       | ✓                     | —                   | ✓                 |
+| `--openclaw-scripts-dir` | ✓                     | —                   | ✓                 |
 | `--cursor-rules-target` | —                     | ✓                   | ✓                 |
 | `--yes`                 | ✓                     | ✓                   | —                 |
 
-> **Windows (PowerShell 7+):** The PowerShell equivalents follow the same applicability matrix, with `-ToolkitRoot`, `-OpenclawHome`, `-CursorRulesTarget`, and `-Yes` mapping one-to-one. `verify-links.ps1` additionally accepts `-ProjectDir` (and a positional project path), matching `verify-links.sh`’s `--project-dir` / positional argument.
+> **Windows (PowerShell 7+):** The PowerShell equivalents follow the same applicability matrix, with `-ToolkitRoot`, `-OpenclawHome`, `-CursorRulesTarget`, and `-Yes` mapping one-to-one. `-OpenclawScriptsDir` applies to `connect-openclaw.ps1` and `verify-links.ps1` with the same applicability as the Bash flag. `verify-links.ps1` additionally accepts `-ProjectDir` (and a positional project path), matching `verify-links.sh`’s `--project-dir` / positional argument.
 
 ### Non-default usage examples
 
 ```bash
-# connect-openclaw.sh with custom toolkit root and OpenClaw home
+# connect-openclaw.sh with custom toolkit root, OpenClaw home, and scripts dir
 ~/.agent-toolkit/scripts/connect-openclaw.sh \
   --toolkit-root /opt/my-toolkit \
-  --openclaw-home /opt/my-openclaw
+  --openclaw-home /opt/my-openclaw \
+  --openclaw-scripts-dir /opt/my-openclaw/scripts
 
 # connect-cursor.sh with an explicit Cursor rules target
 ~/.agent-toolkit/scripts/connect-cursor.sh \
   --cursor-rules-target /opt/my-toolkit/cursor/rules
 
-# verify-links.sh with matching overrides (use the same values as during connect)
+# verify-links.sh with matching overrides
 ~/.agent-toolkit/scripts/verify-links.sh \
   --toolkit-root /opt/my-toolkit \
   --openclaw-home /opt/my-openclaw \
+  --openclaw-scripts-dir /opt/my-openclaw/scripts \
   --cursor-rules-target /opt/my-toolkit/cursor/rules
 ```
 
 > **Windows (PowerShell 7+):** Equivalent overrides:
 >
 > ```powershell
-> # connect-openclaw.ps1 with custom toolkit root and OpenClaw home
+> # connect-openclaw.ps1 with custom toolkit root, OpenClaw home, and scripts dir
 > & "$HOME\.agent-toolkit\scripts\connect-openclaw.ps1" `
 >   -ToolkitRoot C:\opt\my-toolkit `
->   -OpenclawHome C:\opt\my-openclaw
+>   -OpenclawHome C:\opt\my-openclaw `
+>   -OpenclawScriptsDir C:\opt\my-openclaw\scripts
 >
 > # connect-cursor.ps1 with an explicit Cursor rules target
 > & "$HOME\.agent-toolkit\scripts\connect-cursor.ps1" `
@@ -95,6 +101,7 @@ CLI flags take precedence over environment variables, which take precedence over
 > & "$HOME\.agent-toolkit\scripts\verify-links.ps1" `
 >   -ToolkitRoot C:\opt\my-toolkit `
 >   -OpenclawHome C:\opt\my-openclaw `
+>   -OpenclawScriptsDir C:\opt\my-openclaw\scripts `
 >   -CursorRulesTarget C:\opt\my-toolkit\cursor\rules
 > ```
 
@@ -116,11 +123,11 @@ From any directory, run the script via the stable toolkit alias (requires an eff
 ~/.agent-toolkit/scripts/connect-openclaw.sh
 ```
 
-The script accepts `--toolkit-root`, `--openclaw-home`, and `--yes`; see [Runtime Path Overrides](#runtime-path-overrides) for the full table and precedence.
+The script accepts `--toolkit-root`, `--openclaw-home`, `--openclaw-scripts-dir`, and `--yes`; see [Runtime Path Overrides](#runtime-path-overrides) for the full table and precedence.
 
 Alternatively, `cd` to the root of your clone of this repo, then run `./scripts/connect-openclaw.sh`.
 
-The script validates that the effective toolkit root is set up, then creates `<openclaw-home>/skills` as a symlink into the toolkit’s `skills` directory. It is idempotent: you can run it again safely.
+The script validates that the effective toolkit root is set up, then creates `<openclaw-home>/skills` as a symlink into the toolkit’s `skills` directory. It links both `skills` and `scripts` in a single best-effort pass — each link is attempted independently, so a failure on one does not abort the other. If `--openclaw-scripts-dir` resolves to the same path as the skills link, the script fails immediately with a conflict error before attempting either link. It is idempotent: you can run it again safely.
 
 > **Windows (PowerShell 7+):** From any directory, run:
 >
@@ -128,7 +135,7 @@ The script validates that the effective toolkit root is set up, then creates `<o
 > & "$HOME\.agent-toolkit\scripts\connect-openclaw.ps1"
 > ```
 >
-> The script accepts `-ToolkitRoot`, `-OpenclawHome`, and `-Yes` (same semantics as the Bash flags). It creates `<openclaw-home>\skills` as a **directory symbolic link** — there is no automatic junction fallback. If symlink creation fails, the script exits with remediation guidance (Developer Mode or elevated PowerShell). It is idempotent: safe to re-run.
+> The script accepts `-ToolkitRoot`, `-OpenclawHome`, `-OpenclawScriptsDir`, and `-Yes` (same semantics as the Bash flags). It creates both `<openclaw-home>\skills` and `<openclaw-home>\scripts` (or the `-OpenclawScriptsDir` override) as **directory symbolic links** in a best-effort pass — each link is attempted independently; there is no automatic junction fallback. If symlink creation fails, the script exits with remediation guidance (Developer Mode or elevated PowerShell). It is idempotent: safe to re-run.
 
 ## Connect Cursor (per project)
 
@@ -162,11 +169,13 @@ From any directory (with the toolkit root accessible—default alias or matching
 
 Alternatively, `cd` to your clone root and run `./scripts/verify-links.sh`.
 
-The script accepts `--toolkit-root`, `--openclaw-home`, and `--cursor-rules-target`; see [Runtime Path Overrides](#runtime-path-overrides).
+The script accepts `--toolkit-root`, `--openclaw-home`, `--openclaw-scripts-dir`, and `--cursor-rules-target`; see [Runtime Path Overrides](#runtime-path-overrides).
 
 > **Note:** Invoke `verify-links.sh` with the **same override values** you used when running the connect scripts. If overrides differ (or are omitted when non-default paths were used), verification targets the wrong paths and can report false failures.
 
 Output includes per-link status (`OK`, `MISSING`, or `BROKEN`) and a one-line summary.
+
+Machine-level checks always run: `toolkit-root`, `openclaw/skills`, and `openclaw/scripts`. All three are required — any `MISSING` or `BROKEN` result on these causes a non-zero exit.
 
 You can pass an optional project path so the script checks that project’s Cursor link explicitly. Both of these forms are accepted:
 
@@ -200,7 +209,7 @@ Exit codes: `0` means all required checks passed; a non-zero exit code means at 
 > & "$HOME\.agent-toolkit\scripts\verify-links.ps1"
 > ```
 >
-> The script accepts `-ToolkitRoot`, `-OpenclawHome`, `-CursorRulesTarget`, and `-ProjectDir` (or a positional project path). Output tokens (`OK`, `MISSING`, `BROKEN`, `SKIPPED`) and the one-line summary format are identical to Bash output. **Strict git parity:** if `git rev-parse --show-toplevel` cannot run and no explicit project path is provided, the Cursor check is reported as `SKIPPED` (not a failure). Canonical path comparisons use `GetFinalPathNameByHandle` raw outputs (via `Resolve-CanonicalPath` in `LinkUtils.psm1`) — not `realpath` or PowerShell’s `Resolve-Path`. Use the same override-matching rule as on Bash: invoke with the same `-ToolkitRoot`, `-OpenclawHome`, and `-CursorRulesTarget` values you used during connect, or verification will target wrong paths.
+> The script accepts `-ToolkitRoot`, `-OpenclawHome`, `-OpenclawScriptsDir`, `-CursorRulesTarget`, and `-ProjectDir` (or a positional project path). Output tokens (`OK`, `MISSING`, `BROKEN`, `SKIPPED`) and the one-line summary format are identical to Bash output. **Strict git parity:** if `git rev-parse --show-toplevel` cannot run and no explicit project path is provided, the Cursor check is reported as `SKIPPED` (not a failure). Canonical path comparisons use `GetFinalPathNameByHandle` raw outputs (via `Resolve-CanonicalPath` in `LinkUtils.psm1`) — not `realpath` or PowerShell’s `Resolve-Path`. Use the same override-matching rule as on Bash: invoke with the same `-ToolkitRoot`, `-OpenclawHome`, `-OpenclawScriptsDir`, and `-CursorRulesTarget` values you used during connect, or verification will target wrong paths.
 
 ## Remediation — destination already exists as a real directory or file
 
