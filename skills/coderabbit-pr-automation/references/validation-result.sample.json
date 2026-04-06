@@ -1,0 +1,57 @@
+{
+  "validationVersion": "1",
+  "tool": {
+    "name": "coderabbit-cli",
+    "mode": "review",
+    "version": "0.1.0"
+  },
+  "pr": {
+    "number": 123,
+    "title": "Fix auth edge cases",
+    "branch": "feature/auth-fix",
+    "repository": "example/repo"
+  },
+  "cycle": 1,
+  "rateLimit": {
+    "hit": false,
+    "scope": "reviewsPerHour",
+    "retryAfterSeconds": null
+  },
+  "summary": {
+    "critical": 0,
+    "high": 1,
+    "medium": 0,
+    "low": 1,
+    "unknown": 0,
+    "totalFindings": 2,
+    "blockingCount": 1
+  },
+  "findings": [
+    {
+      "id": "vr_001",
+      "severity": "high",
+      "kind": "correctness",
+      "status": "open",
+      "title": "Regression test missing for unauthorized path",
+      "description": "The fix changes authorization flow but does not add a regression test for the unauthorized branch.",
+      "file": "src/auth.ts",
+      "line": 72,
+      "sourceIssueId": "cr_001"
+    },
+    {
+      "id": "vr_002",
+      "severity": "low",
+      "kind": "readability",
+      "status": "open",
+      "title": "Rename temporary variable for clarity",
+      "description": "The temporary variable name is vague and slightly reduces readability.",
+      "file": "src/auth.ts",
+      "line": 18,
+      "sourceIssueId": null
+    }
+  ],
+  "metadata": {
+    "createdAt": "2026-04-06T09:05:00Z",
+    "source": "coderabbit-cli"
+  }
+}

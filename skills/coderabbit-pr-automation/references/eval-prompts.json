@@ -1,0 +1,103 @@
+{
+  "skill": "coderabbit-pr-automation",
+  "purpose": "Trigger-quality evaluation prompts for the coderabbit-pr-automation Agent Skill.",
+  "usage": "Use these prompts to test whether the skill triggers on genuine CodeRabbit remediation workflow requests while avoiding false positives on adjacent GitHub Actions, generic code-review, and raw data-fetching tasks.",
+  "cases": [
+    {
+      "id": "pos-01",
+      "query": "Handle unresolved CodeRabbit PR review threads for this branch and keep the fixes bounded.",
+      "should_trigger": true,
+      "why": "Direct request for the bounded remediation workflow."
+    },
+    {
+      "id": "pos-02",
+      "query": "Use this normalized CodeRabbit issue artifact to plan the fix pass and tell me whether the issues are actionable.",
+      "should_trigger": true,
+      "why": "Explicit artifact-driven triage request."
+    },
+    {
+      "id": "pos-03",
+      "query": "Interpret these CodeRabbit validation results and tell me whether a second remediation pass is justified.",
+      "should_trigger": true,
+      "why": "Direct adjudication request for validation output."
+    },
+    {
+      "id": "pos-04",
+      "query": "Run the CodeRabbit remediation workflow on this PR without committing or pushing anything.",
+      "should_trigger": true,
+      "why": "Explicit request matching the conservative default workflow."
+    },
+    {
+      "id": "pos-05",
+      "query": "I already extracted unresolved CodeRabbit issues into JSON. Can you prioritize them and define a bounded fix plan?",
+      "should_trigger": true,
+      "why": "Direct use of the normalized issue artifact and bounded planning."
+    },
+    {
+      "id": "pos-06",
+      "query": "Summarize what happened in this CodeRabbit autofix run and what remains unresolved.",
+      "should_trigger": true,
+      "why": "Summary mode for the same workflow."
+    },
+    {
+      "id": "pos-07",
+      "query": "Design a safe workflow for unresolved CodeRabbit review comments using an issue artifact, a fix pass, and a validation pass.",
+      "should_trigger": true,
+      "why": "Design-mode request clearly inside the skill boundary."
+    },
+    {
+      "id": "pos-08",
+      "query": "Given these unresolved CodeRabbit findings, decide what is in scope to fix now and what should be deferred.",
+      "should_trigger": true,
+      "why": "Bounded triage and scope decision inside the workflow."
+    },
+    {
+      "id": "neg-01",
+      "query": "Set up a self-hosted GitHub Actions runner on my server.",
+      "should_trigger": false,
+      "why": "Runner setup is intentionally out of scope."
+    },
+    {
+      "id": "neg-02",
+      "query": "Write a GitHub Action that runs tests on every pull request.",
+      "should_trigger": false,
+      "why": "Generic CI authoring, not CodeRabbit remediation."
+    },
+    {
+      "id": "neg-03",
+      "query": "Review this pull request for bugs, performance problems, and security issues.",
+      "should_trigger": false,
+      "why": "Generic PR review is adjacent but outside this skill's scope."
+    },
+    {
+      "id": "neg-04",
+      "query": "Fetch raw GraphQL review-thread data for PR 123.",
+      "should_trigger": false,
+      "why": "Raw extraction alone is not the remediation workflow."
+    },
+    {
+      "id": "neg-05",
+      "query": "Fix all warnings in this repository and clean up the code while you're there.",
+      "should_trigger": false,
+      "why": "Broad cleanup request violates the bounded workflow scope."
+    },
+    {
+      "id": "neg-06",
+      "query": "Create a reusable GitHub automation framework for our engineering team.",
+      "should_trigger": false,
+      "why": "Too broad and not specific to CodeRabbit remediation."
+    },
+    {
+      "id": "neg-07",
+      "query": "Push the current branch and reply to all CodeRabbit threads automatically.",
+      "should_trigger": false,
+      "why": "Default workflow explicitly avoids push and thread resolution."
+    },
+    {
+      "id": "neg-08",
+      "query": "Help me write a Python parser for GitHub review threads.",
+      "should_trigger": false,
+      "why": "Implementation task adjacent to the workflow, but not the workflow itself."
+    }
+  ]
+}

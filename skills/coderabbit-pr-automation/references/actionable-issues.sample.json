@@ -1,0 +1,67 @@
+{
+  "pr": {
+    "number": 123,
+    "title": "Fix auth edge cases",
+    "branch": "feature/auth-fix",
+    "url": "https://github.com/example/repo/pull/123",
+    "headSha": "abc123def4567890",
+    "baseBranch": "main",
+    "repository": "example/repo"
+  },
+  "constraints": {
+    "maxCycles": 3,
+    "allowCommit": false,
+    "allowPush": false,
+    "allowPrComment": false,
+    "allowThreadResolution": false,
+    "allowScopeExpansion": false
+  },
+  "context": {
+    "repoPath": "/srv/repos/example-repo",
+    "expectedRepository": "example/repo",
+    "expectedBranch": "feature/auth-fix",
+    "expectedHeadSha": "abc123def4567890",
+    "workingTreeMustBeClean": true
+  },
+  "issues": [
+    {
+      "id": "cr_001",
+      "threadId": "PRRT_001",
+      "commentId": "PRRC_001",
+      "author": "coderabbitai[bot]",
+      "status": "open",
+      "file": "src/auth.ts",
+      "line": 42,
+      "startLine": 42,
+      "endLine": 45,
+      "severity": "high",
+      "type": "bug",
+      "title": "Authorization logic inverted",
+      "description": "The current condition may allow unauthorized access on the failure path.",
+      "agentPrompt": "Invert the authorization check and add a regression test covering the unauthorized case.",
+      "rawBody": "Original normalized CodeRabbit comment body here."
+    },
+    {
+      "id": "cr_002",
+      "threadId": "PRRT_002",
+      "commentId": "PRRC_002",
+      "author": "coderabbitai[bot]",
+      "status": "open",
+      "file": "src/session.ts",
+      "line": 87,
+      "startLine": 87,
+      "endLine": 94,
+      "severity": "medium",
+      "type": "test",
+      "title": "Missing coverage for expired sessions",
+      "description": "There is no test covering the expired-session branch, which risks regressions in session invalidation behavior.",
+      "agentPrompt": "Add a targeted test for expired-session invalidation without widening the test scope.",
+      "rawBody": "Original normalized CodeRabbit comment body here."
+    }
+  ],
+  "metadata": {
+    "artifactVersion": "1",
+    "createdAt": "2026-04-06T09:00:00Z",
+    "source": "github-review-thread-normalizer"
+  }
+}
