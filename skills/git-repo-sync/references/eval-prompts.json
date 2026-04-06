@@ -1,0 +1,165 @@
+{
+  "skill": "git-repo-sync",
+  "version": "1.0.0-draft",
+  "intent": "Trigger only for single-repo sync inspection/reconciliation tasks, and avoid adjacent Git/GitHub workflow tasks.",
+  "cases": [
+    {
+      "id": "trigger-001",
+      "should_trigger": true,
+      "prompt": "Check whether this local repository is ahead or behind its tracked upstream and report the safest next action.",
+      "tags": ["single-repo", "inspect", "ahead-behind"]
+    },
+    {
+      "id": "trigger-002",
+      "should_trigger": true,
+      "prompt": "Prepare a dry-run sync plan for /repo/path. Do not modify files and do not run push.",
+      "tags": ["single-repo", "dry-run", "sync-plan"]
+    },
+    {
+      "id": "trigger-003",
+      "should_trigger": true,
+      "prompt": "Inspect this Git repo and tell me whether pull is safe right now.",
+      "tags": ["single-repo", "inspect", "pull-safety"]
+    },
+    {
+      "id": "trigger-004",
+      "should_trigger": true,
+      "prompt": "Draft a commit title and short body for the current local changes in this repository, but do not commit.",
+      "tags": ["single-repo", "commit-draft", "no-write"]
+    },
+    {
+      "id": "trigger-005",
+      "should_trigger": true,
+      "prompt": "Safely reconcile this one repository with its upstream. Start with dry-run and stop if status is diverged or blocked.",
+      "tags": ["single-repo", "reconcile", "status-gated"]
+    },
+    {
+      "id": "trigger-006",
+      "should_trigger": true,
+      "prompt": "Before wiring cron, inspect this repo and return status, planned_action, and blockers only.",
+      "tags": ["single-repo", "inspect", "structured-output"]
+    },
+    {
+      "id": "trigger-007",
+      "should_trigger": true,
+      "prompt": "Validate that this repo is on the expected branch and upstream before any sync step.",
+      "tags": ["single-repo", "constraints", "inspect"]
+    },
+    {
+      "id": "trigger-008",
+      "should_trigger": true,
+      "prompt": "This repo has local edits; give me sync status and a commit-message draft, with no staging or commit.",
+      "tags": ["single-repo", "local-changes", "commit-draft"]
+    },
+    {
+      "id": "trigger-009",
+      "should_trigger": true,
+      "prompt": "Run execute-approved sync for this repository only, with explicit permissions: allow_fetch=true, allow_pull=true, allow_rebase=false, allow_commit=false, allow_push=false.",
+      "tags": ["single-repo", "execute-approved", "permission-flags"]
+    },
+    {
+      "id": "trigger-010",
+      "should_trigger": true,
+      "prompt": "Tell me if this repo is no-op, pull-needed, push-needed, diverged, blocked, or conflict.",
+      "tags": ["single-repo", "status-classification", "inspect"]
+    },
+
+    {
+      "id": "no-trigger-001",
+      "should_trigger": false,
+      "prompt": "Review my pull request and summarize unresolved review comments.",
+      "tags": ["pr-review", "out-of-scope"]
+    },
+    {
+      "id": "no-trigger-002",
+      "should_trigger": false,
+      "prompt": "Create a GitHub Actions workflow that deploys on every push to main.",
+      "tags": ["ci-cd", "out-of-scope"]
+    },
+    {
+      "id": "no-trigger-003",
+      "should_trigger": false,
+      "prompt": "Clone this repo, install dependencies, and run tests.",
+      "tags": ["bootstrap", "out-of-scope"]
+    },
+    {
+      "id": "no-trigger-004",
+      "should_trigger": false,
+      "prompt": "Explain the difference between merge and rebase.",
+      "tags": ["education", "out-of-scope"]
+    },
+    {
+      "id": "no-trigger-005",
+      "should_trigger": false,
+      "prompt": "Resolve this merge conflict and choose the correct final code.",
+      "tags": ["conflict-resolution", "human-judgment", "out-of-scope"]
+    },
+    {
+      "id": "no-trigger-006",
+      "should_trigger": false,
+      "prompt": "Design a branching strategy for release, hotfix, and feature branches.",
+      "tags": ["branch-strategy", "out-of-scope"]
+    },
+    {
+      "id": "no-trigger-007",
+      "should_trigger": false,
+      "prompt": "Sync these 30 repositories across all servers tonight.",
+      "tags": ["multi-repo", "orchestration", "out-of-scope"]
+    },
+    {
+      "id": "no-trigger-008",
+      "should_trigger": false,
+      "prompt": "Use the GitHub API to list all open pull requests for this repo.",
+      "tags": ["provider-api", "out-of-scope"]
+    },
+    {
+      "id": "no-trigger-009",
+      "should_trigger": false,
+      "prompt": "Create global Git hooks to auto-generate commit messages in every repository.",
+      "tags": ["hooks-design", "multi-repo", "out-of-scope"]
+    },
+    {
+      "id": "no-trigger-010",
+      "should_trigger": false,
+      "prompt": "Hard reset this repo to origin/main and delete all untracked files.",
+      "tags": ["destructive", "out-of-scope"]
+    },
+
+    {
+      "id": "borderline-001",
+      "should_trigger": false,
+      "prompt": "Can you clean up my Git mess?",
+      "tags": ["vague", "ask-clarification"]
+    },
+    {
+      "id": "borderline-002",
+      "should_trigger": true,
+      "prompt": "My repo seems out of date. Inspect it first and tell me what sync action would be safe.",
+      "tags": ["single-repo", "inspect", "implicit-sync"]
+    },
+    {
+      "id": "borderline-003",
+      "should_trigger": false,
+      "prompt": "Set up automated sync for all my repositories.",
+      "tags": ["automation-design", "multi-repo", "out-of-scope"]
+    },
+    {
+      "id": "borderline-004",
+      "should_trigger": true,
+      "prompt": "Tell me whether this repository can be safely pushed right now.",
+      "tags": ["single-repo", "push-safety", "inspect"]
+    },
+    {
+      "id": "borderline-005",
+      "should_trigger": false,
+      "prompt": "Write me a reusable shell script for syncing repos.",
+      "tags": ["tooling-authoring", "out-of-scope"]
+    },
+    {
+      "id": "borderline-006",
+      "should_trigger": false,
+      "prompt": "I need a complete migration plan from SVN to Git.",
+      "tags": ["migration", "out-of-scope"]
+    }
+  ]
+}
