@@ -17,6 +17,16 @@ on:
         required: false
         type: boolean
         default: true
+      max_cycles:
+        description: Maximum bounded remediation cycles allowed by the artifact constraints
+        required: false
+        type: number
+        default: 3
+      python_version:
+        description: Python version used for normalization and validators
+        required: false
+        type: string
+        default: '3.11'
       target_checkout_path:
         description: Relative checkout path for the consumer repository inside github.workspace
         required: false
@@ -27,6 +37,16 @@ on:
         required: false
         type: string
         default: _shared
+      shared_repository:
+        description: Owner and repository of the shared toolkit repo
+        required: false
+        type: string
+        default: fr-meyer/agent-toolkit
+      shared_repository_ref:
+        description: Branch, tag, or SHA to use for the shared toolkit checkout
+        required: false
+        type: string
+        default: main
     secrets:
       GH_TOKEN:
         required: true
@@ -44,8 +64,11 @@ jobs:
       PR_NUMBER: ${{ inputs.pr_number }}
       RUN_VALIDATION: ${{ inputs.run_validation }}
       WORKING_TREE_MUST_BE_CLEAN: ${{ inputs.working_tree_must_be_clean }}
+      MAX_CYCLES: ${{ inputs.max_cycles }}
       TARGET_CHECKOUT_PATH: ${{ inputs.target_checkout_path }}
       SHARED_CHECKOUT_PATH: ${{ inputs.shared_checkout_path }}
+      SHARED_REPOSITORY: ${{ inputs.shared_repository }}
+      SHARED_REPOSITORY_REF: ${{ inputs.shared_repository_ref }}
       CODERABBIT_OUT_DIR: ${{ github.workspace }}/${{ inputs.target_checkout_path }}/.coderabbit/out
 
     steps:
@@ -58,15 +81,15 @@ jobs:
       - name: Checkout shared toolkit repository
         uses: actions/checkout@v4
         with:
-          repository: fr-meyer/agent-toolkit
-          ref: main
+          repository: ${{ inputs.shared_repository }}
+          ref: ${{ inputs.shared_repository_ref }}
           path: ${{ inputs.shared_checkout_path }}
           fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ inputs.python_version }}
 
       - name: Prepare output directories
         shell: bash
@@ -82,6 +105,7 @@ jobs:
           set -euo pipefail
           bash "$SHARED_CHECKOUT_PATH/scripts/coderabbit/fetch_threads.sh" \
             --repo-path "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" \
+            --repo-name "$GITHUB_REPOSITORY" \
             --pr-number "$PR_NUMBER" \
             --out-dir "$CODERABBIT_OUT_DIR"
 
@@ -91,10 +115,10 @@ jobs:
           set -euo pipefail
           python "$SHARED_CHECKOUT_PATH/scripts/coderabbit/normalize_threads.py" \
             --repo-path "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" \
-            --repo-name "$GITHUB_REPOSITORY" \
-            --pr-number "$PR_NUMBER" \
             --in-dir "$CODERABBIT_OUT_DIR" \
-            --out-dir "$CODERABBIT_OUT_DIR"
+            --out-dir "$CODERABBIT_OUT_DIR" \
+            --max-cycles "$MAX_CYCLES" \
+            --working-tree-must-be-clean "$WORKING_TREE_MUST_BE_CLEAN"
 
       - name: Validate normalized issue artifact
         shell: bash
@@ -103,7 +127,17 @@ jobs:
           python "$SHARED_CHECKOUT_PATH/skills/coderabbit-pr-automation/scripts/validate-issue-artifact.py" \
             "$CODERABBIT_OUT_DIR/actionable-issues.json"
 
+      - name: Count actionable issues
+        id: issue_count
+        shell: bash
+        run: |
+          set -euo pipefail
+          ISSUE_COUNT=$(python -c "import json, pathlib; print(len(json.loads(pathlib.Path(r'$CODERABBIT_OUT_DIR/actionable-issues.json').read_text(encoding='utf-8'))['issues']))")
+          echo "count=$ISSUE_COUNT" >> "$GITHUB_OUTPUT"
+          echo "Actionable issue count: $ISSUE_COUNT"
+
       - name: Preflight target checkout
+        if: steps.issue_count.outputs.count != '0'
         shell: bash
         run: |
           set -euo pipefail
@@ -115,6 +149,7 @@ jobs:
             --out-dir "$CODERABBIT_OUT_DIR"
 
       - name: Run bounded remediation orchestrator
+        if: steps.issue_count.outputs.count != '0'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
