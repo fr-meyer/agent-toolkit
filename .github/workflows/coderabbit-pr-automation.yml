@@ -1,0 +1,136 @@
+name: CodeRabbit PR automation
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: Pull request number to inspect
+        required: true
+        type: number
+      run_validation:
+        description: Whether to run validation after remediation
+        required: false
+        type: boolean
+        default: true
+      working_tree_must_be_clean:
+        description: Whether the target checkout must be clean before remediation
+        required: false
+        type: boolean
+        default: true
+      target_checkout_path:
+        description: Relative checkout path for the consumer repository inside github.workspace
+        required: false
+        type: string
+        default: target
+      shared_checkout_path:
+        description: Relative checkout path for the shared repo inside github.workspace
+        required: false
+        type: string
+        default: _shared
+    secrets:
+      GH_TOKEN:
+        required: true
+
+jobs:
+  coderabbit-pr-automation:
+    name: CodeRabbit PR automation
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+
+    env:
+      PR_NUMBER: ${{ inputs.pr_number }}
+      RUN_VALIDATION: ${{ inputs.run_validation }}
+      WORKING_TREE_MUST_BE_CLEAN: ${{ inputs.working_tree_must_be_clean }}
+      TARGET_CHECKOUT_PATH: ${{ inputs.target_checkout_path }}
+      SHARED_CHECKOUT_PATH: ${{ inputs.shared_checkout_path }}
+      CODERABBIT_OUT_DIR: ${{ github.workspace }}/${{ inputs.target_checkout_path }}/.coderabbit/out
+
+    steps:
+      - name: Checkout consumer repository
+        uses: actions/checkout@v4
+        with:
+          path: ${{ inputs.target_checkout_path }}
+          fetch-depth: 0
+
+      - name: Checkout shared toolkit repository
+        uses: actions/checkout@v4
+        with:
+          repository: fr-meyer/agent-toolkit
+          ref: main
+          path: ${{ inputs.shared_checkout_path }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Prepare output directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$CODERABBIT_OUT_DIR"
+
+      - name: Fetch raw PR review-thread data
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash "$SHARED_CHECKOUT_PATH/scripts/coderabbit/fetch_threads.sh" \
+            --repo-path "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" \
+            --pr-number "$PR_NUMBER" \
+            --out-dir "$CODERABBIT_OUT_DIR"
+
+      - name: Normalize actionable CodeRabbit issues
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$SHARED_CHECKOUT_PATH/scripts/coderabbit/normalize_threads.py" \
+            --repo-path "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" \
+            --repo-name "$GITHUB_REPOSITORY" \
+            --pr-number "$PR_NUMBER" \
+            --in-dir "$CODERABBIT_OUT_DIR" \
+            --out-dir "$CODERABBIT_OUT_DIR"
+
+      - name: Validate normalized issue artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$SHARED_CHECKOUT_PATH/skills/coderabbit-pr-automation/scripts/validate-issue-artifact.py" \
+            "$CODERABBIT_OUT_DIR/actionable-issues.json"
+
+      - name: Preflight target checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$SHARED_CHECKOUT_PATH/scripts/coderabbit/preflight.sh" \
+            --repo-path "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" \
+            --artifact-path "$CODERABBIT_OUT_DIR/actionable-issues.json" \
+            --expected-repository "$GITHUB_REPOSITORY" \
+            --working-tree-must-be-clean "$WORKING_TREE_MUST_BE_CLEAN" \
+            --out-dir "$CODERABBIT_OUT_DIR"
+
+      - name: Run bounded remediation orchestrator
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash "$SHARED_CHECKOUT_PATH/scripts/coderabbit/orchestrate.sh" \
+            --repo-path "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" \
+            --shared-root "$GITHUB_WORKSPACE/$SHARED_CHECKOUT_PATH" \
+            --pr-number "$PR_NUMBER" \
+            --run-validation "$RUN_VALIDATION" \
+            --out-dir "$CODERABBIT_OUT_DIR"
+
+      - name: Upload CodeRabbit workflow artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coderabbit-pr-automation-${{ inputs.pr_number }}
+          path: ${{ env.CODERABBIT_OUT_DIR }}
+          if-no-files-found: warn
