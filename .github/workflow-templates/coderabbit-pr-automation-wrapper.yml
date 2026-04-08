@@ -1,0 +1,55 @@
+name: CodeRabbit PR automation wrapper
+
+# Draft GitHub workflow template for consumer repositories.
+#
+# Setup notes after creating this workflow from the template:
+# 1. Ensure the reusable workflow reference below points at the desired shared repo/ref.
+# 2. Configure repository or organization variables as needed:
+#    - CODERABBIT_RUNNER_LABELS_JSON
+#    - CODERABBIT_AGENT_COMMAND_JSON or CODERABBIT_AGENT_COMMAND
+#    - CODERABBIT_CLI (optional)
+# 3. The reusable workflow uses GITHUB_TOKEN as GH_TOKEN by default.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to inspect
+        required: true
+        type: number
+      run_validation:
+        description: Whether to run validation after remediation
+        required: false
+        type: boolean
+        default: true
+      working_tree_must_be_clean:
+        description: Whether the target checkout must be clean before remediation
+        required: false
+        type: boolean
+        default: true
+      max_cycles:
+        description: Maximum bounded remediation cycles
+        required: false
+        type: number
+        default: 3
+      shared_repository_ref:
+        description: Branch, tag, or SHA of the shared toolkit workflow to use
+        required: false
+        type: string
+        default: main
+
+jobs:
+  coderabbit-pr-automation:
+    uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@main
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      run_validation: ${{ inputs.run_validation }}
+      working_tree_must_be_clean: ${{ inputs.working_tree_must_be_clean }}
+      max_cycles: ${{ inputs.max_cycles }}
+      shared_repository_ref: ${{ inputs.shared_repository_ref }}
+      runner_labels_json: ${{ vars.CODERABBIT_RUNNER_LABELS_JSON != '' && vars.CODERABBIT_RUNNER_LABELS_JSON || '["self-hosted"]' }}
+      agent_command_json: ${{ vars.CODERABBIT_AGENT_COMMAND_JSON }}
+      agent_command: ${{ vars.CODERABBIT_AGENT_COMMAND }}
+      coderabbit_cli: ${{ vars.CODERABBIT_CLI }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

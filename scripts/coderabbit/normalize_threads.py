@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import argparse
+import html
 import json
 import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 SEVERITY_ORDER = {
     "critical": 0,
@@ -20,24 +21,40 @@ CODERABBIT_PREFIXES = (
     "coderabbitai",
 )
 
+HEADER_PATTERN = re.compile(r"(?m)^\s*_([^_]+?)_\s*\|\s*_([^_]+?)_\s*$")
+DETAILS_SECTION_PATTERN = re.compile(
+    r"(?is)<details>\s*<summary>\s*(?P<label>.*?)\s*</summary>(?P<body>.*?)</details>"
+)
 PROMPT_SECTION_PATTERNS = [
     re.compile(
-        r"(?ims)^#{1,6}\s*prompt\s+for\s+ai\s+agents\s*$\n(?P<body>.*?)(?=^#{1,6}\s+|\Z)"
+        r"(?ims)^#{1,6}\s*prompt\s+for\s+ai\s+agents\s*$\n(?P<body>.*?)(?=^#{1,6}\s+\S|\Z)"
     ),
     re.compile(
-        r"(?ims)^\*\*prompt\s+for\s+ai\s+agents\*\*:?\s*$\n(?P<body>.*?)(?=^\*\*|^#{1,6}\s+|\Z)"
+        r"(?ims)^\*\*prompt\s+for\s+ai\s+agents\*\*: ?\s*$\n(?P<body>.*?)(?=^\*\*|^#{1,6}\s+\S|\Z)"
     ),
     re.compile(
-        r"(?ims)prompt\s+for\s+ai\s+agents\s*:?\s*(?P<body>.+)$"
+        r"(?ims)^prompt\s+for\s+ai\s+agents\s*: ?\s*$\n(?P<body>.*)$"
     ),
 ]
 
 HEADING_PREFIX = re.compile(r"^#{1,6}\s+")
-MARKDOWN_DECORATION = re.compile(r"^[>*`\-\s]+|[*_`]+$")
-INLINE_CODE = re.compile(r"`([^`]+)`")
-BOLD_SPAN = re.compile(r"\*\*([^*]+)\*\*")
 LINK_SPAN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-WHITESPACE = re.compile(r"\s+")
+INLINE_CODE = re.compile(r"`([^`]+)`")
+BOLD_OR_ITALIC_SPAN = re.compile(r"(\*\*|__|\*|_)([^*_]+?)\1")
+HTML_BREAKS = re.compile(r"(?i)<br\s*/?>")
+HTML_TAGS = re.compile(r"(?is)</?(?:p|div|li|ul|ol|blockquote|details|summary|strong|em|code|pre|span|h[1-6])\b[^>]*>")
+ANY_HTML_TAG = re.compile(r"(?is)<[^>]+>")
+LEADING_LIST_MARKER = re.compile(r"^(?:[-*+]|\d+[.)])\s+")
+WHITESPACE = re.compile(r"[ \t]+")
+BLANK_LINES = re.compile(r"\n{3,}")
+NON_ALNUM = re.compile(r"[^a-z0-9]+")
+
+IGNORED_LABELS = {
+    "prompt for ai agents",
+    "summary",
+    "why this matters",
+    "suggestion",
+}
 
 
 def git_output(repo_path: str, *args: str) -> str:
@@ -57,6 +74,10 @@ def load_json(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def is_coderabbit_author(login: Optional[str]) -> bool:
     if not login:
         return False
@@ -64,61 +85,125 @@ def is_coderabbit_author(login: Optional[str]) -> bool:
     return any(lowered.startswith(prefix) for prefix in CODERABBIT_PREFIXES)
 
 
-def strip_markdown(text: str) -> str:
+def clean_inline_text(text: str) -> str:
+    return WHITESPACE.sub(" ", clean_multiline_text(text).replace("\n", " ")).strip()
+
+
+def clean_multiline_text(text: str) -> str:
+    text = normalize_newlines(html.unescape(text))
+    text = HTML_BREAKS.sub("\n", text)
+    text = HTML_TAGS.sub("\n", text)
     text = LINK_SPAN.sub(r"\1", text)
     text = INLINE_CODE.sub(r"\1", text)
-    text = BOLD_SPAN.sub(r"\1", text)
-    lines = []
+    text = BOLD_OR_ITALIC_SPAN.sub(r"\2", text)
+    text = ANY_HTML_TAG.sub("", text)
+
+    lines: List[str] = []
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line:
             lines.append("")
             continue
-        line = MARKDOWN_DECORATION.sub("", line).strip()
+
+        if HEADING_PREFIX.match(line):
+            line = HEADING_PREFIX.sub("", line).strip()
+
+        line = LEADING_LIST_MARKER.sub("", line)
+        line = line.lstrip("> ").strip()
+        line = WHITESPACE.sub(" ", line).strip()
         lines.append(line)
-    text = "\n".join(lines)
-    text = WHITESPACE.sub(" ", text)
-    return text.strip()
+
+    cleaned = "\n".join(lines).strip()
+    cleaned = BLANK_LINES.sub("\n\n", cleaned)
+    return cleaned.strip()
 
 
-def normalize_paragraphs(text: str) -> List[str]:
-    cleaned = strip_markdown(text)
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", cleaned) if p.strip()]
-    if not paragraphs and cleaned:
-        paragraphs = [cleaned]
-    return paragraphs
+def split_paragraphs(text: str) -> List[str]:
+    cleaned = clean_multiline_text(text)
+    if not cleaned:
+        return []
+    return [paragraph.strip() for paragraph in re.split(r"\n\s*\n", cleaned) if paragraph.strip()]
+
+
+def normalize_repository_name(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        return cleaned
+
+    for pattern in (
+        re.compile(r"^(?:https://|http://)?github\.com/(?P<repo>[^/]+/[^/.]+?)(?:\.git)?/?$", re.IGNORECASE),
+        re.compile(r"^git@github\.com:(?P<repo>[^/]+/[^/.]+?)(?:\.git)?$", re.IGNORECASE),
+        re.compile(r"^ssh://git@github\.com/(?P<repo>[^/]+/[^/.]+?)(?:\.git)?/?$", re.IGNORECASE),
+    ):
+        match = pattern.match(cleaned)
+        if match:
+            return match.group("repo")
+
+    return cleaned.rstrip("/")
+
+
+def normalize_label(value: str) -> str:
+    lowered = clean_inline_text(value).lower()
+    return NON_ALNUM.sub(" ", lowered).strip()
+
+
+def parse_header(body: str) -> Tuple[Optional[str], Optional[str]]:
+    match = HEADER_PATTERN.search(normalize_newlines(body))
+    if not match:
+        return None, None
+    return clean_inline_text(match.group(1)), clean_inline_text(match.group(2))
+
+
+def remove_header(body: str) -> str:
+    return HEADER_PATTERN.sub("", normalize_newlines(body), count=1).strip()
+
+
+def is_prompt_label(label: str) -> bool:
+    return "prompt for ai agents" in normalize_label(label)
 
 
 def extract_prompt_section(body: str) -> Optional[str]:
+    normalized = normalize_newlines(body)
+
+    for match in DETAILS_SECTION_PATTERN.finditer(normalized):
+        label = match.group("label") or ""
+        if not is_prompt_label(label):
+            continue
+        prompt = clean_multiline_text(match.group("body") or "")
+        if prompt:
+            return prompt
+
     for pattern in PROMPT_SECTION_PATTERNS:
-        match = pattern.search(body)
+        match = pattern.search(normalized)
         if not match:
             continue
-        extracted = strip_markdown(match.group("body"))
-        if extracted:
-            return extracted
+        prompt = clean_multiline_text(match.group("body") or "")
+        if prompt:
+            return prompt
+
     return None
 
 
-def body_without_prompt(body: str) -> str:
-    text = body
-    for pattern in PROMPT_SECTION_PATTERNS[:2]:
+def remove_prompt_sections(body: str) -> str:
+    text = normalize_newlines(body)
+
+    def strip_details(match: re.Match[str]) -> str:
+        label = match.group("label") or ""
+        return "" if is_prompt_label(label) else match.group(0)
+
+    text = DETAILS_SECTION_PATTERN.sub(strip_details, text)
+    for pattern in PROMPT_SECTION_PATTERNS:
         text = pattern.sub("", text)
     return text.strip()
 
 
 def first_meaningful_line(body: str) -> Optional[str]:
-    for raw_line in body.splitlines():
+    for raw_line in clean_multiline_text(body).splitlines():
         line = raw_line.strip()
         if not line:
             continue
-        lowered = line.lower().strip(":")
-        if lowered in {"prompt for ai agents", "summary", "why this matters", "suggestion"}:
-            continue
-        if HEADING_PREFIX.match(line):
-            line = HEADING_PREFIX.sub("", line).strip()
-        line = strip_markdown(line)
-        if not line:
+        lowered = normalize_label(line)
+        if lowered in IGNORED_LABELS:
             continue
         if len(line) > 220:
             continue
@@ -126,53 +211,76 @@ def first_meaningful_line(body: str) -> Optional[str]:
     return None
 
 
-def detect_severity(body: str) -> str:
-    lowered = body.lower()
-    labeled = re.search(r"severity\s*[:\-]\s*(critical|high|medium|low)", lowered)
+def detect_severity(severity_label: Optional[str], body: str) -> str:
+    label = normalize_label(severity_label or "")
+    combined = f"{label} {normalize_label(body)}".strip()
+
+    if any(keyword in combined for keyword in ("critical", "blocker", "urgent")):
+        return "critical"
+    if any(keyword in combined for keyword in ("high", "major", "severe")):
+        return "high"
+    if any(keyword in combined for keyword in ("medium", "moderate")):
+        return "medium"
+    if any(keyword in combined for keyword in ("low", "minor", "info", "informational", "suggestion", "nitpick", "style")):
+        return "low"
+
+    labeled = re.search(r"severity\s*[:\-]\s*(critical|high|medium|low)", combined)
     if labeled:
         return labeled.group(1)
-    for level in ("critical", "high", "medium", "low"):
-        if re.search(rf"\b{level}\b", lowered):
-            return level
+
     return "unknown"
 
 
-def detect_issue_type(body: str, title: str) -> str:
-    lowered = f"{title}\n{body}".lower()
-    if any(word in lowered for word in ["security", "vulnerability", "unauthorized", "injection", "xss", "csrf"]):
+def detect_issue_type(issue_label: Optional[str], body: str, title: str) -> str:
+    combined = " ".join(
+        normalize_label(part)
+        for part in (issue_label or "", title, body)
+        if part
+    )
+
+    if any(word in combined for word in ["security", "vulnerability", "unauthorized", "injection", "xss", "csrf"]):
         return "security"
-    if any(word in lowered for word in ["test", "coverage", "regression test", "unit test"]):
+    if any(word in combined for word in ["test", "coverage", "regression test", "unit test"]):
         return "test"
-    if any(word in lowered for word in ["performance", "latency", "slow", "inefficient", "allocation"]):
+    if any(word in combined for word in ["performance", "latency", "slow", "inefficient", "allocation"]):
         return "performance"
-    if any(word in lowered for word in ["docs", "documentation", "comment", "readme"]):
+    if any(word in combined for word in ["docs", "documentation", "comment", "readme"]):
         return "docs"
-    if any(word in lowered for word in ["refactor", "maintainability", "readability", "cleanup", "style", "nit"]):
+    if any(word in combined for word in ["nitpick", "refactor", "maintainability", "readability", "cleanup", "style"]):
         return "maintainability"
     return "bug"
 
 
-def derive_title(body: str, path: str, line: Optional[int]) -> str:
-    line_text = first_meaningful_line(body)
-    if line_text:
-        return line_text
-    if line is not None:
-        return f"CodeRabbit issue in {path}:{line}"
-    return f"CodeRabbit issue in {path}"
+def derive_title_and_description(body: str, path: str, line: Optional[int]) -> Tuple[str, str]:
+    stripped = remove_prompt_sections(remove_header(body))
+    paragraphs = split_paragraphs(stripped)
 
+    fallback_title = f"CodeRabbit issue in {path}:{line}" if line is not None else f"CodeRabbit issue in {path}"
 
-def derive_description(body: str, title: str) -> str:
-    cleaned = body_without_prompt(body)
-    paragraphs = normalize_paragraphs(cleaned)
-    for paragraph in paragraphs:
-        if paragraph == title:
-            continue
-        if len(paragraph) < 20:
-            continue
-        return paragraph
-    if paragraphs:
-        return paragraphs[0]
-    return title
+    if not paragraphs:
+        return fallback_title, fallback_title
+
+    title = paragraphs[0].rstrip(":")
+    if len(title) > 160 and ". " in title:
+        title = title.split(". ", 1)[0].rstrip(":")
+
+    if len(paragraphs) > 1:
+        description = paragraphs[1]
+    else:
+        description = paragraphs[0]
+
+    if description == title and len(paragraphs) > 2:
+        description = paragraphs[2]
+
+    if len(description) < 20 and len(paragraphs) > 1:
+        description = " ".join(paragraphs[1:]).strip()
+
+    if not title:
+        title = first_meaningful_line(stripped) or fallback_title
+    if not description:
+        description = title
+
+    return title, description
 
 
 def derive_agent_prompt(body: str, title: str, description: str, path: str) -> str:
@@ -195,7 +303,7 @@ def preferred_line(thread: Dict[str, Any]) -> Optional[int]:
 
 
 def preferred_start_line(thread: Dict[str, Any]) -> Optional[int]:
-    for key in ("startLine", "originalStartLine"):
+    for key in ("startLine", "originalStartLine", "line", "originalLine"):
         value = thread.get(key)
         if isinstance(value, int) and value > 0:
             return value
@@ -203,27 +311,48 @@ def preferred_start_line(thread: Dict[str, Any]) -> Optional[int]:
 
 
 def preferred_end_line(thread: Dict[str, Any], start_line: Optional[int]) -> Optional[int]:
-    line = thread.get("line")
-    if isinstance(line, int) and line > 0:
-        if start_line is None or line >= start_line:
-            return line
-    original_line = thread.get("originalLine")
-    if isinstance(original_line, int) and original_line > 0:
-        if start_line is None or original_line >= start_line:
-            return original_line
+    for key in ("line", "originalLine", "startLine", "originalStartLine"):
+        value = thread.get(key)
+        if isinstance(value, int) and value > 0 and (start_line is None or value >= start_line):
+            return value
     return start_line
 
 
-def choose_primary_comment(thread: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def comments_for_thread(thread: Dict[str, Any]) -> List[Dict[str, Any]]:
     comments = (thread.get("comments") or {}).get("nodes") or []
-    coderabbit_comments = [c for c in comments if is_coderabbit_author(((c.get("author") or {}).get("login")))]
-    if not coderabbit_comments:
+    return [comment for comment in comments if isinstance(comment, dict)]
+
+
+def has_coderabbit_root_comment(thread: Dict[str, Any]) -> bool:
+    comments = comments_for_thread(thread)
+    if not comments:
+        return False
+    root_login = ((comments[0].get("author") or {}).get("login"))
+    return is_coderabbit_author(root_login)
+
+
+def choose_primary_comment(thread: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    comments = comments_for_thread(thread)
+    if not comments:
         return None
-    return coderabbit_comments[-1]
+    if has_coderabbit_root_comment(thread):
+        return comments[0]
+    return None
+
+
+def is_actionable_thread(thread: Dict[str, Any]) -> bool:
+    if thread.get("isResolved"):
+        return False
+    if thread.get("isOutdated"):
+        return False
+    path = thread.get("path")
+    if not isinstance(path, str) or not path.strip():
+        return False
+    return choose_primary_comment(thread) is not None
 
 
 def build_issue(thread: Dict[str, Any], index: int) -> Optional[Dict[str, Any]]:
-    if thread.get("isResolved"):
+    if not is_actionable_thread(thread):
         return None
 
     path = thread.get("path")
@@ -238,15 +367,15 @@ def build_issue(thread: Dict[str, Any], index: int) -> Optional[Dict[str, Any]]:
     if not body:
         return None
 
+    issue_label, severity_label = parse_header(body)
     line = preferred_line(thread)
     start_line = preferred_start_line(thread)
     end_line = preferred_end_line(thread, start_line)
 
-    title = derive_title(body, path, line)
-    description = derive_description(body, title)
+    title, description = derive_title_and_description(body, path, line)
     agent_prompt = derive_agent_prompt(body, title, description, path)
-    severity = detect_severity(body)
-    issue_type = detect_issue_type(body, title)
+    severity = detect_severity(severity_label, body)
+    issue_type = detect_issue_type(issue_label, body, title)
 
     issue: Dict[str, Any] = {
         "id": f"cr_{index:03d}_{sanitize_issue_id(str(thread.get('id') or index))}",
@@ -284,7 +413,14 @@ def normalize_issues(threads: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
         issue = build_issue(thread, index)
         if issue is not None:
             issues.append(issue)
-    issues.sort(key=lambda issue: (SEVERITY_ORDER.get(issue["severity"], 99), issue["file"], issue.get("line", 0), issue["id"]))
+    issues.sort(
+        key=lambda issue: (
+            SEVERITY_ORDER.get(issue["severity"], 99),
+            issue["file"],
+            issue.get("line", 0),
+            issue["id"],
+        )
+    )
     return issues
 
 
@@ -305,24 +441,35 @@ def main() -> int:
     raw = load_json(raw_path)
 
     pull_request = raw.get("pullRequest") or {}
-    repo_name = raw.get("repository") or git_output(args.repo_path, "remote", "get-url", "origin")
+    raw_repo_name = str(raw.get("repository") or "").strip()
+    if raw_repo_name:
+        repo_name = normalize_repository_name(raw_repo_name)
+    else:
+        repo_name = normalize_repository_name(git_output(args.repo_path, "remote", "get-url", "origin"))
+
     repo_path = args.repo_path
     working_tree_must_be_clean = parse_bool(args.working_tree_must_be_clean)
+
+    pr_number = int(pull_request.get("number") or ((raw.get("metadata") or {}).get("requestedPrNumber") or 0))
+    if pr_number < 1:
+        raise SystemExit("Raw review-thread payload did not include a valid pull request number.")
 
     branch = pull_request.get("headRefName") or git_output(repo_path, "branch", "--show-current")
     head_sha = pull_request.get("headRefOid") or git_output(repo_path, "rev-parse", "HEAD")
     base_branch = pull_request.get("baseRefName") or None
+    pr_title = clean_inline_text(str(pull_request.get("title") or "")) or f"PR #{pr_number}"
+    pr_url = pull_request.get("url") or None
 
     threads = raw.get("reviewThreads") or []
     issues = normalize_issues(threads)
 
     artifact = {
         "pr": {
-            "number": int(pull_request.get("number") or 0),
-            "title": pull_request.get("title") or f"PR #{args.max_cycles}",
+            "number": pr_number,
+            "title": pr_title,
             "branch": branch,
             "repository": repo_name,
-            "url": pull_request.get("url"),
+            "url": pr_url,
             "headSha": head_sha,
             "baseBranch": base_branch,
         },
@@ -351,18 +498,21 @@ def main() -> int:
 
     artifact["pr"] = {k: v for k, v in artifact["pr"].items() if v is not None}
 
+    unresolved_threads = [thread for thread in threads if not thread.get("isResolved")]
+    outdated_unresolved_threads = [thread for thread in unresolved_threads if thread.get("isOutdated")]
+    coderabbit_root_unresolved_threads = [thread for thread in unresolved_threads if has_coderabbit_root_comment(thread)]
+    actionable_threads = [thread for thread in threads if is_actionable_thread(thread)]
+
     summary = {
         "status": "ok",
         "repository": repo_name,
-        "prNumber": artifact["pr"]["number"],
+        "prNumber": pr_number,
         "totalThreads": len(threads),
+        "unresolvedThreads": len(unresolved_threads),
+        "outdatedUnresolvedThreads": len(outdated_unresolved_threads),
+        "coderabbitRootUnresolvedThreads": len(coderabbit_root_unresolved_threads),
         "actionableIssues": len(issues),
-        "unresolvedThreads": sum(1 for thread in threads if not thread.get("isResolved")),
-        "coderabbitUnresolvedThreads": sum(
-            1
-            for thread in threads
-            if not thread.get("isResolved") and choose_primary_comment(thread) is not None and isinstance(thread.get("path"), str) and bool(thread.get("path"))
-        ),
+        "actionableThreads": len(actionable_threads),
         "artifactPath": str(out_dir / "actionable-issues.json"),
     }
 

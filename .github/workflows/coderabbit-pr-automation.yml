@@ -27,6 +27,11 @@ on:
         required: false
         type: string
         default: '3.11'
+      runner_labels_json:
+        description: JSON-encoded runs-on value, for example "[\"self-hosted\"]" or "[\"self-hosted\",\"linux\"]"
+        required: false
+        type: string
+        default: '["self-hosted"]'
       target_checkout_path:
         description: Relative checkout path for the consumer repository inside github.workspace
         required: false
@@ -47,6 +52,21 @@ on:
         required: false
         type: string
         default: main
+      agent_command_json:
+        description: Preferred JSON-array command template for the bounded agent pass
+        required: false
+        type: string
+        default: ''
+      agent_command:
+        description: Fallback string command template for the bounded agent pass
+        required: false
+        type: string
+        default: ''
+      coderabbit_cli:
+        description: Optional path or binary name override for the CodeRabbit CLI used during validation
+        required: false
+        type: string
+        default: ''
     secrets:
       GH_TOKEN:
         required: true
@@ -54,7 +74,7 @@ on:
 jobs:
   coderabbit-pr-automation:
     name: CodeRabbit PR automation
-    runs-on: self-hosted
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
     permissions:
       contents: read
       pull-requests: read
@@ -69,6 +89,9 @@ jobs:
       SHARED_CHECKOUT_PATH: ${{ inputs.shared_checkout_path }}
       SHARED_REPOSITORY: ${{ inputs.shared_repository }}
       SHARED_REPOSITORY_REF: ${{ inputs.shared_repository_ref }}
+      CODERABBIT_AGENT_COMMAND_JSON: ${{ inputs.agent_command_json }}
+      CODERABBIT_AGENT_COMMAND: ${{ inputs.agent_command }}
+      CODERABBIT_CLI: ${{ inputs.coderabbit_cli }}
       CODERABBIT_OUT_DIR: ${{ github.workspace }}/${{ inputs.target_checkout_path }}/.coderabbit/out
 
     steps:

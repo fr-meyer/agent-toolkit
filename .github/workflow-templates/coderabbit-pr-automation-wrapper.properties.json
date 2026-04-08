@@ -1,0 +1,14 @@
+{
+  "name": "CodeRabbit PR automation wrapper",
+  "description": "Dispatch a bounded CodeRabbit remediation workflow that calls the shared reusable workflow and uses repo variables for runner, agent, and validation configuration.",
+  "iconName": "octicon code-review",
+  "creator": "fr-meyer",
+  "categories": [
+    "code-review",
+    "Automation"
+  ],
+  "filePatterns": [
+    "^(package\\.json|pyproject\\.toml|requirements\\.txt|go\\.mod|Cargo\\.toml|pom\\.xml|build\\.gradle(\\.kts)?|Dockerfile)$",
+    "^\\.github/"
+  ]
+}

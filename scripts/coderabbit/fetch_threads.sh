@@ -200,13 +200,33 @@ combined = {
 
 out_path.write_text(json.dumps(combined, indent=2) + '\n', encoding='utf-8')
 
+def is_coderabbit_author(login: str | None) -> bool:
+    if not login:
+        return False
+    lowered = login.strip().lower()
+    return lowered.startswith('coderabbit') or lowered.startswith('coderabbitai')
+
+unresolved_threads = [thread for thread in threads if not thread.get('isResolved')]
+outdated_unresolved_threads = [thread for thread in unresolved_threads if thread.get('isOutdated')]
+coderabbit_root_unresolved_threads = []
+for thread in unresolved_threads:
+    comments = ((thread.get('comments') or {}).get('nodes') or [])
+    if comments and is_coderabbit_author(((comments[0].get('author') or {}).get('login'))):
+        coderabbit_root_unresolved_threads.append(thread)
+
 summary = {
     'status': 'ok',
     'repository': repo_name,
     'repoPath': repo_path,
     'prNumber': pr_number,
+    'prTitle': (pull_request or {}).get('title'),
+    'branch': (pull_request or {}).get('headRefName'),
+    'headSha': (pull_request or {}).get('headRefOid'),
     'fetchedPages': len(page_files),
     'totalThreads': len(threads),
+    'unresolvedThreads': len(unresolved_threads),
+    'outdatedUnresolvedThreads': len(outdated_unresolved_threads),
+    'coderabbitRootUnresolvedThreads': len(coderabbit_root_unresolved_threads),
     'rawPath': str(out_path),
 }
 summary_path.write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
