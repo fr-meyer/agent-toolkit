@@ -23,7 +23,7 @@ It does **not** own scheduling, CI workflow design, Git hosting APIs, or multi-r
 - **Default mode:** `inspect-only`
 - **Default behavior:** no network actions, no write actions
 - **Default commit strategy:** `single-commit`
-- **Preferred sequence:** inspect → classify state → choose safest next action → execute only if explicitly allowed
+- **Preferred sequence:** inspect -> classify state -> choose safest next action -> execute only if explicitly allowed
 - **Avoid:** implicit writes, implicit pulls, implicit rebases, branch switching, destructive cleanup, or guessing missing configuration
 
 If the caller has not clearly authorized execution:
@@ -87,6 +87,12 @@ Gather as many of these as the task supports:
   - no commit
   - no rebase
   - no untracked-file tolerance
+- optional public safety and docs-gate inputs:
+  - `repo_visibility_context`, one of: `public`, `private`, `unknown`, `public-intended`
+  - `enforce_public_red_list_gate`, boolean
+  - `enable_docs_readiness_gate`, boolean
+  - `auto_remediate_public_red_list`, boolean
+  - `auto_update_docs_before_commit`, boolean
 
 If permissions are unclear, assume:
 
@@ -238,21 +244,41 @@ Do not guess missing upstream configuration.
 Do not assume `origin`.
 Do not assume `main` or `master`.
 
+### 2.5 Public-repo safety and documentation gates
+
+Before selecting commit or push actions, decide whether gating checks and pre-commit remediation are required:
+
+- If this run may commit or push to a public repository, or a repository intended to become public, activate `public-repo-red-list-audit` before any commit or push action.
+- Use the available change scope (staged, unstaged, and approved untracked files) and the best available visibility context (`public`, `private`, `unknown`, `public-intended`).
+- If `public-repo-red-list-audit` reports blocker findings, do not merely stop. First attempt automatic remediation before committing.
+- Preferred remediation order is:
+  1. remove or redact the risky content
+  2. replace it with a placeholder, env-var reference, or TODO-safe stub
+  3. exclude the risky file or fragment from the pending commit if needed
+- It is acceptable to leave the repo temporarily broken rather than commit dangerous public red-list content.
+- Re-run `public-repo-red-list-audit` after remediation. If blockers still remain and no concrete remediation is available, then set:
+  - `status: blocked`
+  - `planned_action: stop-and-escalate`
+  and do not commit or push in this run.
+- If the changed work creates clear documentation drift, update the relevant README, docs, docstrings, or comments before commit.
+- Activate `repo-documentation-audit` when the caller explicitly requests publishability/docs readiness checks, or when a documentation update is needed and that skill would help localize the required fixes.
+- Treat broad documentation-readiness findings as advisory unless the caller explicitly asks to gate sync on documentation readiness.
+
 ### 3. Classify the governing sync state
 
 Assign exactly one primary `status` using the required vocabulary and precedence rules.
 
 When deciding, follow these rules:
 
-- if conflict markers or in-progress rebase/merge conflict state exist → `conflict`
-- if merge/rebase/cherry-pick/bisect is in progress and safe sync should not continue → `blocked`
-- if required upstream/remote/branch config is missing or mismatched → `needs-config`
-- if both local and remote have unique commits → `diverged`
-- if staged or unstaged local edits exist → `local-changes-detected`
-- if upstream is ahead and local state is otherwise safe → `pull-needed`
-- if local branch is ahead and tree is otherwise clean → `push-needed`
-- if tree is clean except for untracked files → `clean-but-untracked`
-- otherwise → `no-op`
+- if conflict markers or in-progress rebase/merge conflict state exist -> `conflict`
+- if merge/rebase/cherry-pick/bisect is in progress and safe sync should not continue -> `blocked`
+- if required upstream/remote/branch config is missing or mismatched -> `needs-config`
+- if both local and remote have unique commits -> `diverged`
+- if staged or unstaged local edits exist -> `local-changes-detected`
+- if upstream is ahead and local state is otherwise safe -> `pull-needed`
+- if local branch is ahead and tree is otherwise clean -> `push-needed`
+- if tree is clean except for untracked files -> `clean-but-untracked`
+- otherwise -> `no-op`
 
 ### 4. Choose the safest next action
 
@@ -260,17 +286,17 @@ Choose the narrowest safe `planned_action`.
 
 Guidance:
 
-- `no-op` → usually `do-nothing`
-- `clean-but-untracked` → usually `report-only`
-- `local-changes-detected` with commit not allowed → `draft-commit-message` or `report-only`
-- `local-changes-detected` with `allow_commit: true` and `commit_strategy: single-commit` → `commit-then-sync` only when one truthful single-purpose commit clearly fits the visible change set
-- `local-changes-detected` with `allow_commit: true` and `commit_strategy: split-by-scope` → `split-commit-then-sync` only when the change set can be decomposed into coherent commit groups without guessing
-- `pull-needed` with fetch/pull allowed → `pull` or `pull --rebase`
-- `push-needed` with push allowed → `push`
-- `diverged` → `stop-and-escalate`
-- `blocked` → `stop-and-escalate`
-- `needs-config` → `stop-and-escalate`
-- `conflict` → `stop-and-escalate`
+- `no-op` -> usually `do-nothing`
+- `clean-but-untracked` -> usually `report-only`
+- `local-changes-detected` with commit not allowed -> `draft-commit-message` or `report-only`
+- `local-changes-detected` with `allow_commit: true` and `commit_strategy: single-commit` -> `commit-then-sync` only when one truthful single-purpose commit clearly fits the visible change set
+- `local-changes-detected` with `allow_commit: true` and `commit_strategy: split-by-scope` -> `split-commit-then-sync` only when the change set can be decomposed into coherent commit groups without guessing
+- `pull-needed` with fetch/pull allowed -> `pull` or `pull --rebase`
+- `push-needed` with push allowed -> `push`
+- `diverged` -> `stop-and-escalate`
+- `blocked` -> `stop-and-escalate`
+- `needs-config` -> `stop-and-escalate`
+- `conflict` -> `stop-and-escalate`
 
 Never choose a riskier action when a safer one would satisfy the request.
 
@@ -313,7 +339,7 @@ Rules:
 - explain the main changes visible in the repo
 - use either:
   - one short paragraph, or
-  - 1–3 short bullet lines
+  - 1-3 short bullet lines
 - do not invent motivation, impact, or hidden context that is not supported by visible evidence
 
 If commit creation is **not** explicitly allowed:
@@ -345,6 +371,21 @@ Examples of acceptable general commit-intent buckets include:
 
 If a group cannot be explained by one truthful short commit title, split it further or mark it ambiguous.
 
+### 5.5 Automatic remediation and docs updates before commit
+
+When a pending commit or push is in scope:
+
+- If `public-repo-red-list-audit` finds blocker content, automatically remediate it before staging or committing.
+- Preferred actions are:
+  1. remove or redact the risky content
+  2. replace it with a placeholder, env-var reference, or TODO-safe stub
+  3. exclude the risky file or risky fragment from the pending commit
+- Prefer a temporarily broken repo over committing dangerous red-list content.
+- Re-run the red-list audit after each remediation pass. Proceed only when blocker findings are cleared, or stop and report if no concrete remediation can be determined.
+- If the changed behavior creates clear local docs drift, update the relevant README, docs, docstrings, or comments before commit.
+- Keep documentation updates truthful, local, and tied directly to the changed behavior.
+- If documentation needs are broad or ambiguous and no concrete local update can be determined, stop and report rather than inventing unsupported documentation.
+
 ### 6. Execute only if explicitly approved
 
 Execution is allowed only in `execute-approved` mode and only for verbs explicitly permitted by flags.
@@ -374,7 +415,7 @@ Stop immediately if:
 - a merge/rebase/cherry-pick is already in progress
 - the required auth for network actions is missing
 - the diff exceeds caller policy
-- suspicious or forbidden files are present
+- suspicious or forbidden files remain present in the pending commit after required remediation attempts
 - the repo is diverged and manual judgment is required
 
 #### Multi-commit execution loop
@@ -421,6 +462,8 @@ Before finalizing, verify:
 - no hidden write action occurred outside policy
 - no destructive Git command was used
 - final repo state matches the reported outcome
+- no public red-list blocker remains in the pending commit scope
+- directly implied local documentation updates were included, or inability to produce them is clearly reported
 - `executed_actions` includes only actions actually performed
 - every originally changed file is accounted for in either executed commits or the reported remainder/blocker
 
@@ -471,21 +514,23 @@ notes:
 - Do not assume the branch is `main` or `master`; detect it.
 - Do not assume the remote is `origin`; detect the tracked upstream.
 - Do not guess missing upstream configuration.
-- Do not switch branches to “make sync work”.
+- Do not switch branches to "make sync work".
 - Do not auto-stash unless the caller explicitly asked for that policy.
 - Do not use destructive Git commands.
 - A diverged branch is not the same as `pull-needed`.
 - Untracked files do not mean the repo is clean for sync purposes.
 - Missing auth for network actions is a blocker, not a reason to improvise.
+- Blocker findings from `public-repo-red-list-audit` require remediation before commit/push, not just passive reporting.
+- Prefer temporary breakage over committing dangerous red-list content.
 - In `split-by-scope` mode, classify by commit intent, not by repo-specific folder heuristics.
-- “All files accounted for” does not mean “force every leftover file into some commit.”
+- "All files accounted for" does not mean "force every leftover file into some commit."
 - This skill handles **one repo at a time**.
 
 ## Resources
 
 Read only when needed:
 
-- `references/eval-prompts.json` — use when refining trigger precision or checking false positives / false negatives
+- `references/eval-prompts.json` - use when refining trigger precision or checking false positives / false negatives
 
 ## Portability notes
 
@@ -497,21 +542,21 @@ Read only when needed:
 
 ## Examples of appropriate requests
 
-- “Check whether this repo is ahead or behind its upstream.”
-- “Prepare a safe dry-run sync plan for this repository.”
-- “Draft a commit message for the current local changes.”
-- “Sync this repo only if pull, rebase, and push are explicitly allowed and safe.”
-- “Inspect this repo for a cron-driven sync workflow.”
-- “Split this mixed local change set into multiple neat commits, then sync if safe.”
+- "Check whether this repo is ahead or behind its upstream."
+- "Prepare a safe dry-run sync plan for this repository."
+- "Draft a commit message for the current local changes."
+- "Sync this repo only if pull, rebase, and push are explicitly allowed and safe."
+- "Inspect this repo for a cron-driven sync workflow."
+- "Split this mixed local change set into multiple neat commits, then sync if safe."
 
 ## Examples of out-of-scope requests
 
-- “Review my pull request comments.”
-- “Create a GitHub Actions deployment workflow.”
-- “Clone this repo and install dependencies.”
-- “Resolve this merge conflict and choose the right code.”
-- “Design a branching strategy for my team.”
-- “Sync these 20 repos across all servers.”
+- "Review my pull request comments."
+- "Create a GitHub Actions deployment workflow."
+- "Clone this repo and install dependencies."
+- "Resolve this merge conflict and choose the right code."
+- "Design a branching strategy for my team."
+- "Sync these 20 repos across all servers."
 
 ## Never do this
 
