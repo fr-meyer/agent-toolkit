@@ -246,22 +246,17 @@ Do not assume `main` or `master`.
 
 ### 2.5 Public-repo safety and documentation gates
 
-Before selecting commit or push actions, decide whether gating checks and pre-commit remediation are required:
+Before selecting commit or push actions, decide which delegated skills are required:
 
 - If this run may commit or push to a public repository, or a repository intended to become public, activate `public-repo-red-list-audit` before any commit or push action.
 - Use the available change scope (staged, unstaged, and approved untracked files) and the best available visibility context (`public`, `private`, `unknown`, `public-intended`).
-- If `public-repo-red-list-audit` reports blocker findings, do not merely stop. First attempt automatic remediation before committing.
-- Preferred remediation order is:
-  1. remove or redact the risky content
-  2. replace it with a placeholder, env-var reference, or TODO-safe stub
-  3. exclude the risky file or fragment from the pending commit if needed
-- It is acceptable to leave the repo temporarily broken rather than commit dangerous public red-list content.
-- Re-run `public-repo-red-list-audit` after remediation. If blockers still remain and no concrete remediation is available, then set:
+- If `public-repo-red-list-audit` reports blocker findings, activate `public-repo-red-list-remediation` before committing.
+- After remediation, re-run `public-repo-red-list-audit`. If blockers still remain and no concrete remediation is available, then set:
   - `status: blocked`
   - `planned_action: stop-and-escalate`
   and do not commit or push in this run.
-- If the changed work creates clear documentation drift, update the relevant README, docs, docstrings, or comments before commit.
-- Activate `repo-documentation-audit` when the caller explicitly requests publishability/docs readiness checks, or when a documentation update is needed and that skill would help localize the required fixes.
+- If the changed work creates clear documentation drift, activate `repo-documentation-drift-fix` before commit.
+- Activate `repo-documentation-audit` only when the caller explicitly requests broader publishability or docs-readiness evaluation.
 - Treat broad documentation-readiness findings as advisory unless the caller explicitly asks to gate sync on documentation readiness.
 
 ### 3. Classify the governing sync state
@@ -307,7 +302,7 @@ If local changes exist and the caller asked for `commit-draft` or a sync plan th
 - produce one commit title draft
 - produce one short commit body draft
 
-If the caller requested `commit_strategy: split-by-scope`, also produce a brief commit plan that groups changed files by **commit intent**, not by hardcoded folder names.
+If the caller requested `commit_strategy: split-by-scope`, activate `changeset-commit-partitioner` to produce a brief commit plan that groups changed files by commit intent and drafts grounded commit metadata.
 
 The commit draft should follow **Conventional Commits** style.
 
@@ -352,37 +347,23 @@ If no meaningful commit draft is needed, set draft fields to `none`.
 
 #### General classification rules for `split-by-scope`
 
-When `commit_strategy: split-by-scope` is explicitly requested, classify changes using portable signals only:
+When `commit_strategy: split-by-scope` is explicitly requested, activate `changeset-commit-partitioner`.
 
-- visible diff intent
-- cross-file coherence
-- whether one honest commit title can describe the whole group
-- whether the group can land independently without hiding unrelated work
+That skill should own:
+- grouping by visible diff intent
+- checking cross-file coherence
+- drafting grounded Conventional Commit metadata
+- identifying ambiguous remainder that should not be forced into a commit
 
-Use path names, extensions, and directories only as weak hints. Do **not** hardcode repo-specific buckets.
-
-Examples of acceptable general commit-intent buckets include:
-
-- one bug fix
-- one refactor
-- one docs clarification
-- one test update tied to a specific behavior change
-- one config adjustment with its directly related supporting edits
-
-If a group cannot be explained by one truthful short commit title, split it further or mark it ambiguous.
+Use path names, extensions, and directories only as weak hints. Do **not** hardcode repo-specific buckets in this skill.
 
 ### 5.5 Automatic remediation and docs updates before commit
 
 When a pending commit or push is in scope:
 
-- If `public-repo-red-list-audit` finds blocker content, automatically remediate it before staging or committing.
-- Preferred actions are:
-  1. remove or redact the risky content
-  2. replace it with a placeholder, env-var reference, or TODO-safe stub
-  3. exclude the risky file or risky fragment from the pending commit
-- Prefer a temporarily broken repo over committing dangerous red-list content.
+- If `public-repo-red-list-audit` finds blocker content, activate `public-repo-red-list-remediation` before staging or committing.
 - Re-run the red-list audit after each remediation pass. Proceed only when blocker findings are cleared, or stop and report if no concrete remediation can be determined.
-- If the changed behavior creates clear local docs drift, update the relevant README, docs, docstrings, or comments before commit.
+- If the changed behavior creates clear local docs drift, activate `repo-documentation-drift-fix` before commit.
 - Keep documentation updates truthful, local, and tied directly to the changed behavior.
 - If documentation needs are broad or ambiguous and no concrete local update can be determined, stop and report rather than inventing unsupported documentation.
 
@@ -522,7 +503,7 @@ notes:
 - Missing auth for network actions is a blocker, not a reason to improvise.
 - Blocker findings from `public-repo-red-list-audit` require remediation before commit/push, not just passive reporting.
 - Prefer temporary breakage over committing dangerous red-list content.
-- In `split-by-scope` mode, classify by commit intent, not by repo-specific folder heuristics.
+- In `split-by-scope` mode, use `changeset-commit-partitioner` rather than reinventing commit grouping inline.
 - "All files accounted for" does not mean "force every leftover file into some commit."
 - This skill handles **one repo at a time**.
 
