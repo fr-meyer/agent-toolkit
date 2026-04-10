@@ -17,6 +17,7 @@ Before starting any create, update, review, or audit work with this skill, confi
 - the folder where the skill should be saved or edited has already been specified explicitly at least once, or is available from trusted memory/session context
 - at least one current Agent Skills reference source is accessible: prefer **Agent Skills MCP**, but otherwise use the Agent Skills website (`https://agentskills.io/home` and its relevant documentation pages) or the GitHub repository (`https://github.com/agentskills/agentskills`)
 - an Agent Skills validation CLI is executable in the current environment: prefer `agentskills`, but accept `skills-ref` when that is the exposed command name in the current environment
+- the current skill library can be inspected so similar or overlapping skills can be checked before creating or updating anything
 
 If any of these requirements are not satisfied:
 - do not start or continue the work
@@ -28,15 +29,36 @@ If any of these requirements are not satisfied:
 
 ## Default workflow
 
-### 1. Define the skill boundary
+### 1. Audit the existing skill library first
+
+Before designing or revising a skill, inspect the current skill library for similar, overlapping, or adjacent skills.
 
 Identify:
-- the repeated task or workflow to generalize
-- the user intents that should trigger the skill
-- nearby tasks that should not trigger it
-- the non-obvious knowledge, procedure, or assets the base agent lacks
+- exact or near-duplicate skills
+- broader parent skills that already cover most of the requested scope
+- narrower reusable sub-skills that could be referenced instead of reimplemented
+- gaps where no existing skill is a good fit
 
-Create **one coherent unit of work** per skill. If the request naturally splits into two separate jobs, split the skill.
+Default decision order:
+1. reuse an existing skill if it already fits
+2. update or extend an existing skill if that is cleaner than creating a parallel one
+3. split the proposal into multiple reusable skills if the requested scope contains multiple coherent sub-workflows
+4. create a brand-new standalone skill only when the above options are clearly worse
+
+### 1.5 Check whether the scope should be split
+
+Before finalizing a new skill or an update, evaluate whether the proposed scope is too broad.
+
+Split the design when:
+- the workflow contains multiple reusable sub-tasks with distinct triggers
+- one part mainly audits while another part remediates or executes
+- one part is a reusable utility that could support multiple other skills
+- keeping everything in one skill would make triggering fuzzier or instructions heavier
+
+Prefer:
+- smaller coherent reusable skills
+- explicit delegation/interconnection between skills
+- one orchestrator skill only when coordination logic truly needs to stay centralized
 
 ### 2. Choose the smallest useful structure
 
@@ -47,6 +69,11 @@ Use only what is justified:
 - `assets/` — for templates or static resources used in outputs
 
 Default to the smallest structure that can do the job well.
+
+Also prefer the smallest **skill boundary** that can do the job well:
+- do not create a duplicate when an existing skill already fits
+- do not keep unrelated reusable sub-workflows bundled together just because they appeared in the same conversation
+- do not create a new orchestrator when direct reuse of an existing skill is sufficient
 
 If the folder where the new skill should be saved is not explicit and is not available from trusted memory or session context, stop and ask the user which folder should receive the skill before creating files.
 
@@ -93,15 +120,17 @@ Bad patterns:
 
 When editing an existing skill:
 - inspect the current `SKILL.md` and bundled files first
+- inspect nearby skills in the current skill library before deciding the update boundary
 - use Agent Skills MCP as the primary source of truth when available
 - if Agent Skills MCP is unavailable, use the Agent Skills website or GitHub repository as the fallback source of truth
-- identify what is outdated, incorrect, redundant, or missing
+- identify what is outdated, incorrect, redundant, missing, duplicated, or better owned by another skill
 - prefer the smallest justified edit set
 - preserve the current skill name, folder, and scope unless a clear problem requires changing them
+- if the best fix is to delegate part of the workflow to another existing or newly extracted skill, prefer that over bloating the current skill
 - if the online Agent Skills source shows that local skill files are outdated or incorrect, update the local files directly
 - if the Agent Skills validator is available, run `agentskills validate path/to/skill`
 - if the current environment exposes the older or alternate command name instead, run `skills-ref validate path/to/skill`
-- report what changed, why it changed, what was intentionally left unchanged, and whether validation succeeded
+- report what changed, why it changed, what was intentionally left unchanged, whether similar existing skills were considered, and whether validation succeeded
 
 ### 6. Keep SKILL.md lean
 
@@ -214,7 +243,9 @@ When using this skill to create or revise another skill, produce:
 8. portability risks or publication concerns, if any
 9. the validation status, including whether `agentskills` or `skills-ref` was run and, if not, why validation was not possible
 10. for update tasks, a change summary describing what was updated, what was intentionally left unchanged, and why
-11. if work could not start or continue because a prerequisite was missing, a clear blocked-status explanation naming the missing requirement and why it prevented the work
+11. a similarity-check summary stating which existing skills were reviewed, which ones were considered relevant, and why they were reused, extended, rejected, or delegated to
+12. a scope-splitting decision stating whether the proposed work should remain one skill or be split into multiple reusable skills, and why
+13. if work could not start or continue because a prerequisite was missing, a clear blocked-status explanation naming the missing requirement and why it prevented the work
 
 ## Starter template
 
@@ -297,6 +328,9 @@ Run only when needed:
 ## Do not do these things
 
 - Do not create a fuzzy catch-all skill.
+- Do not create a duplicate or near-duplicate skill before checking the current skill library.
+- Do not ignore an existing skill that should be reused, extended, or explicitly referenced instead.
+- Do not keep multiple reusable sub-workflows bundled together when they should be split into smaller interoperable skills.
 - Do not hardcode one host product unless explicitly requested.
 - Do not stuff `SKILL.md` with reference material that is not always needed.
 - Do not invent specification details when Agent Skills docs can be checked quickly.
