@@ -1,28 +1,109 @@
-# Agent toolkit
+# agent-toolkit
 
-Single source of truth for shared agent skills, Cursor rules, setup scripts, and documentation.
+Public shared toolkit for reusable agent skills, GitHub Actions workflow assets, setup scripts, and supporting documentation.
 
-## Directory layout
+## What this repository contains
 
-```
+- **Shared agent skills** under `skills/`
+- **Reusable GitHub Actions assets** under `.github/`
+  - a reusable workflow: `.github/workflows/coderabbit-pr-automation.yml`
+  - a thin workflow template draft: `.github/workflow-templates/coderabbit-pr-automation-wrapper.yml`
+- **Setup and linking scripts** under `scripts/`
+- **Shared Cursor assets** under `cursor/`
+- **Reference and setup docs** under `docs/`
+- **Packaged release artifacts** under `dist/`
+
+## Current skill set
+
+### Research-paper workflows
+- `classify-research-papers`
+- `pageindex-find-papers`
+- `pageindex-read-papers`
+- `pageindex-summarize-papers`
+- `summarize-research-papers`
+
+### Code review and GitHub automation
+- `autofix`
+- `code-review`
+- `coderabbit-pr-autofix`
+- `coderabbit-pr-automation`
+
+### Repo maintenance and publication safety
+- `git-repo-sync`
+- `changeset-commit-partitioner`
+- `public-repo-red-list-audit`
+- `public-repo-red-list-remediation`
+- `repo-documentation-audit`
+- `repo-documentation-drift-fix`
+
+### Toolkit integration and skill authoring
+- `connect-openclaw-toolkit`
+- `skill-creator`
+
+## Repository layout
+
+```text
 agent-toolkit/
-├── README.md
-├── LICENSE
+├── .github/
+│   ├── workflows/
+│   │   └── coderabbit-pr-automation.yml
+│   └── workflow-templates/
+│       ├── coderabbit-pr-automation-wrapper.yml
+│       └── coderabbit-pr-automation-wrapper.properties.json
 ├── skills/
-│   ├── classify-research-papers/
-│   ├── pageindex-find-papers/
-│   ├── pageindex-read-papers/
-│   ├── pageindex-summarize-papers/
-│   ├── skill-creator/
-│   └── summarize-research-papers/
+├── scripts/
+├── docs/
 ├── cursor/
-│   └── rules/          ← symlinked from <project>/.cursor/rules
-├── scripts/            ← setup scripts (connect-openclaw, connect-cursor, verify-links)
-└── docs/               ← setup and scope documentation
+├── dist/
+├── LICENSE
+└── README.md
 ```
 
-## Attachment model
+## Quick start
 
-Point `~/.agent-toolkit` at your local clone of this repository (for example with a symlink). The `connect-openclaw.sh` and `connect-cursor.sh` scripts (under `scripts/`) wire up OpenClaw and Cursor to use this tree. Run `verify-links.sh` to validate all symlinks after setup.
+By default, local tooling resolves this repository through `~/.agent-toolkit`.
 
-For full setup instructions, see `docs/setup.md`. For an overview of what this repo covers, see `docs/repo-scope.md`.
+```bash
+ln -s /path/to/your/clone ~/.agent-toolkit
+```
+
+Then use the setup helpers:
+
+```bash
+~/.agent-toolkit/scripts/connect-openclaw.sh
+~/.agent-toolkit/scripts/connect-cursor.sh
+~/.agent-toolkit/scripts/verify-links.sh
+```
+
+If you do not want to use the default alias, the scripts also support explicit path overrides. See `docs/setup.md` for the full flag and environment-variable matrix.
+
+## GitHub Actions assets
+
+This repository includes a reusable CodeRabbit remediation workflow plus the supporting helper scripts that back it.
+
+- **Reusable workflow:** `.github/workflows/coderabbit-pr-automation.yml`
+- **Helper scripts:** `scripts/coderabbit/`
+- **Template draft:** `.github/workflow-templates/coderabbit-pr-automation-wrapper.yml`
+- **Publishing guidance for an org-level `.github` repo:** `docs/org-github-repo-workflow-template-layout.md`
+
+The intended split is:
+- this repository owns the reusable implementation and helper scripts
+- an organization-level public `.github` repository owns the workflow-template publishing surface
+- consumer repositories keep only thin wrapper workflows and repo-specific variables
+
+## Shared-content boundary
+
+This repository is for **shared, reusable content only**. It should not contain machine-local auth state, secrets, personal environment dumps, or clone-specific configuration. For the full scope boundary, see `docs/repo-scope.md`.
+
+## Documentation map
+
+- `docs/setup.md` — setup, linking, overrides, and verification
+- `docs/repo-scope.md` — what belongs in the repo and what does not
+- `docs/org-github-repo-workflow-template-layout.md` — how to publish the workflow template through an org `.github` repo
+- `docs/org-github-repo-README.example.md` — example README for that org `.github` repository
+- `scripts/coderabbit/README.md` — runtime notes for the CodeRabbit helper scripts
+- `cursor/rules/README.md` — how shared Cursor rules are linked into projects
+
+## License
+
+MIT, see `LICENSE`.
