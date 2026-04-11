@@ -6,9 +6,14 @@ name: CodeRabbit PR automation wrapper
 # 1. Ensure the reusable workflow reference below points at the desired shared repo/ref.
 # 2. Configure repository or organization variables as needed:
 #    - CODERABBIT_RUNNER_LABELS_JSON
+#    - CODERABBIT_AGENT_RUNTIME
 #    - CODERABBIT_AGENT_COMMAND_JSON or CODERABBIT_AGENT_COMMAND
 #    - CODERABBIT_CLI (optional)
-# 3. The reusable workflow uses GITHUB_TOKEN as GH_TOKEN by default.
+#    - CURSOR_CLI (optional)
+# 3. Configure repository or organization secrets as needed:
+#    - CURSOR_API_KEY when CODERABBIT_AGENT_RUNTIME=cursor
+#    - CODERABBIT_API_KEY when validation is enabled
+# 4. The reusable workflow uses GITHUB_TOKEN as GH_TOKEN by default.
 
 permissions:
   contents: read
@@ -56,11 +61,15 @@ jobs:
       max_cycles: ${{ fromJSON(inputs.max_cycles) }}
       shared_repository_ref: ${{ inputs.shared_repository_ref }}
       runner_labels_json: ${{ vars.CODERABBIT_RUNNER_LABELS_JSON != '' && vars.CODERABBIT_RUNNER_LABELS_JSON || '["self-hosted"]' }}
+      agent_runtime: ${{ vars.CODERABBIT_AGENT_RUNTIME != '' && vars.CODERABBIT_AGENT_RUNTIME || 'none' }}
       agent_command_json: ${{ vars.CODERABBIT_AGENT_COMMAND_JSON }}
       agent_command: ${{ vars.CODERABBIT_AGENT_COMMAND }}
       coderabbit_cli: ${{ vars.CODERABBIT_CLI }}
+      cursor_cli: ${{ vars.CURSOR_CLI }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+      CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}
 
   coderabbit-pr-automation-pr:
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
@@ -72,8 +81,12 @@ jobs:
       max_cycles: 3
       shared_repository_ref: main
       runner_labels_json: ${{ vars.CODERABBIT_RUNNER_LABELS_JSON != '' && vars.CODERABBIT_RUNNER_LABELS_JSON || '["self-hosted"]' }}
+      agent_runtime: ${{ vars.CODERABBIT_AGENT_RUNTIME != '' && vars.CODERABBIT_AGENT_RUNTIME || 'none' }}
       agent_command_json: ${{ vars.CODERABBIT_AGENT_COMMAND_JSON }}
       agent_command: ${{ vars.CODERABBIT_AGENT_COMMAND }}
       coderabbit_cli: ${{ vars.CODERABBIT_CLI }}
+      cursor_cli: ${{ vars.CURSOR_CLI }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+      CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}

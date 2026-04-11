@@ -52,6 +52,11 @@ on:
         required: false
         type: string
         default: main
+      agent_runtime:
+        description: Which coding-agent runtime to prepare before the bounded agent pass
+        required: false
+        type: string
+        default: none
       agent_command_json:
         description: Preferred JSON-array command template for the bounded agent pass
         required: false
@@ -67,9 +72,28 @@ on:
         required: false
         type: string
         default: ''
+      cursor_cli:
+        description: Optional path or binary name override for the Cursor CLI used during agent setup
+        required: false
+        type: string
+        default: ''
+      install_agent_runtime:
+        description: Whether the workflow should install and prepare the selected agent runtime
+        required: false
+        type: boolean
+        default: true
+      install_validation_runtime:
+        description: Whether the workflow should install and authenticate the CodeRabbit CLI when validation is enabled
+        required: false
+        type: boolean
+        default: true
     secrets:
       GH_TOKEN:
         required: true
+      CURSOR_API_KEY:
+        required: false
+      CODERABBIT_API_KEY:
+        required: false
 
 jobs:
   coderabbit-pr-automation:
@@ -89,9 +113,11 @@ jobs:
       SHARED_CHECKOUT_PATH: ${{ inputs.shared_checkout_path }}
       SHARED_REPOSITORY: ${{ inputs.shared_repository }}
       SHARED_REPOSITORY_REF: ${{ inputs.shared_repository_ref }}
+      AGENT_RUNTIME: ${{ inputs.agent_runtime }}
       CODERABBIT_AGENT_COMMAND_JSON: ${{ inputs.agent_command_json }}
       CODERABBIT_AGENT_COMMAND: ${{ inputs.agent_command }}
       CODERABBIT_CLI: ${{ inputs.coderabbit_cli }}
+      CURSOR_CLI: ${{ inputs.cursor_cli }}
       CODERABBIT_OUT_DIR: ${{ github.workspace }}/${{ inputs.target_checkout_path }}/.coderabbit/out
 
     steps:
@@ -171,6 +197,24 @@ jobs:
             --expected-repository "$GITHUB_REPOSITORY" \
             --working-tree-must-be-clean "$WORKING_TREE_MUST_BE_CLEAN" \
             --out-dir "$CODERABBIT_OUT_DIR"
+
+      - name: Set up selected agent runtime
+        if: steps.issue_count.outputs.count != '0' && inputs.install_agent_runtime && inputs.agent_runtime != 'none'
+        shell: bash
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          set -euo pipefail
+          bash "$SHARED_CHECKOUT_PATH/scripts/coderabbit/setup_agent_runtime.sh" "$AGENT_RUNTIME"
+
+      - name: Set up CodeRabbit CLI
+        if: steps.issue_count.outputs.count != '0' && inputs.run_validation && inputs.install_validation_runtime
+        shell: bash
+        env:
+          CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}
+        run: |
+          set -euo pipefail
+          bash "$SHARED_CHECKOUT_PATH/scripts/coderabbit/setup_coderabbit_cli.sh"
 
       - name: Run bounded remediation orchestrator
         if: steps.issue_count.outputs.count != '0'
