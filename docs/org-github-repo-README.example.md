@@ -47,11 +47,22 @@ That repository owns:
 After creating the wrapper workflow from the template, the consumer repository will usually define these repository or organization variables:
 
 - `CODERABBIT_RUNNER_LABELS_JSON`
+- `CODERABBIT_AGENT_RUNTIME`
 - `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
 - `CODERABBIT_CLI` (optional)
+- `CURSOR_CLI` (optional)
 
 Typical token setup:
 - `GITHUB_TOKEN` is forwarded by the wrapper as `GH_TOKEN`
+
+Typical secret setup:
+- `CURSOR_API_KEY` when `CODERABBIT_AGENT_RUNTIME=cursor`
+- `CODERABBIT_API_KEY` when validation is enabled
+
+Recommended first runtime contract:
+- keep the template thin and set `CODERABBIT_AGENT_RUNTIME` to the runtime you want to prepare, for example `cursor`
+- keep the actual remediation command explicit through `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
+- let the reusable workflow install Cursor CLI and CodeRabbit CLI only when those features are enabled
 
 ## Publishing notes
 

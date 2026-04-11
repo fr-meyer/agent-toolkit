@@ -114,11 +114,15 @@ For final publication, the metadata can omit the `preview` label so the template
 After creating the workflow from the template, the consumer repo should usually define these variables:
 
 - `CODERABBIT_RUNNER_LABELS_JSON`
+- `CODERABBIT_AGENT_RUNTIME`
 - `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
 - `CODERABBIT_CLI` (optional)
+- `CURSOR_CLI` (optional)
 
 Typical secret usage:
-- `GITHUB_TOKEN` is enough for the current wrapper draft because it is forwarded as `GH_TOKEN`
+- `GITHUB_TOKEN` is forwarded as `GH_TOKEN`
+- `CURSOR_API_KEY` is required when `CODERABBIT_AGENT_RUNTIME=cursor`
+- `CODERABBIT_API_KEY` is required when validation is enabled
 
 ## Notes and caveats
 
