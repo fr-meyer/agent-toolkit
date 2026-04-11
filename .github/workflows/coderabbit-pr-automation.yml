@@ -98,6 +98,7 @@ jobs:
       - name: Checkout consumer repository
         uses: actions/checkout@v4
         with:
+          ref: refs/pull/${{ inputs.pr_number }}/head
           path: ${{ inputs.target_checkout_path }}
           fetch-depth: 0
 
