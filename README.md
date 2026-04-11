@@ -11,7 +11,6 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 - **Setup and linking scripts** under `scripts/`
 - **Shared Cursor assets** under `cursor/`
 - **Reference and setup docs** under `docs/`
-- **Packaged release artifacts** under `dist/`
 
 ## Current skill set
 
@@ -54,7 +53,6 @@ agent-toolkit/
 ├── scripts/
 ├── docs/
 ├── cursor/
-├── dist/
 ├── LICENSE
 └── README.md
 ```
@@ -93,11 +91,11 @@ The intended split is:
 
 ## Shared-content boundary
 
-This repository is for **shared, reusable content only**. It should not contain machine-local auth state, secrets, personal environment dumps, or clone-specific configuration. For the full scope boundary, see `docs/repo-scope.md`.
+This repository is for **shared, reusable content only**. It should not contain machine-local auth state, secrets, personal environment dumps, clone-specific configuration, or packaged release bundles tracked in source control. For the full scope boundary, see `docs/repo-scope.md`.
 
 ## Documentation map
 
-- `docs/setup.md` — setup, linking, overrides, and verification
+- `docs/setup.md` — setup, linking, overrides, verification, and repo-rename migration
 - `docs/repo-scope.md` — what belongs in the repo and what does not
 - `docs/org-github-repo-workflow-template-layout.md` — how to publish the workflow template through an org `.github` repo
 - `docs/org-github-repo-README.example.md` — example README for that org `.github` repository

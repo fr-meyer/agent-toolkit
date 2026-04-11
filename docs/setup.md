@@ -227,7 +227,7 @@ This behavior is intentional: the scripts protect existing data on your machine.
 
 ## Migration — existing clones after the repo rename
 
-This project uses a strict cutover: there is no compatibility layer for the old `shared-agent-skills` remote name or layout assumptions in these docs.
+This project uses a strict cutover after the rename from `shared-agent-skills` to `agent-toolkit`: there is no compatibility layer for the old remote name or layout assumptions in these docs.
 
 If you already had a clone and the remote URL changed:
 
