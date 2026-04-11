@@ -82,7 +82,10 @@ query($owner: String!, $name: String!, $number: Int!, $after: String) {
               body
               createdAt
               author {
+                __typename
                 login
+                resourcePath
+                url
               }
             }
           }
@@ -200,18 +203,38 @@ combined = {
 
 out_path.write_text(json.dumps(combined, indent=2) + '\n', encoding='utf-8')
 
-def is_coderabbit_author(login: str | None) -> bool:
-    if not login:
+ALLOWED_CODERABBIT_LOGIN = 'coderabbitai'
+ALLOWED_CODERABBIT_RESOURCE_PATH = '/apps/coderabbitai'
+ALLOWED_CODERABBIT_URL = 'https://github.com/apps/coderabbitai'
+
+def is_coderabbit_author(author) -> bool:
+    if not isinstance(author, dict):
         return False
-    lowered = login.strip().lower()
-    return lowered.startswith('coderabbit') or lowered.startswith('coderabbitai')
+
+    login = (author.get('login') or '').strip().lower()
+    if login != ALLOWED_CODERABBIT_LOGIN:
+        return False
+
+    resource_path = (author.get('resourcePath') or '').strip().lower()
+    if resource_path and resource_path != ALLOWED_CODERABBIT_RESOURCE_PATH:
+        return False
+
+    url = (author.get('url') or '').strip().lower()
+    if url and url != ALLOWED_CODERABBIT_URL:
+        return False
+
+    typename = (author.get('__typename') or '').strip()
+    if typename and typename != 'Bot':
+        return False
+
+    return True
 
 unresolved_threads = [thread for thread in threads if not thread.get('isResolved')]
 outdated_unresolved_threads = [thread for thread in unresolved_threads if thread.get('isOutdated')]
 coderabbit_root_unresolved_threads = []
 for thread in unresolved_threads:
     comments = ((thread.get('comments') or {}).get('nodes') or [])
-    if comments and is_coderabbit_author(((comments[0].get('author') or {}).get('login'))):
+    if comments and is_coderabbit_author(comments[0].get('author')):
         coderabbit_root_unresolved_threads.append(thread)
 
 summary = {

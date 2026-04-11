@@ -16,10 +16,9 @@ SEVERITY_ORDER = {
     "unknown": 4,
 }
 
-CODERABBIT_PREFIXES = (
-    "coderabbit",
-    "coderabbitai",
-)
+ALLOWED_CODERABBIT_LOGINS = {"coderabbitai"}
+ALLOWED_CODERABBIT_RESOURCE_PATHS = {"/apps/coderabbitai"}
+ALLOWED_CODERABBIT_URLS = {"https://github.com/apps/coderabbitai"}
 
 HEADER_PATTERN = re.compile(r"(?m)^\s*_([^_]+?)_\s*\|\s*_([^_]+?)_\s*$")
 DETAILS_SECTION_PATTERN = re.compile(
@@ -78,11 +77,27 @@ def normalize_newlines(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def is_coderabbit_author(login: Optional[str]) -> bool:
-    if not login:
+def is_coderabbit_author(author: Optional[Dict[str, Any]]) -> bool:
+    if not isinstance(author, dict):
         return False
-    lowered = login.strip().lower()
-    return any(lowered.startswith(prefix) for prefix in CODERABBIT_PREFIXES)
+
+    login = (author.get("login") or "").strip().lower()
+    if login not in ALLOWED_CODERABBIT_LOGINS:
+        return False
+
+    resource_path = (author.get("resourcePath") or "").strip().lower()
+    if resource_path and resource_path not in ALLOWED_CODERABBIT_RESOURCE_PATHS:
+        return False
+
+    url = (author.get("url") or "").strip().lower()
+    if url and url not in ALLOWED_CODERABBIT_URLS:
+        return False
+
+    typename = (author.get("__typename") or "").strip()
+    if typename and typename != "Bot":
+        return False
+
+    return True
 
 
 def clean_inline_text(text: str) -> str:
@@ -327,8 +342,8 @@ def has_coderabbit_root_comment(thread: Dict[str, Any]) -> bool:
     comments = comments_for_thread(thread)
     if not comments:
         return False
-    root_login = ((comments[0].get("author") or {}).get("login"))
-    return is_coderabbit_author(root_login)
+    root_author = comments[0].get("author")
+    return is_coderabbit_author(root_author)
 
 
 def choose_primary_comment(thread: Dict[str, Any]) -> Optional[Dict[str, Any]]:
