@@ -198,6 +198,21 @@ jobs:
             --working-tree-must-be-clean "$WORKING_TREE_MUST_BE_CLEAN" \
             --out-dir "$CODERABBIT_OUT_DIR"
 
+      - name: Harden secret masking
+        if: steps.issue_count.outputs.count != '0'
+        shell: bash
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${CURSOR_API_KEY:-}" ]]; then
+            echo "::add-mask::$CURSOR_API_KEY"
+          fi
+          if [[ -n "${CODERABBIT_API_KEY:-}" ]]; then
+            echo "::add-mask::$CODERABBIT_API_KEY"
+          fi
+
       - name: Set up selected agent runtime
         if: steps.issue_count.outputs.count != '0' && inputs.install_agent_runtime && inputs.agent_runtime != 'none'
         shell: bash
@@ -221,6 +236,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
         run: |
           set -euo pipefail
           bash "$SHARED_CHECKOUT_PATH/scripts/coderabbit/orchestrate.sh" \
