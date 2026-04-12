@@ -122,7 +122,7 @@ After creating the workflow from the template, the consumer repo should usually 
 Typical secret usage:
 - `GITHUB_TOKEN` is forwarded as `GH_TOKEN`
 - `CURSOR_API_KEY` is required when `CODERABBIT_AGENT_RUNTIME=cursor`
-- `CODERABBIT_API_KEY` is required when validation is enabled
+- `CODERABBIT_API_KEY` is required only when validation is explicitly enabled
 
 ## Notes and caveats
 

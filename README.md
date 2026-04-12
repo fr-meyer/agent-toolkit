@@ -93,7 +93,8 @@ Current runtime contract for the CodeRabbit workflow:
 - choose the coding-agent runtime with `CODERABBIT_AGENT_RUNTIME` (for example `cursor`)
 - keep the actual remediation command explicit via `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
 - provide `CURSOR_API_KEY` when using `cursor`
-- provide `CODERABBIT_API_KEY` when CodeRabbit CLI validation is enabled
+- for the current free-tier path, default to `run_validation: false`
+- provide `CODERABBIT_API_KEY` only when CodeRabbit CLI validation is explicitly enabled
 
 ## Shared-content boundary
 

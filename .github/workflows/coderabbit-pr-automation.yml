@@ -11,7 +11,7 @@ on:
         description: Whether to run validation after remediation
         required: false
         type: boolean
-        default: true
+        default: false
       working_tree_must_be_clean:
         description: Whether the target checkout must be clean before remediation
         required: false

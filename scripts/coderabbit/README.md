@@ -56,15 +56,16 @@ Recommended repository or organization variables:
 
 Required secrets by feature:
 - `CURSOR_API_KEY` when `agent_runtime=cursor`
-- `CODERABBIT_API_KEY` when `run_validation=true`
+- `CODERABBIT_API_KEY` only when `run_validation=true`
 
-Recommended first end-to-end configuration:
+Recommended first end-to-end configuration for the free-tier path:
 - `agent_runtime: cursor`
-- `run_validation: true`
+- `run_validation: false`
 - `max_cycles: 1`
 - `working_tree_must_be_clean: true`
+- advisory mode only, with artifacts and diff capture but no commit or push
 
 Implementation note:
 - `setup_agent_runtime.sh` installs Cursor CLI via `curl https://cursor.com/install -fsS | bash` when `agent_runtime=cursor` and the binary is not already available.
-- The Cursor setup step currently verifies installation and requires `CURSOR_API_KEY` to be present for downstream headless agent commands.
-- `setup_coderabbit_cli.sh` installs CodeRabbit CLI via `curl -fsSL https://cli.coderabbit.ai/install.sh | sh` and authenticates it with `coderabbit auth login --api-key "$CODERABBIT_API_KEY"`.
+- The Cursor setup step verifies the `agent` binary and requires `CURSOR_API_KEY` to be present for downstream headless agent commands.
+- `setup_coderabbit_cli.sh` remains available for paid or explicitly enabled validation flows and authenticates with `coderabbit auth login --api-key "$CODERABBIT_API_KEY"`.

@@ -57,11 +57,12 @@ Typical token setup:
 
 Typical secret setup:
 - `CURSOR_API_KEY` when `CODERABBIT_AGENT_RUNTIME=cursor`
-- `CODERABBIT_API_KEY` when validation is enabled
+- `CODERABBIT_API_KEY` only when validation is explicitly enabled
 
 Recommended first runtime contract:
 - keep the template thin and set `CODERABBIT_AGENT_RUNTIME` to the runtime you want to prepare, for example `cursor`
 - keep the actual remediation command explicit through `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
+- default the free-tier path to `run_validation: false`
 - let the reusable workflow install Cursor CLI and CodeRabbit CLI only when those features are enabled
 
 ## Publishing notes

@@ -12,7 +12,7 @@ name: CodeRabbit PR automation wrapper
 #    - CURSOR_CLI (optional)
 # 3. Configure repository or organization secrets as needed:
 #    - CURSOR_API_KEY when CODERABBIT_AGENT_RUNTIME=cursor
-#    - CODERABBIT_API_KEY when validation is enabled
+#    - CODERABBIT_API_KEY only if you explicitly enable CodeRabbit CLI validation
 # 4. The reusable workflow uses GITHUB_TOKEN as GH_TOKEN by default.
 
 permissions:
@@ -31,7 +31,7 @@ on:
         description: Whether to run validation after remediation
         required: false
         type: boolean
-        default: true
+        default: false
       working_tree_must_be_clean:
         description: Whether the target checkout must be clean before remediation
         required: false
@@ -76,7 +76,7 @@ jobs:
     uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@main
     with:
       pr_number: ${{ github.event.pull_request.number }}
-      run_validation: true
+      run_validation: false
       working_tree_must_be_clean: true
       max_cycles: 3
       shared_repository_ref: main

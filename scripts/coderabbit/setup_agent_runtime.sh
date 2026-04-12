@@ -38,19 +38,19 @@ resolve_binary() {
   return 1
 }
 
-find_cursor_binary() {
+find_cursor_agent_binary() {
   local configured="${CURSOR_CLI:-}"
   local candidate
-  if candidate=$(resolve_binary "$configured" cursor 2>/dev/null); then
+  if candidate=$(resolve_binary "$configured" agent 2>/dev/null); then
     printf '%s\n' "$candidate"
     return 0
   fi
   for candidate in \
-    "$HOME/.local/bin/cursor" \
-    "$HOME/.cursor/bin/cursor" \
-    "$HOME/bin/cursor" \
-    "/usr/local/bin/cursor" \
-    "/opt/homebrew/bin/cursor"
+    "$HOME/.local/bin/agent" \
+    "$HOME/.cursor/bin/agent" \
+    "$HOME/bin/agent" \
+    "/usr/local/bin/agent" \
+    "/opt/homebrew/bin/agent"
   do
     if [[ -x "$candidate" ]]; then
       printf '%s\n' "$candidate"
@@ -108,18 +108,18 @@ case "$RUNTIME" in
     append_path "$HOME/.cursor/bin"
     append_path "$HOME/bin"
 
-    CURSOR_BIN="$(find_cursor_binary || true)"
-    if [[ -z "$CURSOR_BIN" ]]; then
+    CURSOR_AGENT_BIN="$(find_cursor_agent_binary || true)"
+    if [[ -z "$CURSOR_AGENT_BIN" ]]; then
       echo "Installing Cursor CLI via the official installer..."
       bash -lc 'curl https://cursor.com/install -fsS | bash'
       append_path "$HOME/.local/bin"
       append_path "$HOME/.cursor/bin"
       append_path "$HOME/bin"
-      CURSOR_BIN="$(find_cursor_binary || true)"
+      CURSOR_AGENT_BIN="$(find_cursor_agent_binary || true)"
     fi
 
-    if [[ -z "$CURSOR_BIN" ]]; then
-      note="Cursor CLI installation completed, but no 'cursor' binary was found in the expected locations. Set cursor_cli to an explicit binary path if needed."
+    if [[ -z "$CURSOR_AGENT_BIN" ]]; then
+      note="Cursor CLI installation completed, but no 'agent' binary was found in the expected locations. Set cursor_cli to an explicit binary path if needed."
       write_status "failed" "$RUNTIME" "" "" "environment_api_key" "$note"
       echo "$note" >&2
       exit 1
@@ -127,15 +127,15 @@ case "$RUNTIME" in
 
     if [[ -z "${CURSOR_API_KEY:-}" ]]; then
       note="CURSOR_API_KEY is required when agent_runtime=cursor so the downstream agent command can run headlessly."
-      write_status "failed" "$RUNTIME" "$CURSOR_BIN" "$($CURSOR_BIN --version 2>/dev/null | head -n 1 || true)" "environment_api_key" "$note"
+      write_status "failed" "$RUNTIME" "$CURSOR_AGENT_BIN" "$($CURSOR_AGENT_BIN --version 2>/dev/null | head -n 1 || true)" "environment_api_key" "$note"
       echo "$note" >&2
       exit 1
     fi
 
-    VERSION_TEXT="$($CURSOR_BIN --version 2>/dev/null | head -n 1 || true)"
-    note="Cursor CLI is available. CURSOR_API_KEY has been provided to the job environment for downstream headless agent commands."
-    write_status "ready" "$RUNTIME" "$CURSOR_BIN" "$VERSION_TEXT" "environment_api_key" "$note"
-    echo "Cursor CLI ready: $CURSOR_BIN"
+    VERSION_TEXT="$($CURSOR_AGENT_BIN --version 2>/dev/null | head -n 1 || true)"
+    note="Cursor agent CLI is available. CURSOR_API_KEY has been provided to the job environment for downstream headless agent commands."
+    write_status "ready" "$RUNTIME" "$CURSOR_AGENT_BIN" "$VERSION_TEXT" "environment_api_key" "$note"
+    echo "Cursor agent CLI ready: $CURSOR_AGENT_BIN"
     if [[ -n "$VERSION_TEXT" ]]; then
       echo "$VERSION_TEXT"
     fi
