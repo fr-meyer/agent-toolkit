@@ -1,7 +1,7 @@
 # CodeRabbit workflow helper scripts
 
-This folder contains helper scripts for the shared reusable GitHub workflow:
-- `.github/workflows/coderabbit-pr-automation.yml`
+This folder contains helper scripts for the shared reusable workflow source asset:
+- `templates/reusable-workflows/coderabbit-pr-automation.yml`
 
 Current status:
 - fetch + normalize now implement the real deterministic intake path
@@ -30,7 +30,7 @@ Planned responsibilities:
 Notes:
 - These files are committed in the shared repo.
 - Runtime checkout folders like `_shared/` and `target/` are temporary job-time paths and are not part of the repository tree.
-- The reusable workflow exposes clean caller-facing inputs for:
+- The reusable workflow source asset exposes clean caller-facing inputs for:
   - runner selection via `runner_labels_json`
   - runtime preparation via `agent_runtime`
   - bounded agent execution via `agent_command_json` or `agent_command`
@@ -45,11 +45,11 @@ Notes:
   - fixed split-by-scope commit count via `fixed_commit_count`
   - ambiguous remainder handling via `stop_on_ambiguous_remainder`
 - The commit-pass helpers are policy and scope guards only. They should not implement their own commit-message generation logic; commit planning and message drafting stay delegated to `git-repo-sync` and `changeset-commit-partitioner`.
-- A GitHub-native workflow-template draft lives at:
-  - `.github/workflow-templates/coderabbit-pr-automation-wrapper.yml`
-  - `.github/workflow-templates/coderabbit-pr-automation-wrapper.properties.json`
-- An org-level publishing layout draft lives at:
-  - `docs/org-github-repo-workflow-template-layout.md`
+- The current starter workflow source assets live at:
+  - `templates/starter-workflows/coderabbit-pr-automation-wrapper.yml`
+  - `templates/starter-workflows/coderabbit-pr-comment-trigger.yml`
+- Layout guidance for this source-library model lives at:
+  - `docs/workflow-asset-library-layout.md`
 - Agent-pass runtime configuration is supplied to the scripts via environment variables:
   - `AGENT_RUNTIME` (`none`, `cursor`, `custom`, with room for future runtimes)
   - `CODERABBIT_AGENT_COMMAND_JSON` (preferred, JSON array command template)
