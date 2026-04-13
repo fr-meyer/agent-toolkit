@@ -1,6 +1,6 @@
 {
   "name": "CodeRabbit PR automation wrapper",
-  "description": "Dispatch a bounded CodeRabbit remediation workflow that calls the shared reusable workflow, installs shared Agent Skills and Cursor rules into the repo checkout, and uses repo variables for runner, agent, validation, and optional autocommit configuration.",
+  "description": "Dispatch a bounded CodeRabbit remediation workflow that calls the shared reusable workflow, installs shared Agent Skills and Cursor rules into the repo checkout, and uses repo variables for runner, agent, validation, autocommit, and optional autopush configuration.",
   "iconName": "octicon code-review",
   "creator": "fr-meyer",
   "categories": [

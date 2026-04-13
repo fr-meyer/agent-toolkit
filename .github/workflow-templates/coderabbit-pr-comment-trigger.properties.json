@@ -1,0 +1,14 @@
+{
+  "name": "CodeRabbit PR comment trigger",
+  "description": "Trigger the shared CodeRabbit remediation workflow from CodeRabbit-authored PR comments or review comments, with fork checks and per-PR concurrency control.",
+  "iconName": "octicon comment-discussion",
+  "creator": "fr-meyer",
+  "categories": [
+    "code-review",
+    "Automation"
+  ],
+  "filePatterns": [
+    "^(package\\.json|pyproject\\.toml|requirements\\.txt|go\\.mod|Cargo\\.toml|pom\\.xml|build\\.gradle(\\.kts)?|Dockerfile)$",
+    "^\\.github/"
+  ]
+}
