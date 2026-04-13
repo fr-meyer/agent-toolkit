@@ -23,6 +23,8 @@ Planned responsibilities:
 - `prepare_agent_context.sh` — install shared Agent Skills and Cursor rules into the target repo checkout for runtime discovery
 - `orchestrate.sh` — run the bounded remediation loop and optional validation
 - `run_agent_pass.sh` — invoke the agent runtime for one bounded remediation pass
+- `run_commit_pass.sh` — invoke the agent runtime for post-remediation commit creation using installed Git skills
+- `run_commit_pass_core.py` — prepare commit-pass prompts, filter runtime-installed files out of commit scope, preserve delegation to the installed Git skills, and capture commit-pass artifacts
 - `run_validation.sh` — run CodeRabbit validation and summarize stop conditions
 
 Notes:
@@ -37,6 +39,12 @@ Notes:
   - shared Agent Skills installation via `install_shared_skills`
   - shared Cursor rules installation via `install_cursor_rules`
   - agent context install mode via `shared_skills_install_mode`
+  - post-remediation autocommit via `auto_commit`
+  - commit strategy selection via `commit_strategy`
+  - split-by-scope commit-count mode via `commit_count_mode`
+  - fixed split-by-scope commit count via `fixed_commit_count`
+  - ambiguous remainder handling via `stop_on_ambiguous_remainder`
+- The commit-pass helpers are policy and scope guards only. They should not implement their own commit-message generation logic; commit planning and message drafting stay delegated to `git-repo-sync` and `changeset-commit-partitioner`.
 - A GitHub-native workflow-template draft lives at:
   - `.github/workflow-templates/coderabbit-pr-automation-wrapper.yml`
   - `.github/workflow-templates/coderabbit-pr-automation-wrapper.properties.json`
@@ -61,6 +69,11 @@ Recommended repository or organization variables:
 - `CODERABBIT_INSTALL_SHARED_SKILLS` (optional, default `true`)
 - `CODERABBIT_INSTALL_CURSOR_RULES` (optional, default `true`)
 - `CODERABBIT_SHARED_SKILLS_INSTALL_MODE` (optional, default `copy`)
+- `CODERABBIT_AUTO_COMMIT` (optional, default `false`)
+- `CODERABBIT_COMMIT_STRATEGY` (optional, default `single-commit`)
+- `CODERABBIT_COMMIT_COUNT_MODE` (optional, default `auto`)
+- `CODERABBIT_FIXED_COMMIT_COUNT` (optional, default `1`)
+- `CODERABBIT_STOP_ON_AMBIGUOUS_REMAINDER` (optional, default `true`)
 
 Required secrets by feature:
 - `CURSOR_API_KEY` when `agent_runtime=cursor`
@@ -70,6 +83,12 @@ Recommended agent-context defaults:
 - install shared skills: `true`
 - install Cursor rules: `true`
 - install mode: `copy`
+
+Recommended autocommit defaults:
+- auto commit: `false`
+- commit strategy: `single-commit`
+- commit count mode: `auto`
+- stop on ambiguous remainder: `true`
 
 Recommended first end-to-end configuration for the free-tier path:
 - `agent_runtime: cursor`

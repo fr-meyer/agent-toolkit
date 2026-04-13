@@ -99,6 +99,9 @@ Current runtime contract for the CodeRabbit workflow:
 - shared Agent Skills can be installed into the target repo via `install_shared_skills`
 - shared Cursor rules can be installed into the target repo via `install_cursor_rules`
 - the default install mode for shared agent context is `copy`
+- optional local post-remediation commit creation can be enabled via `auto_commit`
+- split-by-scope autocommit can run in `auto` or `fixed` commit-count mode
+- commit planning and commit-message drafting are delegated to the installed Git skills rather than hardcoded into the workflow
 - provide `CODERABBIT_API_KEY` only when CodeRabbit CLI validation is explicitly enabled
 
 ## Shared-content boundary

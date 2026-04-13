@@ -92,6 +92,31 @@ on:
         required: false
         type: string
         default: copy
+      auto_commit:
+        description: Whether to create local Git commit(s) after a successful remediation pass
+        required: false
+        type: boolean
+        default: false
+      commit_strategy:
+        description: Commit strategy for post-remediation Git save
+        required: false
+        type: string
+        default: single-commit
+      commit_count_mode:
+        description: Commit-count control for split-by-scope mode
+        required: false
+        type: string
+        default: auto
+      fixed_commit_count:
+        description: Number of commit groups to execute when commit_count_mode is fixed
+        required: false
+        type: number
+        default: 1
+      stop_on_ambiguous_remainder:
+        description: Whether to stop without forcing ambiguous leftover changes into commits
+        required: false
+        type: boolean
+        default: true
       install_agent_runtime:
         description: Whether the workflow should install and prepare the selected agent runtime
         required: false
@@ -136,6 +161,11 @@ jobs:
       INSTALL_SHARED_SKILLS: ${{ inputs.install_shared_skills }}
       INSTALL_CURSOR_RULES: ${{ inputs.install_cursor_rules }}
       SHARED_SKILLS_INSTALL_MODE: ${{ inputs.shared_skills_install_mode }}
+      AUTO_COMMIT: ${{ inputs.auto_commit }}
+      COMMIT_STRATEGY: ${{ inputs.commit_strategy }}
+      COMMIT_COUNT_MODE: ${{ inputs.commit_count_mode }}
+      FIXED_COMMIT_COUNT: ${{ inputs.fixed_commit_count }}
+      STOP_ON_AMBIGUOUS_REMAINDER: ${{ inputs.stop_on_ambiguous_remainder }}
       CODERABBIT_OUT_DIR: ${{ github.workspace }}/${{ inputs.target_checkout_path }}/.coderabbit/out
 
     steps:
@@ -276,6 +306,23 @@ jobs:
             --pr-number "$PR_NUMBER" \
             --run-validation "$RUN_VALIDATION" \
             --out-dir "$CODERABBIT_OUT_DIR"
+
+      - name: Run post-remediation commit pass
+        if: steps.issue_count.outputs.count != '0' && inputs.auto_commit
+        shell: bash
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          set -euo pipefail
+          bash "$SHARED_CHECKOUT_PATH/scripts/coderabbit/run_commit_pass.sh" \
+            --repo-path "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" \
+            --shared-root "$GITHUB_WORKSPACE/$SHARED_CHECKOUT_PATH" \
+            --pr-number "$PR_NUMBER" \
+            --out-dir "$CODERABBIT_OUT_DIR" \
+            --commit-strategy "$COMMIT_STRATEGY" \
+            --commit-count-mode "$COMMIT_COUNT_MODE" \
+            --fixed-commit-count "$FIXED_COMMIT_COUNT" \
+            --stop-on-ambiguous-remainder "$STOP_ON_AMBIGUOUS_REMAINDER"
 
       - name: Upload CodeRabbit workflow artifacts
         if: always()
