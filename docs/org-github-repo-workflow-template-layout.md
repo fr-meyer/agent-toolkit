@@ -124,6 +124,24 @@ Typical secret usage:
 - `CURSOR_API_KEY` is required when `CODERABBIT_AGENT_RUNTIME=cursor`
 - `CODERABBIT_API_KEY` is required only when validation is explicitly enabled
 
+## Pinned reusable-workflow ref policy
+
+Starter templates in this repository are the canonical repo-local starting point for consumer repositories.
+
+Rules:
+- the shared reusable workflow implementation lives in `.github/workflows/` in `agent-toolkit`
+- starter templates live in `.github/workflow-templates/`
+- starter templates must pin both:
+  - the reusable workflow `uses: ...@<sha>` reference
+  - the paired `shared_repository_ref`
+- for a given reusable workflow call, those two pinned values must stay identical
+- when a reusable workflow changes on `main`, a follow-up maintenance commit updates the starter-template pins
+- consumer repositories can adapt copied workflows locally, but this shared repository remains canonical for starter templates
+
+Automation note:
+- discovery and starter-template updates are AI-assisted
+- final syntax and pin-integrity validation is deterministic
+
 ## Notes and caveats
 
 - GitHub workflow templates are discovered from an organization's public `.github` repository.

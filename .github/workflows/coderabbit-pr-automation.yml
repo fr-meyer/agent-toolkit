@@ -139,6 +139,8 @@ on:
         required: false
       CODERABBIT_API_KEY:
         required: false
+      WORKFLOW_PUSH_TOKEN:
+        required: false
 
 jobs:
   coderabbit-pr-automation:
@@ -258,6 +260,7 @@ jobs:
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}
+          WORKFLOW_PUSH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN }}
         run: |
           set -euo pipefail
           if [[ -n "${CURSOR_API_KEY:-}" ]]; then
@@ -265,6 +268,9 @@ jobs:
           fi
           if [[ -n "${CODERABBIT_API_KEY:-}" ]]; then
             echo "::add-mask::$CODERABBIT_API_KEY"
+          fi
+          if [[ -n "${WORKFLOW_PUSH_TOKEN:-}" ]]; then
+            echo "::add-mask::$WORKFLOW_PUSH_TOKEN"
           fi
 
       - name: Set up selected agent runtime
@@ -353,6 +359,44 @@ jobs:
             --commit-count-mode "$COMMIT_COUNT_MODE" \
             --fixed-commit-count "$FIXED_COMMIT_COUNT" \
             --stop-on-ambiguous-remainder "$STOP_ON_AMBIGUOUS_REMAINDER"
+
+      - name: Classify push credential requirements
+        id: push_requirements
+        if: steps.issue_count.outputs.count != '0' && inputs.auto_commit && inputs.auto_push
+        shell: bash
+        env:
+          WORKFLOW_PUSH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH=$(git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" rev-parse --abbrev-ref HEAD)
+          WORKFLOW_DIFF=$(git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" diff --name-only "origin/$BRANCH..HEAD" -- '.github/workflows/**' || true)
+          if [[ -z "$WORKFLOW_DIFF" ]]; then
+            WORKFLOW_DIFF=$(git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" diff --name-only "origin/$BRANCH..HEAD" -- .github/workflows || true)
+          fi
+          if [[ -z "$WORKFLOW_DIFF" ]]; then
+            echo "requires_workflow_push_token=false" >> "$GITHUB_OUTPUT"
+            echo "No workflow-path changes detected in outgoing push."
+            exit 0
+          fi
+
+          echo "requires_workflow_push_token=true" >> "$GITHUB_OUTPUT"
+          echo "Workflow-path changes detected in outgoing push:"
+          printf '%s\n' "$WORKFLOW_DIFF"
+
+          if [[ -z "${WORKFLOW_PUSH_TOKEN:-}" ]]; then
+            echo "Pending push touches .github/workflows/**, but WORKFLOW_PUSH_TOKEN is not configured." >&2
+            exit 1
+          fi
+
+      - name: Configure privileged push URL
+        if: steps.issue_count.outputs.count != '0' && inputs.auto_commit && inputs.auto_push && steps.push_requirements.outputs.requires_workflow_push_token == 'true'
+        shell: bash
+        env:
+          WORKFLOW_PUSH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" remote set-url --push origin \
+            "https://x-access-token:${WORKFLOW_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
       - name: Push post-remediation commit(s)
         if: steps.issue_count.outputs.count != '0' && inputs.auto_commit && inputs.auto_push

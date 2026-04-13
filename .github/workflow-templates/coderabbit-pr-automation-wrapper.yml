@@ -3,7 +3,8 @@ name: CodeRabbit PR automation wrapper
 # Draft GitHub workflow template for consumer repositories.
 #
 # Setup notes after creating this workflow from the template:
-# 1. Ensure the reusable workflow reference below points at the desired shared repo/ref.
+# 1. Do not hand-edit the pinned reusable-workflow SHA independently.
+#    The repo-maintained sync workflow keeps uses and shared_repository_ref aligned.
 # 2. Configure repository or organization variables as needed:
 #    - CODERABBIT_RUNNER_LABELS_JSON
 #    - CODERABBIT_AGENT_RUNTIME
@@ -52,24 +53,20 @@ on:
         required: false
         type: number
         default: 3
-      shared_repository_ref:
-        description: Branch, tag, or SHA of the shared toolkit workflow to use
-        required: false
-        type: string
-        default: main
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
   coderabbit-pr-automation-dispatch:
     if: ${{ github.event_name == 'workflow_dispatch' }}
+    # managed-shared-workflow-ref: .github/workflows/coderabbit-pr-automation.yml
     uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@39a84b813769663a445cdeac62322ffd2ee8a435
     with:
       pr_number: ${{ fromJSON(inputs.pr_number) }}
       run_validation: ${{ inputs.run_validation }}
       working_tree_must_be_clean: ${{ inputs.working_tree_must_be_clean }}
       max_cycles: ${{ fromJSON(inputs.max_cycles) }}
-      shared_repository_ref: ${{ inputs.shared_repository_ref }}
+      shared_repository_ref: 39a84b813769663a445cdeac62322ffd2ee8a435
       runner_labels_json: ${{ vars.CODERABBIT_RUNNER_LABELS_JSON != '' && vars.CODERABBIT_RUNNER_LABELS_JSON || '["self-hosted"]' }}
       agent_runtime: ${{ vars.CODERABBIT_AGENT_RUNTIME != '' && vars.CODERABBIT_AGENT_RUNTIME || 'none' }}
       agent_command_json: ${{ vars.CODERABBIT_AGENT_COMMAND_JSON }}
@@ -93,13 +90,14 @@ jobs:
 
   coderabbit-pr-automation-pr:
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
+    # managed-shared-workflow-ref: .github/workflows/coderabbit-pr-automation.yml
     uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@39a84b813769663a445cdeac62322ffd2ee8a435
     with:
       pr_number: ${{ github.event.pull_request.number }}
       run_validation: false
       working_tree_must_be_clean: true
       max_cycles: 3
-      shared_repository_ref: main
+      shared_repository_ref: 39a84b813769663a445cdeac62322ffd2ee8a435
       runner_labels_json: ${{ vars.CODERABBIT_RUNNER_LABELS_JSON != '' && vars.CODERABBIT_RUNNER_LABELS_JSON || '["self-hosted"]' }}
       agent_runtime: ${{ vars.CODERABBIT_AGENT_RUNTIME != '' && vars.CODERABBIT_AGENT_RUNTIME || 'none' }}
       agent_command_json: ${{ vars.CODERABBIT_AGENT_COMMAND_JSON }}
