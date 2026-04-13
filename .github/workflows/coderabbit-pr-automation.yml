@@ -77,6 +77,21 @@ on:
         required: false
         type: string
         default: ''
+      install_shared_skills:
+        description: Whether to install shared Agent Skills into the target repository before agent execution
+        required: false
+        type: boolean
+        default: true
+      install_cursor_rules:
+        description: Whether to install shared Cursor rules into the target repository before agent execution
+        required: false
+        type: boolean
+        default: true
+      shared_skills_install_mode:
+        description: Install mode for shared Agent Skills and Cursor rules
+        required: false
+        type: string
+        default: copy
       install_agent_runtime:
         description: Whether the workflow should install and prepare the selected agent runtime
         required: false
@@ -118,6 +133,9 @@ jobs:
       CODERABBIT_AGENT_COMMAND: ${{ inputs.agent_command }}
       CODERABBIT_CLI: ${{ inputs.coderabbit_cli }}
       CURSOR_CLI: ${{ inputs.cursor_cli }}
+      INSTALL_SHARED_SKILLS: ${{ inputs.install_shared_skills }}
+      INSTALL_CURSOR_RULES: ${{ inputs.install_cursor_rules }}
+      SHARED_SKILLS_INSTALL_MODE: ${{ inputs.shared_skills_install_mode }}
       CODERABBIT_OUT_DIR: ${{ github.workspace }}/${{ inputs.target_checkout_path }}/.coderabbit/out
 
     steps:
@@ -230,6 +248,19 @@ jobs:
         run: |
           set -euo pipefail
           bash "$SHARED_CHECKOUT_PATH/scripts/coderabbit/setup_coderabbit_cli.sh"
+
+      - name: Prepare shared agent context
+        if: steps.issue_count.outputs.count != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$SHARED_CHECKOUT_PATH/scripts/coderabbit/prepare_agent_context.sh" \
+            --repo-path "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" \
+            --shared-root "$GITHUB_WORKSPACE/$SHARED_CHECKOUT_PATH" \
+            --out-dir "$CODERABBIT_OUT_DIR" \
+            --install-shared-skills "$INSTALL_SHARED_SKILLS" \
+            --install-cursor-rules "$INSTALL_CURSOR_RULES" \
+            --install-mode "$SHARED_SKILLS_INSTALL_MODE"
 
       - name: Run bounded remediation orchestrator
         if: steps.issue_count.outputs.count != '0'

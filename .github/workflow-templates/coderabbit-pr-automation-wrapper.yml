@@ -10,6 +10,9 @@ name: CodeRabbit PR automation wrapper
 #    - CODERABBIT_AGENT_COMMAND_JSON or CODERABBIT_AGENT_COMMAND
 #    - CODERABBIT_CLI (optional)
 #    - CURSOR_CLI (optional)
+#    - CODERABBIT_INSTALL_SHARED_SKILLS (optional, default true)
+#    - CODERABBIT_INSTALL_CURSOR_RULES (optional, default true)
+#    - CODERABBIT_SHARED_SKILLS_INSTALL_MODE (optional, default copy)
 # 3. Configure repository or organization secrets as needed:
 #    - CURSOR_API_KEY when CODERABBIT_AGENT_RUNTIME=cursor
 #    - CODERABBIT_API_KEY only if you explicitly enable CodeRabbit CLI validation
@@ -66,6 +69,9 @@ jobs:
       agent_command: ${{ vars.CODERABBIT_AGENT_COMMAND }}
       coderabbit_cli: ${{ vars.CODERABBIT_CLI }}
       cursor_cli: ${{ vars.CURSOR_CLI }}
+      install_shared_skills: ${{ vars.CODERABBIT_INSTALL_SHARED_SKILLS != '' && fromJSON(vars.CODERABBIT_INSTALL_SHARED_SKILLS) || true }}
+      install_cursor_rules: ${{ vars.CODERABBIT_INSTALL_CURSOR_RULES != '' && fromJSON(vars.CODERABBIT_INSTALL_CURSOR_RULES) || true }}
+      shared_skills_install_mode: ${{ vars.CODERABBIT_SHARED_SKILLS_INSTALL_MODE != '' && vars.CODERABBIT_SHARED_SKILLS_INSTALL_MODE || 'copy' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
@@ -86,6 +92,9 @@ jobs:
       agent_command: ${{ vars.CODERABBIT_AGENT_COMMAND }}
       coderabbit_cli: ${{ vars.CODERABBIT_CLI }}
       cursor_cli: ${{ vars.CURSOR_CLI }}
+      install_shared_skills: ${{ vars.CODERABBIT_INSTALL_SHARED_SKILLS != '' && fromJSON(vars.CODERABBIT_INSTALL_SHARED_SKILLS) || true }}
+      install_cursor_rules: ${{ vars.CODERABBIT_INSTALL_CURSOR_RULES != '' && fromJSON(vars.CODERABBIT_INSTALL_CURSOR_RULES) || true }}
+      shared_skills_install_mode: ${{ vars.CODERABBIT_SHARED_SKILLS_INSTALL_MODE != '' && vars.CODERABBIT_SHARED_SKILLS_INSTALL_MODE || 'copy' }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}

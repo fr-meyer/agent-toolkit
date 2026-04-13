@@ -129,6 +129,13 @@ def build_prompt(artifact: Dict[str, Any], artifact_path: Path, validation_path:
         f'Repository: {pr.get("repository")}',
         '',
         'Keep the work bounded to the extracted unresolved CodeRabbit issue set.',
+        'Project-local agent context is installed for this run:',
+        '- Generic shared skills may be available under .agents/skills/',
+        '- Cursor-specific rules may be available under .cursor/rules/',
+        '',
+        'Use applicable installed skills or rules when supported by your runtime.',
+        'Do not rely on them to widen scope beyond the extracted issues.',
+        '',
         'Do not commit, push, post PR comments, resolve threads, switch branches, or widen scope beyond the extracted issues.',
     ]
 
