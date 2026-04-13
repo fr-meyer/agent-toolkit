@@ -1,5 +1,10 @@
 name: CodeRabbit PR automation
 
+# Source asset for a reusable workflow.
+# In this repository, the canonical file lives under templates/reusable-workflows/.
+# If published for real GitHub consumption later, it should be materialized under
+# .github/workflows/ in the chosen serving repository.
+
 on:
   workflow_call:
     inputs:

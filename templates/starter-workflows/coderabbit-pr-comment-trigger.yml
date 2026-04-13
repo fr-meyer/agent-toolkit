@@ -1,12 +1,13 @@
 name: CodeRabbit PR comment trigger
 
-# Draft GitHub workflow template for consumer repositories.
+# Source asset for a starter workflow.
+# This canonical source file lives under templates/starter-workflows/ in the asset library.
+# If you publish or copy it later, keep the pinned reusable-workflow uses ref and the
+# paired shared_repository_ref aligned.
 #
 # Setup notes after creating this workflow from the template:
-# 1. Do not hand-edit the pinned reusable-workflow SHA independently.
-#    The repo-maintained sync workflow keeps uses and shared_repository_ref aligned.
-# 2. This workflow is intentionally scoped to comments authored by CodeRabbit only.
-# 3. Configure repository or organization variables as needed:
+# 1. This workflow is intentionally scoped to comments authored by CodeRabbit only.
+# 2. Configure repository or organization variables as needed:
 #    - CODERABBIT_RUNNER_LABELS_JSON
 #    - CODERABBIT_AGENT_RUNTIME
 #    - CODERABBIT_AGENT_COMMAND_JSON or CODERABBIT_AGENT_COMMAND
@@ -21,11 +22,11 @@ name: CodeRabbit PR comment trigger
 #    - CODERABBIT_COMMIT_COUNT_MODE (optional, default auto)
 #    - CODERABBIT_FIXED_COMMIT_COUNT (optional, default 1)
 #    - CODERABBIT_STOP_ON_AMBIGUOUS_REMAINDER (optional, default true)
-# 4. Configure repository or organization secrets as needed:
+# 3. Configure repository or organization secrets as needed:
 #    - CURSOR_API_KEY when CODERABBIT_AGENT_RUNTIME=cursor
 #    - CODERABBIT_API_KEY only if you explicitly enable CodeRabbit CLI validation
 #    - WORKFLOW_PUSH_TOKEN when remediation may need to push changes under .github/workflows/
-# 5. The reusable workflow uses GITHUB_TOKEN as GH_TOKEN by default.
+# 4. The reusable workflow uses GITHUB_TOKEN as GH_TOKEN by default.
 
 permissions:
   contents: write
