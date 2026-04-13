@@ -39,7 +39,9 @@ If the reusable workflow repository is private and must be callable from other p
 ├── README.md
 └── workflow-templates/
     ├── coderabbit-pr-automation-wrapper.yml
-    └── coderabbit-pr-automation-wrapper.properties.json
+    ├── coderabbit-pr-automation-wrapper.properties.json
+    ├── coderabbit-pr-comment-trigger.yml
+    └── coderabbit-pr-comment-trigger.properties.json
 ```
 
 Draft README content for that org-level repository lives at:
@@ -48,20 +50,31 @@ Draft README content for that org-level repository lives at:
 ```text
 <org>/agent-toolkit
 ├── .github/
-│   └── workflows/
-│       └── coderabbit-pr-automation.yml
+│   ├── workflow-template-sync-map.json
+│   ├── workflows/
+│   │   ├── coderabbit-pr-automation.yml
+│   │   └── sync-starter-template-reusable-workflow-refs.yml
+│   └── workflow-templates/
+│       ├── coderabbit-pr-automation-wrapper.yml
+│       ├── coderabbit-pr-automation-wrapper.properties.json
+│       ├── coderabbit-pr-comment-trigger.yml
+│       └── coderabbit-pr-comment-trigger.properties.json
 ├── scripts/
-│   └── coderabbit/
-│       ├── fetch_threads.sh
-│       ├── normalize_threads.py
-│       ├── preflight.sh
-│       ├── preflight_core.py
-│       ├── orchestrate.sh
-│       ├── orchestrate_core.py
-│       ├── run_agent_pass.sh
-│       ├── run_agent_pass_core.py
-│       ├── run_validation.sh
-│       └── run_validation_core.py
+│   ├── coderabbit/
+│   │   ├── fetch_threads.sh
+│   │   ├── normalize_threads.py
+│   │   ├── preflight.sh
+│   │   ├── preflight_core.py
+│   │   ├── orchestrate.sh
+│   │   ├── orchestrate_core.py
+│   │   ├── run_agent_pass.sh
+│   │   ├── run_agent_pass_core.py
+│   │   ├── run_validation.sh
+│   │   └── run_validation_core.py
+│   └── github/
+│       ├── prepare_reusable_workflow_ref_sync_context.py
+│       ├── run_repo_maintenance_agent.py
+│       └── validate_reusable_workflow_refs.py
 └── skills/
     └── coderabbit-pr-automation/
 ```
@@ -94,9 +107,12 @@ For final publication, the metadata can omit the `preview` label so the template
 - Decide whether the org wants a preview-only rollout first or direct normal visibility
 
 ### Phase 2. Publish in the org `.github` repo
-- Copy the two template files into:
+- Copy the relevant template files into `.github/workflow-templates/` in the public org `.github` repository
+- For the current CodeRabbit starter set, that includes:
   - `.github/workflow-templates/coderabbit-pr-automation-wrapper.yml`
   - `.github/workflow-templates/coderabbit-pr-automation-wrapper.properties.json`
+  - `.github/workflow-templates/coderabbit-pr-comment-trigger.yml`
+  - `.github/workflow-templates/coderabbit-pr-comment-trigger.properties.json`
 - Commit to the public org `.github` repository
 
 ### Phase 3. Validate template visibility
@@ -138,8 +154,37 @@ Rules:
 - when a reusable workflow changes on `main`, a follow-up maintenance commit updates the starter-template pins
 - consumer repositories can adapt copied workflows locally, but this shared repository remains canonical for starter templates
 
+Manifest format:
+- this repository stores the mapping in `.github/workflow-template-sync-map.json`
+- each entry names one reusable workflow source and the starter-template files it manages
+- example shape:
+
+```json
+{
+  "managedWorkflows": [
+    {
+      "source": ".github/workflows/coderabbit-pr-automation.yml",
+      "templates": [
+        { "path": ".github/workflow-templates/coderabbit-pr-automation-wrapper.yml" },
+        { "path": ".github/workflow-templates/coderabbit-pr-comment-trigger.yml" }
+      ]
+    }
+  ]
+}
+```
+
+Maintenance flow:
+1. a reusable workflow file changes on `main`
+2. the maintenance workflow checks the manifest for starter-template targets
+3. it prepares bounded context for only those targets
+4. it updates only the mapped starter templates
+5. it fails if edits escape the allowed template scope
+6. it validates that `uses: ...@<sha>` and `shared_repository_ref` match the expected pinned SHA
+7. it can commit the template-only sync result
+
 Automation note:
-- discovery and starter-template updates are AI-assisted
+- target discovery is manifest-driven
+- starter-template updates are AI-assisted within the bounded target set
 - final syntax and pin-integrity validation is deterministic
 
 ## Notes and caveats

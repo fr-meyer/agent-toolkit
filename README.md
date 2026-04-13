@@ -7,7 +7,9 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 - **Shared agent skills** under `skills/`
 - **Reusable GitHub Actions assets** under `.github/`
   - a reusable workflow: `.github/workflows/coderabbit-pr-automation.yml`
-  - a thin workflow template draft: `.github/workflow-templates/coderabbit-pr-automation-wrapper.yml`
+  - thin workflow template drafts:
+    - `.github/workflow-templates/coderabbit-pr-automation-wrapper.yml`
+    - `.github/workflow-templates/coderabbit-pr-comment-trigger.yml`
 - **Setup and linking scripts** under `scripts/`
 - **Shared Cursor assets** under `cursor/`
 - **Reference and setup docs** under `docs/`
@@ -44,11 +46,15 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 ```text
 agent-toolkit/
 ├── .github/
+│   ├── workflow-template-sync-map.json
 │   ├── workflows/
-│   │   └── coderabbit-pr-automation.yml
+│   │   ├── coderabbit-pr-automation.yml
+│   │   └── sync-starter-template-reusable-workflow-refs.yml
 │   └── workflow-templates/
 │       ├── coderabbit-pr-automation-wrapper.yml
-│       └── coderabbit-pr-automation-wrapper.properties.json
+│       ├── coderabbit-pr-automation-wrapper.properties.json
+│       ├── coderabbit-pr-comment-trigger.yml
+│       └── coderabbit-pr-comment-trigger.properties.json
 ├── skills/
 ├── scripts/
 ├── docs/
@@ -80,8 +86,10 @@ If you do not want to use the default alias, the scripts also support explicit p
 This repository includes a reusable CodeRabbit remediation workflow plus the supporting helper scripts that back it.
 
 - **Reusable workflow:** `.github/workflows/coderabbit-pr-automation.yml`
-- **Helper scripts:** `scripts/coderabbit/`
-- **Template draft:** `.github/workflow-templates/coderabbit-pr-automation-wrapper.yml`
+- **Starter templates:** `.github/workflow-templates/`
+- **Maintenance workflow:** `.github/workflows/sync-starter-template-reusable-workflow-refs.yml`
+- **Maintenance manifest:** `.github/workflow-template-sync-map.json`
+- **Helper scripts:** `scripts/coderabbit/` plus `scripts/github/`
 - **Publishing guidance for an org-level `.github` repo:** `docs/org-github-repo-workflow-template-layout.md`
 
 The intended split is:
@@ -90,6 +98,11 @@ The intended split is:
 - the reusable workflow can install shared Agent Skills into `.agents/skills` inside the checked-out consumer repo on the runner
 - the reusable workflow can install shared Cursor rules into `.cursor/rules` inside the checked-out consumer repo on the runner
 - consumer repositories keep only thin wrapper workflows, repo-specific variables, and secrets
+
+Starter-template ref sync:
+- `.github/workflow-template-sync-map.json` is the source of truth for which shared reusable workflow manages which starter templates
+- when a mapped reusable workflow changes on `main`, the maintenance workflow prepares bounded context, updates only the mapped starter templates, validates pinned refs deterministically, and optionally commits the template-only result
+- each targeted starter template must keep `uses: ...@<sha>` and `shared_repository_ref: <same sha>` aligned
 
 Current runtime contract for the CodeRabbit workflow:
 - choose the coding-agent runtime with `CODERABBIT_AGENT_RUNTIME` (for example `cursor`)
