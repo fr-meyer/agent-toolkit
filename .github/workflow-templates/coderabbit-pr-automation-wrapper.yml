@@ -59,7 +59,6 @@ on:
 jobs:
   coderabbit-pr-automation-dispatch:
     if: ${{ github.event_name == 'workflow_dispatch' }}
-    # managed-shared-workflow-ref: .github/workflows/coderabbit-pr-automation.yml
     uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@5b1fa1b1c5553ba1b40347c098d71520280a0212
     with:
       pr_number: ${{ fromJSON(inputs.pr_number) }}
@@ -90,7 +89,6 @@ jobs:
 
   coderabbit-pr-automation-pr:
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
-    # managed-shared-workflow-ref: .github/workflows/coderabbit-pr-automation.yml
     uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@5b1fa1b1c5553ba1b40347c098d71520280a0212
     with:
       pr_number: ${{ github.event.pull_request.number }}

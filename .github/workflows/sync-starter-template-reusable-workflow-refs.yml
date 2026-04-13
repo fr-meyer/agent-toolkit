@@ -1,0 +1,296 @@
+name: Sync starter-template reusable-workflow refs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/*.yml
+      - .github/workflows/*.yaml
+      - '!.github/workflows/sync-starter-template-reusable-workflow-refs.yml'
+      - '!.github/workflows/sync-starter-template-reusable-workflow-refs.yaml'
+  workflow_dispatch:
+    inputs:
+      before_sha:
+        description: Optional diff base SHA for the reusable-workflow change
+        required: false
+        type: string
+        default: ''
+      after_sha:
+        description: Optional target SHA for the reusable-workflow change
+        required: false
+        type: string
+        default: ''
+      auto_commit:
+        description: Commit template ref updates back to the current branch
+        required: false
+        type: boolean
+        default: true
+      auto_push:
+        description: Push the maintenance commit after validation
+        required: false
+        type: boolean
+        default: false
+      python_version:
+        description: Python version used by the helper scripts
+        required: false
+        type: string
+        default: '3.11'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: sync-starter-template-refs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync-starter-template-refs:
+    name: Sync starter-template reusable-workflow refs
+    runs-on: ubuntu-latest
+
+    env:
+      DEFAULT_PYTHON_VERSION: '3.11'
+      WORKFLOW_REF_SYNC_CONTEXT_DIR: .github/workflows/.ai-sync-context
+      WORKFLOW_REF_SYNC_OUTPUT_DIR: .github/workflows/.ai-sync-output
+      WORKFLOW_REF_SYNC_AGENT_COMMAND_JSON: ${{ vars.WORKFLOW_REF_SYNC_AGENT_COMMAND_JSON }}
+      WORKFLOW_REF_SYNC_AGENT_COMMAND: ${{ vars.WORKFLOW_REF_SYNC_AGENT_COMMAND }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve Python version
+        id: pyver
+        shell: bash
+        run: |
+          set -euo pipefail
+          python_version='${{ github.event.inputs.python_version || "" }}'
+          if [[ -z "$python_version" ]]; then
+            python_version="$DEFAULT_PYTHON_VERSION"
+          fi
+          echo "python_version=$python_version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ steps.pyver.outputs.python_version }}
+
+      - name: Resolve sync bounds
+        id: bounds
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZERO_SHA=0000000000000000000000000000000000000000
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            before_sha='${{ github.event.before }}'
+            after_sha='${{ github.sha }}'
+          else
+            before_sha='${{ github.event.inputs.before_sha || "" }}'
+            after_sha='${{ github.event.inputs.after_sha || "" }}'
+
+            if [[ -z "$after_sha" ]]; then
+              after_sha="$(git rev-parse HEAD)"
+            fi
+            if [[ -z "$before_sha" ]]; then
+              before_sha="$(git rev-parse "${after_sha}^" 2>/dev/null || echo "$ZERO_SHA")"
+            fi
+          fi
+
+          if [[ -z "$before_sha" ]]; then
+            before_sha="$ZERO_SHA"
+          fi
+
+          echo "before_sha=$before_sha" >> "$GITHUB_OUTPUT"
+          echo "after_sha=$after_sha" >> "$GITHUB_OUTPUT"
+          echo "Using sync bounds: $before_sha..$after_sha"
+
+      - name: Preflight: fail if agent command is not configured
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${WORKFLOW_REF_SYNC_AGENT_COMMAND_JSON:-}" ]] && [[ -z "${WORKFLOW_REF_SYNC_AGENT_COMMAND:-}" ]]; then
+            echo "::error::Neither WORKFLOW_REF_SYNC_AGENT_COMMAND_JSON nor WORKFLOW_REF_SYNC_AGENT_COMMAND is set. Refusing to run without an agent command."
+            exit 1
+          fi
+
+      - name: Prepare AI sync directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$WORKFLOW_REF_SYNC_CONTEXT_DIR" "$WORKFLOW_REF_SYNC_OUTPUT_DIR"
+          mkdir -p "$WORKFLOW_REF_SYNC_CONTEXT_DIR" "$WORKFLOW_REF_SYNC_OUTPUT_DIR"
+
+      - name: Prepare reusable-workflow ref sync context
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/github/prepare_reusable_workflow_ref_sync_context.py \
+            --repo-root . \
+            --before '${{ steps.bounds.outputs.before_sha }}' \
+            --after '${{ steps.bounds.outputs.after_sha }}' \
+            --shared-repo-slug '${{ github.repository }}' \
+            --manifest-path .github/workflow-template-sync-map.json \
+            --out-dir "$WORKFLOW_REF_SYNC_CONTEXT_DIR"
+
+      - name: Count changed reusable workflows and targets
+        id: context_summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          ctx = json.loads(Path('.github/workflows/.ai-sync-context/context.json').read_text(encoding='utf-8'))
+          changed = len(ctx.get('changedReusableWorkflows') or [])
+          targets = len(ctx.get('targetTemplateFiles') or [])
+          with open(Path.cwd() / '.github/workflows/.ai-sync-context/github_output.txt', 'w', encoding='utf-8') as fh:
+              fh.write(f'changed_workflows={changed}\n')
+              fh.write(f'target_template_files={targets}\n')
+          print(f'changed_workflows={changed}')
+          print(f'target_template_files={targets}')
+          PY
+          cat .github/workflows/.ai-sync-context/github_output.txt >> "$GITHUB_OUTPUT"
+
+      - name: Stop early when no reusable workflow changed
+        if: steps.context_summary.outputs.changed_workflows == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'No reusable workflow YAML changes were detected. Nothing to sync.'
+
+      - name: Stop early when no manifest target matches
+        if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'Reusable workflow YAML changed, but the manifest maps none of those workflows to starter templates. Nothing to sync.'
+
+      - name: Run starter-template maintenance agent
+        if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files != '0'
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          python scripts/github/run_repo_maintenance_agent.py \
+            --repo-path . \
+            --prompt-path "$WORKFLOW_REF_SYNC_CONTEXT_DIR/prompt.txt" \
+            --context-path "$WORKFLOW_REF_SYNC_CONTEXT_DIR/context.json" \
+            --out-dir "$WORKFLOW_REF_SYNC_OUTPUT_DIR"
+
+      - name: Require completed maintenance-agent run
+        if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          summary = json.loads(Path('.github/workflows/.ai-sync-output/agent-summary.json').read_text(encoding='utf-8'))
+          status = summary.get('status')
+          if status != 'completed':
+              raise SystemExit(f"Maintenance agent did not complete successfully: {status}")
+          print(f"Maintenance agent status: {status}")
+          PY
+
+      - name: Fail if agent changed files outside allowed scope
+        if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess
+          from pathlib import Path
+
+          allowed_prefixes = (
+              '.github/workflow-templates/',
+              '.github/workflows/.ai-sync-context',
+              '.github/workflows/.ai-sync-output',
+          )
+          completed = subprocess.run(
+              ['git', 'status', '--porcelain'],
+              text=True,
+              capture_output=True,
+              check=True,
+          )
+          bad = []
+          for raw in completed.stdout.splitlines():
+              if not raw.strip():
+                  continue
+              path = raw[3:].strip().replace('\\', '/')
+              if ' -> ' in path:
+                  path = path.split(' -> ', 1)[1].strip()
+              if not path.startswith(allowed_prefixes):
+                  bad.append(path)
+          if bad:
+              raise SystemExit('Agent modified files outside allowed scope: ' + ', '.join(sorted(set(bad))))
+          print('Agent file scope check passed.')
+          PY
+
+      - name: Validate pinned reusable-workflow refs
+        if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/github/validate_reusable_workflow_refs.py \
+            --repo-root . \
+            --context "$WORKFLOW_REF_SYNC_CONTEXT_DIR/context.json"
+
+      - name: Detect template changes
+        id: template_diff
+        if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- .github/workflow-templates; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'No starter-template changes were produced.'
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            echo 'Starter-template changes detected.'
+            git diff --stat -- .github/workflow-templates
+          fi
+
+      - name: Configure Git author
+        if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files != '0' && steps.template_diff.outputs.changed == 'true' && (github.event_name == 'push' || inputs.auto_commit)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Commit starter-template ref sync
+        if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files != '0' && steps.template_diff.outputs.changed == 'true' && (github.event_name == 'push' || inputs.auto_commit)
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha='${{ steps.bounds.outputs.after_sha }}'
+          short_sha="${short_sha:0:12}"
+          git add .github/workflow-templates
+          git commit -m "ci: sync starter-template refs to ${short_sha}"
+
+      - name: Push maintenance commit
+        if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files != '0' && steps.template_diff.outputs.changed == 'true' && (github.event_name == 'push' || inputs.auto_commit) && (github.event_name == 'push' || inputs.auto_push)
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch='${{ github.ref_name }}'
+          git push origin "HEAD:refs/heads/$branch"
+
+      - name: Upload maintenance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-starter-template-refs-${{ github.run_id }}
+          path: |
+            .github/workflows/.ai-sync-context
+            .github/workflows/.ai-sync-output
+          if-no-files-found: warn

@@ -1,135 +1,145 @@
 #!/usr/bin/env python3
 """
-Deterministic post-AI guardrail to validate pinned reusable-workflow refs.
+validate_reusable_workflow_refs.py
 
-CLI:
-  python scripts/github/validate_reusable_workflow_refs.py \
-    --repo-root . \
-    --context .github/workflows/.ai-sync-context/context.json
+Validates that all target templates have been updated correctly.
 
-Exit codes:
-  0  – validation passed
-  1  – validation failed or error
+Scope enforcement:
+- Only templates listed in the context targetTemplateFiles are validated.
+- Only reusable workflow calls explicitly listed in targetMappings are checked.
+- Only the paired shared_repository_ref is checked.
+- Fails if any mismatch is found.
 """
 
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
-from typing import Any, Dict, List
 
 
-SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+SHA_RE = re.compile(r"^[a-f0-9]{40}$")
 
 
-def normalize_path(value: str) -> str:
-    return value.replace("\\", "/")
+def load_context(context_path: Path) -> dict:
+    if not context_path.exists():
+        raise SystemExit(f"Context not found: {context_path}")
+    try:
+        return json.loads(context_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise SystemExit(f"Failed to parse context: {e}")
 
 
-def load_json(path: Path) -> Dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+def find_target_calls(template_path: Path, shared_repo_slug: str, source_workflow_path: str) -> list[tuple[int, str, str | None]]:
+    """Return (line_no, uses_ref, shared_repository_ref)."""
+    uses_pattern = re.compile(
+        rf"^\s*uses:\s*{re.escape(shared_repo_slug)}/{re.escape(source_workflow_path)}@([^\s#]+)\s*$"
+    )
+    shared_ref_pattern = re.compile(r"^\s*shared_repository_ref:\s*(\S+)\s*$")
 
+    lines = template_path.read_text(encoding="utf-8").splitlines()
+    matches: list[tuple[int, str, str | None]] = []
 
-def is_valid_sha(s: str) -> bool:
-    return bool(SHA_RE.fullmatch(s))
+    for idx, raw in enumerate(lines):
+        uses_match = uses_pattern.match(raw)
+        if not uses_match:
+            continue
 
+        uses_ref = uses_match.group(1).strip().strip('"').strip("'")
+        shared_ref = None
+        uses_indent = len(raw) - len(raw.lstrip(" "))
 
-def find_managed_blocks(content: str) -> List[Dict[str, Any]]:
-    blocks = []
-    lines = content.splitlines()
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()
-        if line.startswith("# managed-shared-workflow-ref:") or line.startswith("#managed-shared-workflow-ref:"):
-            marker = line.split(":", 1)[1].strip()
-            j = i + 1
-            uses_sha = None
-            shared_ref = None
-            while j < len(lines):
-                l2 = lines[j].strip()
-                if j > i + 1 and (l2.startswith("# managed-shared-workflow-ref:") or l2.startswith("#managed-shared-workflow-ref:")):
-                    break
-                if uses_sha is None and l2.startswith("uses:"):
-                    parts = l2.split("@", 1)
-                    if len(parts) == 2:
-                        uses_sha = parts[1].strip()
-                if shared_ref is None and l2.startswith("shared_repository_ref:"):
-                    kv = l2.split(":", 1)
-                    if len(kv) == 2:
-                        shared_ref = kv[1].strip()
-                if uses_sha is not None and shared_ref is not None:
-                    break
-                j += 1
-            blocks.append({
-                "marker": marker,
-                "usesSha": uses_sha,
-                "sharedRef": shared_ref,
-                "line": i + 1,
-            })
-            i = j
-        else:
-            i += 1
-    return blocks
+        for j in range(idx + 1, len(lines)):
+            next_raw = lines[j]
+            next_stripped = next_raw.strip()
+            next_indent = len(next_raw) - len(next_raw.lstrip(" "))
+
+            if next_stripped.startswith("uses:") and next_indent <= uses_indent:
+                break
+
+            shared_match = shared_ref_pattern.match(next_raw)
+            if shared_match:
+                shared_ref = shared_match.group(1).strip().strip('"').strip("'")
+                break
+
+        matches.append((idx + 1, uses_ref, shared_ref))
+
+    return matches
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate pinned reusable-workflow refs.")
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", required=True, type=Path)
-    parser.add_argument("--context", required=True, type=Path)
+    parser.add_argument("--context", required=True, type=Path, help="path to .ai-sync-context/context.json")
 
     args = parser.parse_args()
 
-    ctx = load_json(args.context)
-    changed = ctx.get("changedReusableWorkflows") or []
-    templates = ctx.get("templateFiles") or []
+    ctx = load_context(args.context)
+    shared_repo_slug = str(ctx.get("sharedRepoSlug") or "").strip()
+    targets = ctx.get("targetTemplateFiles", [])
+    mappings = ctx.get("targetMappings", [])
 
-    errors: List[str] = []
+    if not shared_repo_slug:
+        raise SystemExit("Context is missing sharedRepoSlug")
 
-    for tmpl_rel in templates:
-        tmpl_path = args.repo_root / tmpl_rel
-        if not tmpl_path.exists():
+    if not targets or not mappings:
+        print("No target templates to validate.")
+        return 0
+
+    repo_root = args.repo_root.resolve()
+    ok = True
+
+    for mapping in mappings:
+        source = str(mapping.get("source") or "").strip()
+        target = str(mapping.get("target") or "").strip()
+        expected_sha = str(mapping.get("expectedSha") or "").strip()
+
+        if not source or not target or not expected_sha:
+            print("Invalid target mapping entry (missing source/target/expectedSha).")
+            ok = False
             continue
-        content = tmpl_path.read_text(encoding="utf-8")
-        blocks = find_managed_blocks(content)
-        for block in blocks:
-            expected_sha = None
-            normalized_marker = normalize_path(block["marker"])
-            for wf in changed:
-                if normalize_path(str(wf.get("path", ""))) == normalized_marker:
-                    expected_sha = wf.get("expectedSha")
-                    break
-            if not expected_sha:
-                errors.append(f"{tmpl_rel}:{block['line']}: managed marker '{block['marker']}' not found in changed workflows")
-                continue
-            if not is_valid_sha(expected_sha):
-                errors.append(f"{tmpl_rel}:{block['line']}: expectedSha '{expected_sha}' is not a valid SHA")
-                continue
-            if not block["usesSha"]:
-                errors.append(f"{tmpl_rel}:{block['line']}: missing uses ref after managed marker")
-            elif not is_valid_sha(block["usesSha"]):
-                errors.append(f"{tmpl_rel}:{block['line']}: uses ref '{block['usesSha']}' is not a valid SHA")
-            elif block["usesSha"] != expected_sha:
-                errors.append(f"{tmpl_rel}:{block['line']}: uses ref '{block['usesSha']}' != expected '{expected_sha}'")
+        if not SHA_RE.fullmatch(expected_sha):
+            print(f"Invalid expected SHA for {target}: {expected_sha}")
+            ok = False
+            continue
 
-            if not block["sharedRef"]:
-                errors.append(f"{tmpl_rel}:{block['line']}: missing shared_repository_ref after managed marker")
-            elif not is_valid_sha(block["sharedRef"]):
-                errors.append(f"{tmpl_rel}:{block['line']}: shared_repository_ref '{block['sharedRef']}' is not a valid SHA")
-            elif block["sharedRef"] != expected_sha:
-                errors.append(f"{tmpl_rel}:{block['line']}: shared_repository_ref '{block['sharedRef']}' != expected '{expected_sha}'")
+        tpl_path = repo_root / target
+        if not tpl_path.exists():
+            print(f"Target template missing: {target}")
+            ok = False
+            continue
 
-    if errors:
-        summary_path = args.context.parent / "validation-errors.txt"
-        summary_path.parent.mkdir(parents=True, exist_ok=True)
-        summary_path.write_text("\n".join(errors) + "\n", encoding="utf-8")
-        print("Validation failed:")
-        for e in errors:
-            print(f"- {e}")
-        return 1
+        print(f"Validating {target} against {source} -> {expected_sha}")
+        matches = find_target_calls(tpl_path, shared_repo_slug, source)
+        if not matches:
+            print(f"  - {target}: no matching reusable workflow call found")
+            ok = False
+            continue
 
-    print("Validation passed: all managed refs are pinned and aligned.")
-    return 0
+        for line_no, uses_ref, shared_ref in matches:
+            if not SHA_RE.fullmatch(uses_ref):
+                print(f"  - {target}:{line_no} uses ref is not a pinned SHA: {uses_ref}")
+                ok = False
+            elif uses_ref != expected_sha:
+                print(f"  - {target}:{line_no} uses ref mismatch: {uses_ref} != {expected_sha}")
+                ok = False
+
+            if shared_ref is None:
+                print(f"  - {target}:{line_no} missing paired shared_repository_ref")
+                ok = False
+            elif not SHA_RE.fullmatch(shared_ref):
+                print(f"  - {target}:{line_no} shared_repository_ref is not a pinned SHA: {shared_ref}")
+                ok = False
+            elif shared_ref != expected_sha:
+                print(f"  - {target}:{line_no} shared_repository_ref mismatch: {shared_ref} != {expected_sha}")
+                ok = False
+
+    if ok:
+        print("All validations passed.")
+        return 0
+
+    raise SystemExit("Validation failed: mismatched refs found.")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

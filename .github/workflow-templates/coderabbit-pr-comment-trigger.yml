@@ -81,7 +81,6 @@ jobs:
   coderabbit-pr-automation-comment:
     needs: resolve-pr-context
     if: ${{ needs.resolve-pr-context.outputs.should_run == 'true' }}
-    # managed-shared-workflow-ref: .github/workflows/coderabbit-pr-automation.yml
     uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@5b1fa1b1c5553ba1b40347c098d71520280a0212
     with:
       pr_number: ${{ fromJSON(needs.resolve-pr-context.outputs.pr_number) }}
