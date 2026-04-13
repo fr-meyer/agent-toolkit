@@ -87,6 +87,8 @@ This repository includes a reusable CodeRabbit remediation workflow plus the sup
 The intended split is:
 - this repository owns the reusable implementation and helper scripts
 - an organization-level public `.github` repository owns the workflow-template publishing surface
+- the reusable workflow can install shared Agent Skills into `.agents/skills` inside the checked-out consumer repo on the runner
+- the reusable workflow can install shared Cursor rules into `.cursor/rules` inside the checked-out consumer repo on the runner
 - consumer repositories keep only thin wrapper workflows, repo-specific variables, and secrets
 
 Current runtime contract for the CodeRabbit workflow:
@@ -94,6 +96,9 @@ Current runtime contract for the CodeRabbit workflow:
 - keep the actual remediation command explicit via `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
 - provide `CURSOR_API_KEY` when using `cursor`
 - for the current free-tier path, default to `run_validation: false`
+- shared Agent Skills can be installed into the target repo via `install_shared_skills`
+- shared Cursor rules can be installed into the target repo via `install_cursor_rules`
+- the default install mode for shared agent context is `copy`
 - provide `CODERABBIT_API_KEY` only when CodeRabbit CLI validation is explicitly enabled
 
 ## Shared-content boundary

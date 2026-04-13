@@ -10,6 +10,7 @@ Current status:
 - validation now invokes CodeRabbit CLI when available and normalizes its agent output into `validation-result.json`
 - agent pass now invokes a configurable external agent command and captures structured outputs, prompt files, raw logs, and git-diff evidence
 - paths are designed to be relative to `github.workspace`
+- shared agent context can now be materialized into the target checkout via `.agents/skills` and `.cursor/rules` before agent execution
 - consumer repo checkout is expected under a runtime folder such as `target/`
 - shared repo checkout is expected under a runtime folder such as `_shared/`
 
@@ -19,6 +20,7 @@ Planned responsibilities:
 - `preflight.sh` — verify target repo identity, branch / SHA assumptions, and working-tree policy
 - `setup_agent_runtime.sh` — install and prepare the selected coding-agent runtime before remediation
 - `setup_coderabbit_cli.sh` — install and authenticate the CodeRabbit CLI before validation
+- `prepare_agent_context.sh` — install shared Agent Skills and Cursor rules into the target repo checkout for runtime discovery
 - `orchestrate.sh` — run the bounded remediation loop and optional validation
 - `run_agent_pass.sh` — invoke the agent runtime for one bounded remediation pass
 - `run_validation.sh` — run CodeRabbit validation and summarize stop conditions
@@ -32,6 +34,9 @@ Notes:
   - bounded agent execution via `agent_command_json` or `agent_command`
   - validation CLI override via `coderabbit_cli`
   - Cursor CLI override via `cursor_cli`
+  - shared Agent Skills installation via `install_shared_skills`
+  - shared Cursor rules installation via `install_cursor_rules`
+  - agent context install mode via `shared_skills_install_mode`
 - A GitHub-native workflow-template draft lives at:
   - `.github/workflow-templates/coderabbit-pr-automation-wrapper.yml`
   - `.github/workflow-templates/coderabbit-pr-automation-wrapper.properties.json`
@@ -53,10 +58,18 @@ Recommended repository or organization variables:
 - `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
 - `CODERABBIT_CLI` (optional)
 - `CURSOR_CLI` (optional)
+- `CODERABBIT_INSTALL_SHARED_SKILLS` (optional, default `true`)
+- `CODERABBIT_INSTALL_CURSOR_RULES` (optional, default `true`)
+- `CODERABBIT_SHARED_SKILLS_INSTALL_MODE` (optional, default `copy`)
 
 Required secrets by feature:
 - `CURSOR_API_KEY` when `agent_runtime=cursor`
 - `CODERABBIT_API_KEY` only when `run_validation=true`
+
+Recommended agent-context defaults:
+- install shared skills: `true`
+- install Cursor rules: `true`
+- install mode: `copy`
 
 Recommended first end-to-end configuration for the free-tier path:
 - `agent_runtime: cursor`
