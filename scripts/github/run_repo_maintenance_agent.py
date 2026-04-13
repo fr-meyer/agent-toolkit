@@ -5,9 +5,9 @@ Run an external AI agent command in a bounded, reusable way.
 CLI:
   python scripts/github/run_repo_maintenance_agent.py \
     --repo-path . \
-    --prompt-path .github/workflows/.ai-sync-context/prompt.txt \
-    --context-path .github/workflows/.ai-sync-context/context.json \
-    --out-dir .github/workflows/.ai-sync-output
+    --prompt-path .tmp/reusable-workflow-ref-sync/prompt.txt \
+    --context-path .tmp/reusable-workflow-ref-sync/context.json \
+    --out-dir .tmp/reusable-workflow-ref-sync/output
 
 Environment overrides (optional):
   - WORKFLOW_REF_SYNC_AGENT_COMMAND_JSON
@@ -105,7 +105,6 @@ def main() -> int:
         "out_dir": str(out_dir),
     }
 
-    # Validate command
     try:
         cmd_spec = parse_command_spec(substitutions)
     except Exception as exc:
@@ -138,7 +137,6 @@ def main() -> int:
         print(f"Agent not configured: {out_dir / 'agent-summary.json'}")
         return 0
 
-    # Run agent
     stdout_path = out_dir / "agent-raw.stdout.txt"
     stderr_path = out_dir / "agent-raw.stderr.txt"
     command_path = out_dir / "agent-command.json"

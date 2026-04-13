@@ -2,21 +2,21 @@
 """
 prepare_reusable_workflow_ref_sync_context.py
 
-Builds the AI sync context for the maintenance workflow.
+Builds AI sync context for optional future maintenance flows.
 
 Inputs:
 - repo root
 - before_sha / after_sha (for diff)
-- shared_repo_slug (github.repository)
-- manifest path (default: .github/workflow-template-sync-map.json)
+- shared_repo_slug (github.repository or serving repo slug)
+- manifest path (default: templates/workflow-ref-sync-manifest.json)
 
 Outputs:
-- .github/workflows/.ai-sync-context/context.json
-- .github/workflows/.ai-sync-context/prompt.txt
+- .tmp/reusable-workflow-ref-sync/context.json
+- .tmp/reusable-workflow-ref-sync/prompt.txt
 
 Scope enforcement:
-- Only templates listed in the manifest are considered targets.
-- Only changes to reusable workflows listed in the manifest are considered.
+- Only starter workflows listed in the manifest are considered targets.
+- Only changes to reusable workflow source files listed in the manifest are considered.
 """
 
 import argparse
@@ -68,17 +68,13 @@ def latest_commit_for_path(repo_root: Path, rel_path: str) -> str:
 
 
 def resolve_changed_workflows(repo_root: Path, before_sha: str, after_sha: str) -> list[str]:
-    """Return list of changed reusable workflow YAML files."""
+    """Return list of changed reusable workflow source YAML files."""
     zero = "0" * 40
     if before_sha == zero or before_sha == "":
         changed_files = set()
-        for yaml_path in repo_root.glob(".github/workflows/*.yml"):
-            if yaml_path.name == "sync-starter-template-reusable-workflow-refs.yml":
-                continue
+        for yaml_path in repo_root.glob("templates/reusable-workflows/*.yml"):
             changed_files.add(normalize_path(str(yaml_path.relative_to(repo_root))))
-        for yaml_path in repo_root.glob(".github/workflows/*.yaml"):
-            if yaml_path.name == "sync-starter-template-reusable-workflow-refs.yaml":
-                continue
+        for yaml_path in repo_root.glob("templates/reusable-workflows/*.yaml"):
             changed_files.add(normalize_path(str(yaml_path.relative_to(repo_root))))
         return sorted(changed_files)
 
@@ -89,8 +85,8 @@ def resolve_changed_workflows(repo_root: Path, before_sha: str, after_sha: str) 
             "--name-only",
             f"{before_sha}...{after_sha}",
             "--",
-            ".github/workflows/*.yml",
-            ".github/workflows/*.yaml",
+            "templates/reusable-workflows/*.yml",
+            "templates/reusable-workflows/*.yaml",
         ]
         out = subprocess.check_output(
             diff_cmd,
@@ -99,29 +95,18 @@ def resolve_changed_workflows(repo_root: Path, before_sha: str, after_sha: str) 
             encoding="utf-8",
         )
         files = [normalize_path(line.strip()) for line in out.splitlines() if line.strip()]
-        files = [
-            f for f in files
-            if Path(f).name not in (
-                "sync-starter-template-reusable-workflow-refs.yml",
-                "sync-starter-template-reusable-workflow-refs.yaml",
-            )
-        ]
         return sorted(files)
     except subprocess.CalledProcessError:
         changed_files = set()
-        for yaml_path in repo_root.glob(".github/workflows/*.yml"):
-            if yaml_path.name == "sync-starter-template-reusable-workflow-refs.yml":
-                continue
+        for yaml_path in repo_root.glob("templates/reusable-workflows/*.yml"):
             changed_files.add(normalize_path(str(yaml_path.relative_to(repo_root))))
-        for yaml_path in repo_root.glob(".github/workflows/*.yaml"):
-            if yaml_path.name == "sync-starter-template-reusable-workflow-refs.yaml":
-                continue
+        for yaml_path in repo_root.glob("templates/reusable-workflows/*.yaml"):
             changed_files.add(normalize_path(str(yaml_path.relative_to(repo_root))))
         return sorted(changed_files)
 
 
 def build_targets(manifest_data: dict, changed_workflows: list[str], repo_root: Path) -> tuple[list[str], list[dict]]:
-    """Determine which templates are targets for the changed workflows."""
+    """Determine which starter workflows are targets for the changed reusable workflows."""
     targets: list[str] = []
     target_mappings: list[dict] = []
 
@@ -172,7 +157,7 @@ def write_context_and_prompt(
         "You are a GitHub Actions workflow ref updater.",
         "",
         "Your task:",
-        "- Update only the starter templates listed in the context as targetTemplateFiles.",
+        "- Update only the starter workflow files listed in the context as targetTemplateFiles.",
         "- Do NOT touch any other files.",
         "- Do NOT add new files.",
         "- Only update the exact reusable workflow calls identified in targetMappings.",
@@ -181,7 +166,7 @@ def write_context_and_prompt(
         "Context provided by the caller:",
         f"- Shared repo slug: {shared_repo_slug}",
         f"- Changed reusable workflows: {', '.join(changed_workflows) if changed_workflows else '(none)'}",
-        f"- Target templates: {', '.join(targets) if targets else '(none)'}",
+        f"- Target starter workflows: {', '.join(targets) if targets else '(none)'}",
         "",
         "IMPORTANT:",
         "- For each targetMappings entry, update the matching uses: line to expectedSha.",
@@ -200,8 +185,8 @@ def main() -> int:
     parser.add_argument("--before", required=True, type=str, help="before SHA")
     parser.add_argument("--after", required=True, type=str, help="after SHA")
     parser.add_argument("--shared-repo-slug", required=True, type=str)
-    parser.add_argument("--manifest-path", default=".github/workflow-template-sync-map.json", type=Path)
-    parser.add_argument("--out-dir", default=".github/workflows/.ai-sync-context", type=Path)
+    parser.add_argument("--manifest-path", default="templates/workflow-ref-sync-manifest.json", type=Path)
+    parser.add_argument("--out-dir", default=".tmp/reusable-workflow-ref-sync", type=Path)
 
     args = parser.parse_args()
 
@@ -211,13 +196,13 @@ def main() -> int:
 
     changed = resolve_changed_workflows(repo_root, args.before, args.after)
     if not changed:
-        print("No reusable workflow changes detected.")
+        print("No reusable workflow source changes detected.")
         return 0
 
     targets, mappings = build_targets(manifest_data, changed, repo_root)
 
     write_context_and_prompt(
-        args.out_dir.resolve(),
+        (repo_root / args.out_dir).resolve(),
         changed,
         targets,
         mappings,

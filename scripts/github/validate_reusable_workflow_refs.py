@@ -2,10 +2,10 @@
 """
 validate_reusable_workflow_refs.py
 
-Validates that all target templates have been updated correctly.
+Validates that all target starter workflows have been updated correctly.
 
 Scope enforcement:
-- Only templates listed in the context targetTemplateFiles are validated.
+- Only starter workflows listed in the context targetTemplateFiles are validated.
 - Only reusable workflow calls explicitly listed in targetMappings are checked.
 - Only the paired shared_repository_ref is checked.
 - Fails if any mismatch is found.
@@ -70,7 +70,7 @@ def find_target_calls(template_path: Path, shared_repo_slug: str, source_workflo
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", required=True, type=Path)
-    parser.add_argument("--context", required=True, type=Path, help="path to .ai-sync-context/context.json")
+    parser.add_argument("--context", required=True, type=Path, help="path to context.json")
 
     args = parser.parse_args()
 
@@ -83,7 +83,7 @@ def main() -> int:
         raise SystemExit("Context is missing sharedRepoSlug")
 
     if not targets or not mappings:
-        print("No target templates to validate.")
+        print("No target starter workflows to validate.")
         return 0
 
     repo_root = args.repo_root.resolve()
@@ -105,7 +105,7 @@ def main() -> int:
 
         tpl_path = repo_root / target
         if not tpl_path.exists():
-            print(f"Target template missing: {target}")
+            print(f"Target starter workflow missing: {target}")
             ok = False
             continue
 
