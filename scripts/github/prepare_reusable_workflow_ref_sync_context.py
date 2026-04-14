@@ -2,7 +2,7 @@
 """
 prepare_reusable_workflow_ref_sync_context.py
 
-Builds AI sync context for optional future maintenance flows.
+Builds bounded sync context for deterministic reusable-workflow ref maintenance.
 
 Inputs:
 - repo root
@@ -12,7 +12,6 @@ Inputs:
 
 Outputs:
 - .tmp/reusable-workflow-ref-sync/context.json
-- .tmp/reusable-workflow-ref-sync/prompt.txt
 
 Scope enforcement:
 - Only starter workflows listed in the manifest are considered targets.
@@ -45,6 +44,9 @@ def load_manifest(manifest_path: Path) -> dict:
 
     for workflow in data.get("managedWorkflows", []):
         workflow["source"] = normalize_path(str(workflow.get("source", "")))
+        workflow["publishedWorkflowPath"] = normalize_path(str(workflow.get("publishedWorkflowPath", "")))
+        if not workflow["source"] or not workflow["publishedWorkflowPath"]:
+            raise SystemExit("Each managedWorkflows entry must include source and publishedWorkflowPath")
         for template in workflow.get("templates", []):
             template["path"] = normalize_path(str(template.get("path", "")))
 
@@ -115,6 +117,7 @@ def build_targets(manifest_data: dict, changed_workflows: list[str], repo_root: 
         if source not in changed_workflows:
             continue
         expected_sha = latest_commit_for_path(repo_root, source)
+        published_workflow_path = workflow.get("publishedWorkflowPath")
         for template in workflow.get("templates", []):
             tpl_path = template.get("path")
             if not tpl_path:
@@ -123,6 +126,7 @@ def build_targets(manifest_data: dict, changed_workflows: list[str], repo_root: 
             target_mappings.append(
                 {
                     "source": source,
+                    "publishedWorkflowPath": published_workflow_path,
                     "target": tpl_path,
                     "expectedSha": expected_sha,
                 }
@@ -131,7 +135,7 @@ def build_targets(manifest_data: dict, changed_workflows: list[str], repo_root: 
     return sorted(set(targets)), target_mappings
 
 
-def write_context_and_prompt(
+def write_context(
     out_dir: Path,
     changed_workflows: list[str],
     targets: list[str],
@@ -152,31 +156,6 @@ def write_context_and_prompt(
     }
 
     (out_dir / "context.json").write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
-
-    prompt_lines = [
-        "You are a GitHub Actions workflow ref updater.",
-        "",
-        "Your task:",
-        "- Update only the starter workflow files listed in the context as targetTemplateFiles.",
-        "- Do NOT touch any other files.",
-        "- Do NOT add new files.",
-        "- Only update the exact reusable workflow calls identified in targetMappings.",
-        "- Keep all other content unchanged.",
-        "",
-        "Context provided by the caller:",
-        f"- Shared repo slug: {shared_repo_slug}",
-        f"- Changed reusable workflows: {', '.join(changed_workflows) if changed_workflows else '(none)'}",
-        f"- Target starter workflows: {', '.join(targets) if targets else '(none)'}",
-        "",
-        "IMPORTANT:",
-        "- For each targetMappings entry, update the matching uses: line to expectedSha.",
-        "- Update the paired shared_repository_ref to the same expectedSha.",
-        "- Leave unrelated reusable workflow calls unchanged.",
-        "",
-        "When done, write your changes back to the exact files listed in targetTemplateFiles.",
-    ]
-
-    (out_dir / "prompt.txt").write_text("\n".join(prompt_lines) + "\n", encoding="utf-8")
 
 
 def main() -> int:
@@ -201,7 +180,7 @@ def main() -> int:
 
     targets, mappings = build_targets(manifest_data, changed, repo_root)
 
-    write_context_and_prompt(
+    write_context(
         (repo_root / args.out_dir).resolve(),
         changed,
         targets,

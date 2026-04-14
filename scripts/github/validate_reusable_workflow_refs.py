@@ -16,6 +16,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 SHA_RE = re.compile(r"^[a-f0-9]{40}$")
@@ -30,15 +31,15 @@ def load_context(context_path: Path) -> dict:
         raise SystemExit(f"Failed to parse context: {e}")
 
 
-def find_target_calls(template_path: Path, shared_repo_slug: str, source_workflow_path: str) -> list[tuple[int, str, str | None]]:
+def find_target_calls(template_path: Path, shared_repo_slug: str, published_workflow_path: str) -> list[tuple[int, str, Optional[str]]]:
     """Return (line_no, uses_ref, shared_repository_ref)."""
     uses_pattern = re.compile(
-        rf"^\s*uses:\s*{re.escape(shared_repo_slug)}/{re.escape(source_workflow_path)}@([^\s#]+)\s*$"
+        rf"^\s*uses:\s*{re.escape(shared_repo_slug)}/{re.escape(published_workflow_path)}@([^\s#]+)\s*$"
     )
     shared_ref_pattern = re.compile(r"^\s*shared_repository_ref:\s*(\S+)\s*$")
 
     lines = template_path.read_text(encoding="utf-8").splitlines()
-    matches: list[tuple[int, str, str | None]] = []
+    matches: list[tuple[int, str, Optional[str]]] = []
 
     for idx, raw in enumerate(lines):
         uses_match = uses_pattern.match(raw)
@@ -91,11 +92,12 @@ def main() -> int:
 
     for mapping in mappings:
         source = str(mapping.get("source") or "").strip()
+        published_workflow_path = str(mapping.get("publishedWorkflowPath") or "").strip()
         target = str(mapping.get("target") or "").strip()
         expected_sha = str(mapping.get("expectedSha") or "").strip()
 
-        if not source or not target or not expected_sha:
-            print("Invalid target mapping entry (missing source/target/expectedSha).")
+        if not source or not published_workflow_path or not target or not expected_sha:
+            print("Invalid target mapping entry (missing source/publishedWorkflowPath/target/expectedSha).")
             ok = False
             continue
         if not SHA_RE.fullmatch(expected_sha):
@@ -109,8 +111,8 @@ def main() -> int:
             ok = False
             continue
 
-        print(f"Validating {target} against {source} -> {expected_sha}")
-        matches = find_target_calls(tpl_path, shared_repo_slug, source)
+        print(f"Validating {target} against {published_workflow_path} (source {source}) -> {expected_sha}")
+        matches = find_target_calls(tpl_path, shared_repo_slug, published_workflow_path)
         if not matches:
             print(f"  - {target}: no matching reusable workflow call found")
             ok = False
