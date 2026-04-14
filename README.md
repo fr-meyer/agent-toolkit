@@ -50,10 +50,11 @@ agent-toolkit/
 ├── templates/
 │   ├── reusable-workflows/
 │   │   ├── coderabbit-pr-automation.yml
-│   │   └── sync-starter-workflow-template-refs.yml
+│   │   └── sync-starter-workflow-template-refs-reusable.yml
 │   ├── starter-workflows/
 │   │   ├── coderabbit-pr-automation-wrapper.yml
-│   │   └── coderabbit-pr-comment-trigger.yml
+│   │   ├── coderabbit-pr-comment-trigger.yml
+│   │   └── sync-starter-workflow-template-refs.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
 ├── skills/
@@ -87,8 +88,8 @@ If you do not want to use the default alias, the scripts also support explicit p
 This repository now treats GitHub Actions files as **source assets**, not as active GitHub-special paths for this repo.
 
 - **Reusable workflow source:** `templates/reusable-workflows/coderabbit-pr-automation.yml`
-- **Reusable maintenance workflow source:** `templates/reusable-workflows/sync-starter-workflow-template-refs.yml`
-- **Starter workflow sources:** `templates/starter-workflows/`
+- **Reusable maintenance workflow source:** `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
+- **Starter workflow sources:** `templates/starter-workflows/`, including `templates/starter-workflows/sync-starter-workflow-template-refs.yml`
 - **Ref-sync manifest:** `templates/workflow-ref-sync-manifest.json`
 - **Repo-workflow materialization manifest:** `templates/repo-workflow-materialization-manifest.json`
 - **Helper scripts:** `scripts/coderabbit/` plus `scripts/github/` (including the deterministic ref updater and repo-workflow materializer)
@@ -100,6 +101,8 @@ The intended split is:
 - this repository stores the canonical workflow source assets under `templates/`
 - reusable workflow sources are meant to be published later into `.github/workflows/` of a serving repository
 - starter workflow sources are meant to be copied or adapted into consumer repositories later
+- every live workflow under `.github/workflows/` should have a canonical source under `templates/`
+- workflow classification is based on role, not on whether this repo happens to execute a rendered copy locally
 - repo-local GitHub execution can use thin entrypoint workflows under `.github/workflows/` that call materialized reusable workflow copies
 - `.github/workflows/` contains the live runtime files used by this repository at runtime, while reusable workflow source of truth stays under `templates/reusable-workflows/`
 
@@ -130,6 +133,8 @@ This repository is for **shared, reusable content only**. It should not contain 
 - `docs/setup.md` — setup, linking, overrides, verification, and repo-rename migration
 - `docs/repo-scope.md` — what belongs in the repo and what does not
 - `docs/workflow-asset-library-layout.md` — canonical layout for workflow source assets in this repository
+- `docs/workflow-authoring-rules.md` — workflow classification and edit rules for humans and agents
+- `AGENTS.md` — repo-local operating instructions and doc map for future agents
 - `scripts/coderabbit/README.md` — runtime notes for the CodeRabbit helper scripts
 - `cursor/rules/README.md` — how shared Cursor rules are linked into projects
 

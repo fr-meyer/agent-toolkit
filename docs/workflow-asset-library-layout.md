@@ -17,10 +17,11 @@ agent-toolkit/
 ├── templates/
 │   ├── reusable-workflows/
 │   │   ├── coderabbit-pr-automation.yml
-│   │   └── sync-starter-workflow-template-refs.yml
+│   │   └── sync-starter-workflow-template-refs-reusable.yml
 │   ├── starter-workflows/
 │   │   ├── coderabbit-pr-automation-wrapper.yml
-│   │   └── coderabbit-pr-comment-trigger.yml
+│   │   ├── coderabbit-pr-comment-trigger.yml
+│   │   └── sync-starter-workflow-template-refs.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
 ├── scripts/
@@ -49,6 +50,8 @@ uses: owner/repo/.github/workflows/workflow.yml@<ref>
 
 That path is a publication target shape, not a statement that the canonical source file in this repository lives under `.github/workflows/` today.
 
+Repo-local trigger entrypoints that are intended to be copied or adapted later should also live here as canonical starter sources, even if this repository materializes a live copy under `.github/workflows/` for its own runtime.
+
 ### `scripts/coderabbit/`
 Runtime helper scripts used by the CodeRabbit automation flow.
 
@@ -65,6 +68,8 @@ Thin repo-local entrypoint workflows can also live here when this repository nee
 
 The reusable workflow source of truth still lives under `templates/reusable-workflows/`.
 
+The source of truth for repo-local trigger entrypoints lives under `templates/starter-workflows/`.
+
 ## Why this layout
 
 This avoids mixing up four different concepts:
@@ -74,6 +79,12 @@ This avoids mixing up four different concepts:
 - **repo-local trigger entrypoints** under `.github/workflows/`
 - **GitHub-special publication paths** like `.github/workflows/` and `.github/workflow-templates/`
 - **published targets** that may exist later in another repo, branch, or release flow
+
+Classification is based on **role**, not on whether a rendered copy happens to run in this repository:
+
+- callable `workflow_call` assets belong in `templates/reusable-workflows/`
+- copy/adapt entrypoints belong in `templates/starter-workflows/`
+- every live `.github/workflows/` file should be a rendered/materialized copy of a canonical template source
 
 The repository stays honest about what it is: a storage and maintenance library for workflow assets, with repo-local execution files only where GitHub requires them.
 
@@ -101,4 +112,4 @@ This repository is **not** currently using:
 - `.github/workflow-templates/` as its canonical storage layout
 - GitHub native template-picker metadata as part of the active architecture
 
-For the current maintenance flow, the canonical implementation lives in `templates/reusable-workflows/sync-starter-workflow-template-refs.yml`, gets materialized to `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`, and is called by the live trigger entrypoint `.github/workflows/sync-starter-workflow-template-refs.yml`.
+For the current maintenance flow, the canonical reusable implementation lives in `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`, gets materialized to `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`, and is called by the live trigger entrypoint `.github/workflows/sync-starter-workflow-template-refs.yml`, whose canonical source lives in `templates/starter-workflows/sync-starter-workflow-template-refs.yml`.
