@@ -95,14 +95,33 @@ If these assets are later published for real GitHub consumption:
 - reusable workflow sources from `templates/reusable-workflows/` should be copied into `.github/workflows/` of the chosen serving repo
 - starter workflow sources from `templates/starter-workflows/` should be copied into consumer repos, or transformed for another publishing surface if needed
 
+## Manifest binding rule
+
+Two manifests govern the durable source-to-target behavior:
+
+- `templates/repo-workflow-materialization-manifest.json`
+  - binds canonical template sources under `templates/` to live runtime copies under `.github/workflows/`
+- `templates/workflow-ref-sync-manifest.json`
+  - binds reusable workflow sources to the target files whose pinned reusable-workflow refs should be diffused automatically
+
+The second manifest can target:
+- starter templates under `templates/starter-workflows/`
+- linked live workflows under `.github/workflows/`
+
+When adding or renaming a reusable workflow, decide explicitly whether it needs:
+- no ref diffusion
+- diffusion into starter templates only
+- diffusion into starter templates plus linked live workflows
+
+Then update the manifest accordingly.
+
 ## Pinning rule
 
-When a starter workflow calls a reusable workflow, keep these aligned:
+When a target workflow calls a reusable workflow, keep the pinned `uses: owner/repo/.github/workflows/file.yml@<sha>` ref aligned with the authoritative reusable workflow commit.
 
-- `uses: owner/repo/.github/workflows/file.yml@<sha>`
-- `shared_repository_ref: <same sha>`
+When the target also carries `shared_repository_ref`, keep that field aligned to the same SHA.
 
-If they diverge, the starter workflow no longer describes a coherent published target.
+If they diverge, the target no longer describes a coherent published target.
 
 ## Current scope
 

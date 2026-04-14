@@ -15,7 +15,8 @@ Help the agent safely create, modify, and maintain GitHub Actions workflows in r
 - Treat `templates/` as the source of truth.
 - Classify workflow templates by role, not by where a rendered copy happens to run.
 - Edit canonical template sources first, then materialize live `.github/workflows/` copies.
-- Keep starter-template pinned refs coherent with the reusable workflow commit they describe.
+- Keep pinned reusable-workflow refs coherent with the authoritative reusable workflow commit they describe.
+- Maintain both manifests explicitly: one for materialization, one for reusable-workflow SHA diffusion.
 - Update local docs when the architecture or rule changes.
 
 ## Scope boundaries
@@ -25,7 +26,8 @@ Use this skill for:
 - deciding whether a workflow belongs in `reusable-workflows` or `starter-workflows`
 - introducing or updating `.github/workflows/` materialized copies from canonical templates
 - updating `templates/repo-workflow-materialization-manifest.json`
-- updating `templates/workflow-ref-sync-manifest.json` when starter templates track reusable workflow refs
+- updating `templates/workflow-ref-sync-manifest.json` when starter templates or linked live workflows should track reusable workflow refs
+- deciding whether SHA diffusion targets should include starter templates only, or starter templates plus linked live workflows
 - documenting the workflow asset layout so later humans and agents can recover it
 
 Do not use this skill for:
@@ -97,8 +99,15 @@ Update `templates/repo-workflow-materialization-manifest.json` when:
 
 Update `templates/workflow-ref-sync-manifest.json` when:
 - starter templates should keep pinned reusable-workflow refs aligned
+- linked live workflows should also keep pinned reusable-workflow refs aligned
 - a reusable workflow source path changes
-- a starter template is added to or removed from managed ref-sync scope
+- a published `.github/workflows/...` path changes
+- a target file is added to or removed from managed ref-sync scope
+
+Treat the ref-sync manifest as the explicit binding table from:
+- reusable workflow source
+- to published workflow path
+- to every target file that should receive SHA diffusion
 
 ### 6. Re-materialize and verify
 
@@ -106,7 +115,8 @@ After editing:
 - run the repo's materialization mechanism if one exists
 - verify each materialized `.github/workflows/` file matches its canonical source
 - verify that references to renamed workflows were updated in manifests, docs, and calling workflows
-- verify starter templates still point at the correct reusable workflow path and commit/ref shape
+- verify mapped starter templates and mapped linked live workflows still point at the correct reusable workflow path and commit/ref shape
+- verify `shared_repository_ref` was updated too when that field exists in a mapped target
 
 ### 7. Update durable docs when needed
 
@@ -122,7 +132,9 @@ When the layout rule, classification rule, or authoring model changes:
 - Do not move a trigger entrypoint into `reusable-workflows` just because this repo runs it.
 - Do not leave a live `.github/workflows/` file without a canonical template source.
 - Do not rename a canonical workflow source without updating manifests, callers, and docs.
-- When starter templates pin a reusable workflow, keep the `uses: ...@<ref>` and any paired shared ref field aligned.
+- Do not forget that reusable-workflow SHA diffusion is controlled separately from materialization.
+- When a reusable workflow changes, decide explicitly whether diffusion should reach starter templates only, or starter templates plus linked live workflows.
+- When a target pins a reusable workflow, keep the `uses: ...@<ref>` aligned, and keep `shared_repository_ref` aligned too when that field exists.
 
 ## Resources
 

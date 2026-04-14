@@ -34,6 +34,35 @@ This includes repo-local trigger entrypoints when their canonical form should re
   - `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
   - `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
 
+## Manifest responsibilities
+
+### `templates/repo-workflow-materialization-manifest.json`
+
+This manifest controls **template source -> live `.github/workflows/` copy** materialization.
+
+Use it when:
+- a canonical template should render to a live `.github/workflows/` file
+- a live workflow target is renamed
+- a materialized workflow is added or removed
+
+### `templates/workflow-ref-sync-manifest.json`
+
+This manifest controls **reusable workflow source -> target file SHA diffusion**.
+
+Each managed mapping answers:
+- which reusable workflow source is authoritative
+- which published `.github/workflows/...` path that reusable workflow represents
+- which target files should have their pinned `uses: ...@<sha>` refs updated when the reusable source changes
+
+Those targets may include:
+- starter templates under `templates/starter-workflows/`
+- linked live workflows under `.github/workflows/`
+
+Update this manifest whenever:
+- a reusable workflow should diffuse its pinned SHA into new targets
+- a target file is added, removed, or renamed
+- a reusable workflow source path or published workflow path changes
+
 ## When creating or modifying a workflow
 
 1. Decide the workflow role first.
@@ -41,9 +70,17 @@ This includes repo-local trigger entrypoints when their canonical form should re
    - copy/adapt entrypoint or starter -> `templates/starter-workflows/`
 2. Edit the canonical template source under `templates/`.
 3. Update `templates/repo-workflow-materialization-manifest.json` if a live `.github/workflows/` copy must be materialized.
-4. Update `templates/workflow-ref-sync-manifest.json` if starter templates need pinned reusable-workflow refs kept in sync.
-5. Re-materialize the live `.github/workflows/` copies.
-6. Update the relevant docs if the architecture or rules changed.
+4. Decide whether the reusable workflow needs SHA diffusion into starter templates, linked live workflows, or both.
+5. Update `templates/workflow-ref-sync-manifest.json` whenever that source-to-target binding changes.
+6. Re-materialize the live `.github/workflows/` copies.
+7. Validate that pinned `uses: ...@<sha>` refs were updated correctly, and validate `shared_repository_ref` too when that field exists.
+8. Update the relevant docs if the architecture or rules changed.
+
+## Current diffusion rule
+
+The ref-sync system updates the matching pinned `uses: ...@<sha>` ref in each mapped target.
+
+When a paired `shared_repository_ref` field exists, it should be updated to the same SHA. Some targets may not have that field, and that is allowed.
 
 ## Why this rule exists
 

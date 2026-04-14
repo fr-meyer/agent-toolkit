@@ -17,16 +17,20 @@ Repo-local instructions for humans and agents working in `shared-agent-skills`.
   - copy/adapt entrypoints and starter templates -> `templates/starter-workflows/`
 - Treat `.github/workflows/` as live rendered runtime copies.
 - Every live workflow in `.github/workflows/` should have a canonical template source.
+- `templates/repo-workflow-materialization-manifest.json` binds canonical template sources to their live `.github/workflows/` copies.
+- `templates/workflow-ref-sync-manifest.json` binds reusable workflow sources to the starter and linked live workflow targets whose pinned `uses: ...@<sha>` refs should be diffused automatically.
 
 ## Required follow-through when editing workflows
 
 When a workflow asset changes:
 
 1. update the canonical template source
-2. update `templates/repo-workflow-materialization-manifest.json` if needed
-3. update `templates/workflow-ref-sync-manifest.json` if starter-template pinned refs are affected
-4. re-materialize `.github/workflows/` copies
-5. update docs if the architecture or rule changed
+2. update `templates/repo-workflow-materialization-manifest.json` if any live `.github/workflows/` source or target path is added, removed, or renamed
+3. decide whether the reusable workflow also needs SHA diffusion into starter templates, linked live workflows, or both
+4. update `templates/workflow-ref-sync-manifest.json` whenever that source-to-target binding changes
+5. re-materialize `.github/workflows/` copies
+6. verify pinned `uses: ...@<sha>` refs still match the intended reusable workflow commit, and update `shared_repository_ref` too when that field exists
+7. update docs if the architecture or rule changed
 
 ## Intent
 
