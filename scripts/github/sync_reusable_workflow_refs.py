@@ -7,9 +7,9 @@ source assets based on the bounded context prepared by
 prepare_reusable_workflow_ref_sync_context.py.
 
 Scope enforcement:
-- Only starter workflows listed in context targetTemplateFiles are modified.
+- Only target files listed in context targetTemplateFiles are modified.
 - Only reusable workflow calls explicitly listed in targetMappings are updated.
-- Only the matching uses: line and the paired shared_repository_ref are changed.
+- The matching uses: line is updated, and any paired shared_repository_ref is updated when present.
 """
 
 import argparse
@@ -67,20 +67,20 @@ def update_target_file(template_path: Path, shared_repo_slug: str, published_wor
     shared_ref_pattern = re.compile(r"^\s*shared_repository_ref:\s*(\S+)\s*$")
 
     changed = False
-    updates = 0
+    matches = 0
 
     for idx, raw in enumerate(lines):
         match = uses_pattern.match(raw.rstrip("\n"))
         if not match:
             continue
 
+        matches += 1
         current_ref = match.group(2).strip().strip('"').strip("'")
         if current_ref != expected_sha:
             lines[idx] = replace_ref_token(raw.rstrip("\n"), current_ref, expected_sha) + ("\n" if raw.endswith("\n") else "")
             changed = True
 
         uses_indent = len(raw) - len(raw.lstrip(" "))
-        found_shared_ref = False
 
         for j in range(idx + 1, len(lines)):
             next_raw = lines[j]
@@ -91,26 +91,19 @@ def update_target_file(template_path: Path, shared_repo_slug: str, published_wor
                 break
 
             if shared_ref_pattern.match(next_raw.rstrip("\n")):
-                found_shared_ref = True
                 shared_value = shared_ref_pattern.match(next_raw.rstrip("\n")).group(1).strip().strip('"').strip("'")
                 if shared_value != expected_sha:
                     lines[j] = replace_shared_ref_value(next_raw.rstrip("\n"), expected_sha) + ("\n" if next_raw.endswith("\n") else "")
                     changed = True
-                updates += 1
                 break
 
-        if not found_shared_ref:
-            raise SystemExit(
-                f"Missing paired shared_repository_ref for {template_path} near uses call for {published_workflow_path}"
-            )
-
-    if updates == 0:
+    if matches == 0:
         raise SystemExit(f"No matching reusable workflow call found in {template_path} for {published_workflow_path}")
 
     if changed:
         template_path.write_text("".join(lines), encoding="utf-8")
 
-    return changed, updates
+    return changed, matches
 
 
 def main() -> int:

@@ -5,9 +5,9 @@ validate_reusable_workflow_refs.py
 Validates that all target starter workflows have been updated correctly.
 
 Scope enforcement:
-- Only starter workflows listed in the context targetTemplateFiles are validated.
+- Only target files listed in the context targetTemplateFiles are validated.
 - Only reusable workflow calls explicitly listed in targetMappings are checked.
-- Only the paired shared_repository_ref is checked.
+- Any paired shared_repository_ref is checked when present.
 - Fails if any mismatch is found.
 """
 
@@ -127,8 +127,7 @@ def main() -> int:
                 ok = False
 
             if shared_ref is None:
-                print(f"  - {target}:{line_no} missing paired shared_repository_ref")
-                ok = False
+                pass
             elif not SHA_RE.fullmatch(shared_ref):
                 print(f"  - {target}:{line_no} shared_repository_ref is not a pinned SHA: {shared_ref}")
                 ok = False

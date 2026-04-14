@@ -1,5 +1,9 @@
 name: Sync starter-workflow template refs (trigger)
 
+# This trigger pins the reusable maintenance workflow by commit SHA so ref-sync
+# can diffuse updates into both the canonical trigger template and the live
+# .github/workflows trigger copy.
+
 on:
   push:
     branches:
@@ -46,7 +50,7 @@ concurrency:
 jobs:
   sync-on-push:
     if: github.event_name == 'push'
-    uses: ./.github/workflows/sync-starter-workflow-template-refs-reusable.yml
+    uses: fr-meyer/agent-toolkit/.github/workflows/sync-starter-workflow-template-refs-reusable.yml@96914712a9377537a1706f12ad7b21b83d95d0c3
     with:
       before_sha: ${{ github.event.before }}
       after_sha: ${{ github.sha }}
@@ -57,7 +61,7 @@ jobs:
 
   sync-on-dispatch:
     if: github.event_name == 'workflow_dispatch'
-    uses: ./.github/workflows/sync-starter-workflow-template-refs-reusable.yml
+    uses: fr-meyer/agent-toolkit/.github/workflows/sync-starter-workflow-template-refs-reusable.yml@96914712a9377537a1706f12ad7b21b83d95d0c3
     with:
       before_sha: ${{ inputs.before_sha }}
       after_sha: ${{ inputs.after_sha }}

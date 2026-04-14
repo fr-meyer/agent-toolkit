@@ -109,7 +109,7 @@ The intended split is:
 Important note for the current starter workflow sources:
 - they still show the eventual GitHub reusable-workflow serving path shape, for example `owner/repo/.github/workflows/<file>@<ref>`
 - that `uses:` path is a publication-target shape, not a claim that this source-library repo currently serves that workflow at HEAD
-- if you publish these assets later, keep the `uses: ...@<sha>` reference and the paired `shared_repository_ref` aligned
+- if you publish these assets later, keep the `uses: ...@<sha>` reference aligned with the paired `shared_repository_ref` when that field is present
 
 Current runtime contract for the CodeRabbit workflow source:
 - choose the coding-agent runtime with `CODERABBIT_AGENT_RUNTIME` (for example `cursor`)
