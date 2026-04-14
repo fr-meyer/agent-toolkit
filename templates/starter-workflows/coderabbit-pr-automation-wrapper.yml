@@ -62,13 +62,13 @@ on:
 jobs:
   coderabbit-pr-automation-dispatch:
     if: ${{ github.event_name == 'workflow_dispatch' }}
-    uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@5b1fa1b1c5553ba1b40347c098d71520280a0212
+    uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@743e51edf2385216507358e3f7fa285a318965d8
     with:
       pr_number: ${{ fromJSON(inputs.pr_number) }}
       run_validation: ${{ inputs.run_validation }}
       working_tree_must_be_clean: ${{ inputs.working_tree_must_be_clean }}
       max_cycles: ${{ fromJSON(inputs.max_cycles) }}
-      shared_repository_ref: 5b1fa1b1c5553ba1b40347c098d71520280a0212
+      shared_repository_ref: 743e51edf2385216507358e3f7fa285a318965d8
       runner_labels_json: ${{ vars.CODERABBIT_RUNNER_LABELS_JSON != '' && vars.CODERABBIT_RUNNER_LABELS_JSON || '["self-hosted"]' }}
       agent_runtime: ${{ vars.CODERABBIT_AGENT_RUNTIME != '' && vars.CODERABBIT_AGENT_RUNTIME || 'none' }}
       agent_command_json: ${{ vars.CODERABBIT_AGENT_COMMAND_JSON }}
@@ -92,13 +92,13 @@ jobs:
 
   coderabbit-pr-automation-pr:
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
-    uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@5b1fa1b1c5553ba1b40347c098d71520280a0212
+    uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@743e51edf2385216507358e3f7fa285a318965d8
     with:
       pr_number: ${{ github.event.pull_request.number }}
       run_validation: false
       working_tree_must_be_clean: true
       max_cycles: 3
-      shared_repository_ref: 5b1fa1b1c5553ba1b40347c098d71520280a0212
+      shared_repository_ref: 743e51edf2385216507358e3f7fa285a318965d8
       runner_labels_json: ${{ vars.CODERABBIT_RUNNER_LABELS_JSON != '' && vars.CODERABBIT_RUNNER_LABELS_JSON || '["self-hosted"]' }}
       agent_runtime: ${{ vars.CODERABBIT_AGENT_RUNTIME != '' && vars.CODERABBIT_AGENT_RUNTIME || 'none' }}
       agent_command_json: ${{ vars.CODERABBIT_AGENT_COMMAND_JSON }}
