@@ -12,15 +12,15 @@ Keep workflow files here as canonical source assets, without treating this repos
 agent-toolkit/
 ├── .github/
 │   └── workflows/
+│       ├── sync-starter-workflow-template-refs-reusable.yml
 │       └── sync-starter-workflow-template-refs.yml
 ├── templates/
 │   ├── reusable-workflows/
-│   │   └── coderabbit-pr-automation.yml
+│   │   ├── coderabbit-pr-automation.yml
+│   │   └── sync-starter-workflow-template-refs.yml
 │   ├── starter-workflows/
 │   │   ├── coderabbit-pr-automation-wrapper.yml
 │   │   └── coderabbit-pr-comment-trigger.yml
-│   ├── repo-maintenance-workflows/
-│   │   └── sync-starter-workflow-template-refs.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
 ├── scripts/
@@ -36,6 +36,8 @@ Canonical source files for reusable workflows.
 
 These are not stored under `.github/workflows/` here because this repository is acting as a library of source assets, not as the live serving repo for GitHub reusable workflows.
 
+That includes reusable maintenance workflows that this repository later materializes into repo-local callable files under `.github/workflows/`.
+
 ### `templates/starter-workflows/`
 Canonical source files for starter workflows that can later be copied or adapted into consumer repositories.
 
@@ -50,31 +52,30 @@ That path is a publication target shape, not a statement that the canonical sour
 ### `scripts/coderabbit/`
 Runtime helper scripts used by the CodeRabbit automation flow.
 
-### `templates/repo-maintenance-workflows/`
-Canonical source files for repo-local maintenance workflows used by this repository itself.
-
-These are authored under `templates/` on purpose so the repo-local operational workflows follow the same source-library model as the reusable and starter workflow assets.
 
 ### `scripts/github/`
 Deterministic maintenance or publishing helpers for republishing, pinned-ref maintenance, and materializing repo-local workflow copies from canonical template sources.
 
 ### `.github/workflows/`
-Materialized live operational copies only.
+Live repo execution files only.
 
-Files here are runtime copies generated from `templates/repo-maintenance-workflows/` for this repository's own GitHub execution surface.
+Materialized reusable workflow copies can live here so GitHub can call them.
 
-They are intentionally not the authoring source of truth.
+Thin repo-local entrypoint workflows can also live here when this repository needs a trigger surface that calls a reusable workflow implementation.
+
+The reusable workflow source of truth still lives under `templates/reusable-workflows/`.
 
 ## Why this layout
 
 This avoids mixing up four different concepts:
 
 - **canonical source assets** stored under `templates/`
-- **materialized repo-local runtime workflows** under `.github/workflows/`
+- **materialized repo-local callable reusable workflows** under `.github/workflows/`
+- **repo-local trigger entrypoints** under `.github/workflows/`
 - **GitHub-special publication paths** like `.github/workflows/` and `.github/workflow-templates/`
 - **published targets** that may exist later in another repo, branch, or release flow
 
-The repository stays honest about what it is: a storage and maintenance library for workflow assets, with repo-local runtime files materialized from canonical sources.
+The repository stays honest about what it is: a storage and maintenance library for workflow assets, with repo-local execution files only where GitHub requires them.
 
 ## Publication model
 
@@ -100,6 +101,4 @@ This repository is **not** currently using:
 - `.github/workflow-templates/` as its canonical storage layout
 - GitHub native template-picker metadata as part of the active architecture
 
-It does use `.github/workflows/` for repo-local maintenance automation, but those files are materialized runtime copies from canonical sources in `templates/repo-maintenance-workflows/`.
-
-That keeps the authoring model consistent even when this repository needs live GitHub workflow files for its own maintenance.
+For the current maintenance flow, the canonical implementation lives in `templates/reusable-workflows/sync-starter-workflow-template-refs.yml`, gets materialized to `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`, and is called by the live trigger entrypoint `.github/workflows/sync-starter-workflow-template-refs.yml`.
