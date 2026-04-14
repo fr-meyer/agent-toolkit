@@ -43,12 +43,16 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 
 ```text
 agent-toolkit/
+├── .github/
+│   └── workflows/
+│       └── sync-starter-workflow-template-refs.yml
 ├── templates/
 │   ├── reusable-workflows/
 │   │   └── coderabbit-pr-automation.yml
-│   └── starter-workflows/
-│       ├── coderabbit-pr-automation-wrapper.yml
-│       └── coderabbit-pr-comment-trigger.yml
+│   ├── starter-workflows/
+│   │   ├── coderabbit-pr-automation-wrapper.yml
+│   │   └── coderabbit-pr-comment-trigger.yml
+│   └── workflow-ref-sync-manifest.json
 ├── skills/
 ├── scripts/
 ├── docs/
@@ -81,14 +85,17 @@ This repository now treats GitHub Actions files as **source assets**, not as act
 
 - **Reusable workflow source:** `templates/reusable-workflows/coderabbit-pr-automation.yml`
 - **Starter workflow sources:** `templates/starter-workflows/`
-- **Helper scripts:** `scripts/coderabbit/` plus `scripts/github/`
+- **Ref-sync manifest:** `templates/workflow-ref-sync-manifest.json`
+- **Helper scripts:** `scripts/coderabbit/` plus `scripts/github/` (including the deterministic ref updater)
+- **Repo-local maintenance workflow:** `.github/workflows/sync-starter-workflow-template-refs.yml`
 - **Architecture note:** `docs/workflow-asset-library-layout.md`
 
 The intended split is:
 - this repository stores the canonical workflow source assets
 - reusable workflow sources are meant to be published later into `.github/workflows/` of a serving repository
 - starter workflow sources are meant to be copied or adapted into consumer repositories later
-- this repository is not currently using `.github/workflows/` or `.github/workflow-templates/` as its canonical storage layout
+- this repository is not currently using `.github/workflows/` or `.github/workflow-templates/` as its canonical storage layout for workflow source assets
+- `.github/workflows/` may still contain repo-local maintenance automation, but those files are operational helpers, not canonical reusable/starter source assets
 
 Important note for the current starter workflow sources:
 - they still show the eventual GitHub reusable-workflow serving path shape, for example `owner/repo/.github/workflows/<file>@<ref>`

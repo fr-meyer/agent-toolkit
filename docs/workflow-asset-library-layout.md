@@ -10,12 +10,16 @@ Keep workflow files here as canonical source assets, without treating this repos
 
 ```text
 agent-toolkit/
+├── .github/
+│   └── workflows/
+│       └── sync-starter-workflow-template-refs.yml
 ├── templates/
 │   ├── reusable-workflows/
 │   │   └── coderabbit-pr-automation.yml
-│   └── starter-workflows/
-│       ├── coderabbit-pr-automation-wrapper.yml
-│       └── coderabbit-pr-comment-trigger.yml
+│   ├── starter-workflows/
+│   │   ├── coderabbit-pr-automation-wrapper.yml
+│   │   └── coderabbit-pr-comment-trigger.yml
+│   └── workflow-ref-sync-manifest.json
 ├── scripts/
 │   ├── coderabbit/
 │   └── github/
@@ -44,14 +48,24 @@ That path is a publication target shape, not a statement that the canonical sour
 Runtime helper scripts used by the CodeRabbit automation flow.
 
 ### `scripts/github/`
-Optional maintenance or publishing helpers for future republishing workflows.
+Optional maintenance or publishing helpers for republishing and pinned-ref maintenance workflows.
+
+This includes the deterministic ref updater used by the repo-local maintenance workflow.
+
+### `.github/workflows/`
+Repo-local operational automation only.
+
+Files here may maintain the source library itself, for example by syncing pinned starter-workflow refs after a reusable workflow source asset changes.
+
+These workflow files are not the canonical reusable/starter source assets. Those still live under `templates/`.
 
 ## Why this layout
 
-This avoids mixing up three different concepts:
+This avoids mixing up four different concepts:
 
 - **source assets** stored in this repository
-- **GitHub-special paths** like `.github/workflows/` and `.github/workflow-templates/`
+- **repo-local maintenance automation** used to maintain those assets
+- **GitHub-special publication paths** like `.github/workflows/` and `.github/workflow-templates/`
 - **published targets** that may exist later in another repo, branch, or release flow
 
 The repository stays honest about what it is: a storage and maintenance library for reusable workflow assets.
@@ -76,8 +90,10 @@ If they diverge, the starter workflow no longer describes a coherent published t
 
 This repository is **not** currently using:
 
-- `.github/workflows/` as its canonical storage layout
+- `.github/workflows/` as its canonical storage layout for workflow source assets
 - `.github/workflow-templates/` as its canonical storage layout
 - GitHub native template-picker metadata as part of the active architecture
+
+It may still use `.github/workflows/` for repo-local maintenance automation that acts on the canonical files in `templates/`.
 
 Those can be added back later if there is a real publishing need, but they are intentionally out of the source layout for now.
