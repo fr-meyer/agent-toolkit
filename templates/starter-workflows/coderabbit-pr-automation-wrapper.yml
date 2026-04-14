@@ -2,6 +2,8 @@ name: CodeRabbit PR automation wrapper
 
 # Source asset for a starter workflow.
 # This canonical source file lives under templates/starter-workflows/ in the asset library.
+# The uses: target below is a publication-target shape for a serving repo, not a claim
+# that this source-library repo currently serves the reusable workflow at HEAD.
 # If you publish or copy it later, keep the pinned reusable-workflow uses ref and the
 # paired shared_repository_ref aligned.
 #

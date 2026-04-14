@@ -8,7 +8,7 @@ Inputs:
 - repo root
 - before_sha / after_sha (for diff)
 - shared_repo_slug (github.repository or serving repo slug)
-- manifest path (default: templates/workflow-ref-sync-manifest.json)
+- manifest path (required, no default in the simplified source-library layout)
 
 Outputs:
 - .tmp/reusable-workflow-ref-sync/context.json
@@ -185,7 +185,7 @@ def main() -> int:
     parser.add_argument("--before", required=True, type=str, help="before SHA")
     parser.add_argument("--after", required=True, type=str, help="after SHA")
     parser.add_argument("--shared-repo-slug", required=True, type=str)
-    parser.add_argument("--manifest-path", default="templates/workflow-ref-sync-manifest.json", type=Path)
+    parser.add_argument("--manifest-path", required=True, type=Path)
     parser.add_argument("--out-dir", default=".tmp/reusable-workflow-ref-sync", type=Path)
 
     args = parser.parse_args()
