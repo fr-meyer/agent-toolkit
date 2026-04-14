@@ -2,8 +2,9 @@
 """
 materialize_repo_workflow_templates.py
 
-Deterministically copies canonical repo-maintenance workflow source assets from
-`templates/` into their live repo-local `.github/workflows/` targets.
+Deterministically copies canonical reusable-workflow source assets from
+`templates/reusable-workflows/` into their live repo-local `.github/workflows/`
+targets.
 """
 
 import argparse
@@ -44,8 +45,8 @@ def main():
             raise SystemExit(f"Source path escapes repo root: {source_rel}")
         if not str(target_path).startswith(str(repo_root)):
             raise SystemExit(f"Target path escapes repo root: {target_rel}")
-        if not source_rel.startswith("templates/repo-maintenance-workflows/"):
-            raise SystemExit(f"Source must live under templates/repo-maintenance-workflows/: {source_rel}")
+        if not source_rel.startswith("templates/reusable-workflows/"):
+            raise SystemExit(f"Source must live under templates/reusable-workflows/: {source_rel}")
         if not target_rel.startswith(".github/workflows/"):
             raise SystemExit(f"Target must live under .github/workflows/: {target_rel}")
 

@@ -1,0 +1,209 @@
+name: Sync starter-workflow template refs (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      before_sha:
+        description: Optional diff base SHA for the reusable-workflow change
+        required: false
+        type: string
+        default: ''
+      after_sha:
+        description: Optional target SHA for the reusable-workflow change
+        required: false
+        type: string
+        default: ''
+      auto_commit:
+        description: Commit workflow-asset maintenance updates back to the current branch
+        required: false
+        type: boolean
+        default: true
+      auto_push:
+        description: Push the maintenance commit after validation
+        required: false
+        type: boolean
+        default: false
+      python_version:
+        description: Python version used by the helper scripts
+        required: false
+        type: string
+        default: '3.11'
+      triggered_by_push:
+        description: Whether the caller was triggered by a push event
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: sync-starter-workflow-refs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync-starter-workflow-refs:
+    name: Sync starter-workflow template refs
+    runs-on: ubuntu-latest
+
+    env:
+      WORKFLOW_REF_SYNC_CONTEXT_DIR: .tmp/reusable-workflow-ref-sync/context
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Resolve sync bounds
+        id: bounds
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZERO_SHA=0000000000000000000000000000000000000000
+
+          after_sha='${{ inputs.after_sha }}'
+          before_sha='${{ inputs.before_sha }}'
+
+          if [[ -z "$after_sha" ]]; then
+            after_sha="$(git rev-parse HEAD)"
+          fi
+          if [[ -z "$before_sha" ]]; then
+            before_sha="$(git rev-parse "${after_sha}^" 2>/dev/null || echo "$ZERO_SHA")"
+          fi
+          if [[ -z "$before_sha" ]]; then
+            before_sha="$ZERO_SHA"
+          fi
+
+          echo "before_sha=$before_sha" >> "$GITHUB_OUTPUT"
+          echo "after_sha=$after_sha" >> "$GITHUB_OUTPUT"
+          echo "Using sync bounds: $before_sha..$after_sha"
+
+      - name: Prepare sync directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .tmp/reusable-workflow-ref-sync
+          mkdir -p "$WORKFLOW_REF_SYNC_CONTEXT_DIR"
+
+      - name: Materialize repo-local workflow copies from canonical templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/github/materialize_repo_workflow_templates.py             --repo-root .             --manifest-path templates/repo-workflow-materialization-manifest.json
+
+      - name: Prepare reusable-workflow ref sync context
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/github/prepare_reusable_workflow_ref_sync_context.py             --repo-root .             --before '${{ steps.bounds.outputs.before_sha }}'             --after '${{ steps.bounds.outputs.after_sha }}'             --shared-repo-slug '${{ github.repository }}'             --manifest-path templates/workflow-ref-sync-manifest.json             --out-dir "$WORKFLOW_REF_SYNC_CONTEXT_DIR"
+
+      - name: Count changed reusable workflows and targets
+        id: context_summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -c "import json; from pathlib import Path; ctx = json.loads(Path('.tmp/reusable-workflow-ref-sync/context/context.json').read_text(encoding='utf-8')); changed = len(ctx.get('changedReusableWorkflows') or []); targets = len(ctx.get('targetTemplateFiles') or []); out = Path('.tmp/reusable-workflow-ref-sync/context/github_output.txt'); out.write_text(f'changed_workflows={changed}\ntarget_template_files={targets}\n', encoding='utf-8'); print(f'changed_workflows={changed}'); print(f'target_template_files={targets}')"
+          cat .tmp/reusable-workflow-ref-sync/context/github_output.txt >> "$GITHUB_OUTPUT"
+
+      - name: Stop early when no reusable workflow changed
+        if: steps.context_summary.outputs.changed_workflows == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'No reusable workflow YAML changes were detected. No starter-workflow ref sync needed.'
+
+      - name: Stop early when no manifest target matches
+        if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'Reusable workflow YAML changed, but the manifest maps none of those workflows to starter templates. Nothing to sync.'
+
+      - name: Update pinned reusable-workflow refs deterministically
+        if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/github/sync_reusable_workflow_refs.py             --repo-root .             --context "$WORKFLOW_REF_SYNC_CONTEXT_DIR/context.json"
+
+      - name: Fail if maintenance changed files outside allowed scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -c "import subprocess; allowed_prefixes = ('templates/starter-workflows/', '.github/workflows/', '.tmp/reusable-workflow-ref-sync/'); completed = subprocess.run(['git', 'status', '--porcelain'], text=True, capture_output=True, check=True); bad = [];
+for raw in completed.stdout.splitlines():
+    if not raw.strip():
+        continue
+    path = raw[3:].strip().replace('\\', '/');
+    if ' -> ' in path:
+        path = path.split(' -> ', 1)[1].strip();
+    if not path.startswith(allowed_prefixes):
+        bad.append(path)
+
+if bad:
+    raise SystemExit('Maintenance modified files outside allowed scope: ' + ', '.join(sorted(set(bad))))
+print('Maintenance file scope check passed.')"
+
+      - name: Validate pinned reusable-workflow refs
+        if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/github/validate_reusable_workflow_refs.py             --repo-root .             --context "$WORKFLOW_REF_SYNC_CONTEXT_DIR/context.json"
+
+      - name: Detect workflow-asset changes
+        id: workflow_asset_diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- templates/starter-workflows .github/workflows; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'No workflow-asset changes were produced.'
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            echo 'Workflow-asset changes detected.'
+            git diff --stat -- templates/starter-workflows .github/workflows
+          fi
+
+      - name: Configure Git author
+        if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Commit workflow-asset maintenance
+        if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit)
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha='${{ steps.bounds.outputs.after_sha }}'
+          short_sha="${short_sha:0:12}"
+          git add templates/starter-workflows .github/workflows
+          git commit -m "ci: sync workflow assets to ${short_sha}"
+
+      - name: Push maintenance commit
+        if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit) && (inputs.triggered_by_push || inputs.auto_push)
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch='${{ github.ref_name }}'
+          git push origin "HEAD:refs/heads/$branch"
+
+      - name: Upload maintenance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-starter-workflow-refs-${{ github.run_id }}
+          path: |
+            .tmp/reusable-workflow-ref-sync
+          if-no-files-found: warn
