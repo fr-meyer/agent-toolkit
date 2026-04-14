@@ -19,7 +19,10 @@ agent-toolkit/
 │   ├── starter-workflows/
 │   │   ├── coderabbit-pr-automation-wrapper.yml
 │   │   └── coderabbit-pr-comment-trigger.yml
-│   └── workflow-ref-sync-manifest.json
+│   ├── repo-maintenance-workflows/
+│   │   └── sync-starter-workflow-template-refs.yml
+│   ├── workflow-ref-sync-manifest.json
+│   └── repo-workflow-materialization-manifest.json
 ├── scripts/
 │   ├── coderabbit/
 │   └── github/
@@ -47,28 +50,31 @@ That path is a publication target shape, not a statement that the canonical sour
 ### `scripts/coderabbit/`
 Runtime helper scripts used by the CodeRabbit automation flow.
 
-### `scripts/github/`
-Optional maintenance or publishing helpers for republishing and pinned-ref maintenance workflows.
+### `templates/repo-maintenance-workflows/`
+Canonical source files for repo-local maintenance workflows used by this repository itself.
 
-This includes the deterministic ref updater used by the repo-local maintenance workflow.
+These are authored under `templates/` on purpose so the repo-local operational workflows follow the same source-library model as the reusable and starter workflow assets.
+
+### `scripts/github/`
+Deterministic maintenance or publishing helpers for republishing, pinned-ref maintenance, and materializing repo-local workflow copies from canonical template sources.
 
 ### `.github/workflows/`
-Repo-local operational automation only.
+Materialized live operational copies only.
 
-Files here may maintain the source library itself, for example by syncing pinned starter-workflow refs after a reusable workflow source asset changes.
+Files here are runtime copies generated from `templates/repo-maintenance-workflows/` for this repository's own GitHub execution surface.
 
-These workflow files are not the canonical reusable/starter source assets. Those still live under `templates/`.
+They are intentionally not the authoring source of truth.
 
 ## Why this layout
 
 This avoids mixing up four different concepts:
 
-- **source assets** stored in this repository
-- **repo-local maintenance automation** used to maintain those assets
+- **canonical source assets** stored under `templates/`
+- **materialized repo-local runtime workflows** under `.github/workflows/`
 - **GitHub-special publication paths** like `.github/workflows/` and `.github/workflow-templates/`
 - **published targets** that may exist later in another repo, branch, or release flow
 
-The repository stays honest about what it is: a storage and maintenance library for reusable workflow assets.
+The repository stays honest about what it is: a storage and maintenance library for workflow assets, with repo-local runtime files materialized from canonical sources.
 
 ## Publication model
 
@@ -94,6 +100,6 @@ This repository is **not** currently using:
 - `.github/workflow-templates/` as its canonical storage layout
 - GitHub native template-picker metadata as part of the active architecture
 
-It may still use `.github/workflows/` for repo-local maintenance automation that acts on the canonical files in `templates/`.
+It does use `.github/workflows/` for repo-local maintenance automation, but those files are materialized runtime copies from canonical sources in `templates/repo-maintenance-workflows/`.
 
-Those can be added back later if there is a real publishing need, but they are intentionally out of the source layout for now.
+That keeps the authoring model consistent even when this repository needs live GitHub workflow files for its own maintenance.

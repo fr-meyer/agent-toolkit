@@ -52,7 +52,10 @@ agent-toolkit/
 │   ├── starter-workflows/
 │   │   ├── coderabbit-pr-automation-wrapper.yml
 │   │   └── coderabbit-pr-comment-trigger.yml
-│   └── workflow-ref-sync-manifest.json
+│   ├── repo-maintenance-workflows/
+│   │   └── sync-starter-workflow-template-refs.yml
+│   ├── workflow-ref-sync-manifest.json
+│   └── repo-workflow-materialization-manifest.json
 ├── skills/
 ├── scripts/
 ├── docs/
@@ -85,17 +88,19 @@ This repository now treats GitHub Actions files as **source assets**, not as act
 
 - **Reusable workflow source:** `templates/reusable-workflows/coderabbit-pr-automation.yml`
 - **Starter workflow sources:** `templates/starter-workflows/`
+- **Canonical repo-maintenance workflow source:** `templates/repo-maintenance-workflows/sync-starter-workflow-template-refs.yml`
 - **Ref-sync manifest:** `templates/workflow-ref-sync-manifest.json`
-- **Helper scripts:** `scripts/coderabbit/` plus `scripts/github/` (including the deterministic ref updater)
-- **Repo-local maintenance workflow:** `.github/workflows/sync-starter-workflow-template-refs.yml`
+- **Repo-workflow materialization manifest:** `templates/repo-workflow-materialization-manifest.json`
+- **Helper scripts:** `scripts/coderabbit/` plus `scripts/github/` (including the deterministic ref updater and repo-workflow materializer)
+- **Materialized live maintenance workflow:** `.github/workflows/sync-starter-workflow-template-refs.yml`
 - **Architecture note:** `docs/workflow-asset-library-layout.md`
 
 The intended split is:
-- this repository stores the canonical workflow source assets
+- this repository stores the canonical workflow source assets under `templates/`
 - reusable workflow sources are meant to be published later into `.github/workflows/` of a serving repository
 - starter workflow sources are meant to be copied or adapted into consumer repositories later
-- this repository is not currently using `.github/workflows/` or `.github/workflow-templates/` as its canonical storage layout for workflow source assets
-- `.github/workflows/` may still contain repo-local maintenance automation, but those files are operational helpers, not canonical reusable/starter source assets
+- repo-local maintenance workflows also have canonical source files under `templates/repo-maintenance-workflows/`
+- `.github/workflows/` contains the materialized live copies used by this repository at runtime, not the authoring source of truth
 
 Important note for the current starter workflow sources:
 - they still show the eventual GitHub reusable-workflow serving path shape, for example `owner/repo/.github/workflows/<file>@<ref>`

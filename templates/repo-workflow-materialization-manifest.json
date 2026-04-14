@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "1.0.0",
+  "description": "Maps canonical repo-maintenance workflow source assets under templates/ to their materialized live .github/workflows copies.",
+  "workflows": [
+    {
+      "source": "templates/repo-maintenance-workflows/sync-starter-workflow-template-refs.yml",
+      "target": ".github/workflows/sync-starter-workflow-template-refs.yml"
+    }
+  ]
+}
