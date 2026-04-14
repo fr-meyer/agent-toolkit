@@ -1,0 +1,50 @@
+[
+  {
+    "query": "This repo keeps workflow templates under templates/ and materializes them into .github/workflows. Please add a new workflow_call asset and wire its live copy correctly.",
+    "should_trigger": true
+  },
+  {
+    "query": "Can you decide whether this GitHub Actions file belongs in templates/reusable-workflows or templates/starter-workflows, then update the manifests and materialized copies?",
+    "should_trigger": true
+  },
+  {
+    "query": "We renamed a reusable workflow template. Update the materialization manifest, any starter refs, and make sure .github/workflows stays rendered from templates.",
+    "should_trigger": true
+  },
+  {
+    "query": "Please clean up this repo so every live .github/workflows file has a canonical source under templates/ and document the rule for future agents.",
+    "should_trigger": true
+  },
+  {
+    "query": "This repo uses templates/reusable-workflows and templates/starter-workflows. Add a trigger workflow that should remain reusable as a template and materialize the live copy.",
+    "should_trigger": true
+  },
+  {
+    "query": "Can you patch our GitHub Actions workflow? The repo has a source-library layout and we need to keep starter-template pinned uses refs aligned with the reusable workflow source.",
+    "should_trigger": true
+  },
+  {
+    "query": "Set up CI for my app from scratch with GitHub Actions.",
+    "should_trigger": false
+  },
+  {
+    "query": "Check whether this repo is ahead or behind origin/main and push if safe.",
+    "should_trigger": false
+  },
+  {
+    "query": "Write docs for our API and tidy the README.",
+    "should_trigger": false
+  },
+  {
+    "query": "Fix unresolved CodeRabbit PR comments in this branch.",
+    "should_trigger": false
+  },
+  {
+    "query": "I need a reusable GitHub Actions workflow, but this repo does not use any templates/ source-library pattern.",
+    "should_trigger": false
+  },
+  {
+    "query": "Create a new OpenClaw skill for PDF editing.",
+    "should_trigger": false
+  }
+]
