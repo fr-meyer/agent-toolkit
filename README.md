@@ -46,7 +46,7 @@ agent-toolkit/
 ├── .github/
 │   └── workflows/
 │       ├── sync-starter-workflow-template-refs-reusable.yml
-│       └── sync-starter-workflow-template-refs.yml
+│       └── sync-starter-workflow-template-refs-trigger.yml
 ├── templates/
 │   ├── reusable-workflows/
 │   │   ├── coderabbit-pr-automation.yml
@@ -54,7 +54,7 @@ agent-toolkit/
 │   ├── starter-workflows/
 │   │   ├── coderabbit-pr-automation-wrapper.yml
 │   │   ├── coderabbit-pr-comment-trigger.yml
-│   │   └── sync-starter-workflow-template-refs.yml
+│   │   └── sync-starter-workflow-template-refs-trigger.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
 ├── skills/
@@ -89,12 +89,12 @@ This repository now treats GitHub Actions files as **source assets**, not as act
 
 - **Reusable workflow source:** `templates/reusable-workflows/coderabbit-pr-automation.yml`
 - **Reusable maintenance workflow source:** `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
-- **Starter workflow sources:** `templates/starter-workflows/`, including `templates/starter-workflows/sync-starter-workflow-template-refs.yml`
+- **Starter workflow sources:** `templates/starter-workflows/`, including `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`
 - **Ref-sync manifest:** `templates/workflow-ref-sync-manifest.json`
 - **Repo-workflow materialization manifest:** `templates/repo-workflow-materialization-manifest.json`
 - **Helper scripts:** `scripts/coderabbit/` plus `scripts/github/` (including the deterministic ref updater and repo-workflow materializer)
 - **Materialized live reusable maintenance workflow:** `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
-- **Live repo entrypoint workflow:** `.github/workflows/sync-starter-workflow-template-refs.yml`
+- **Live repo entrypoint workflow:** `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
 - **Architecture note:** `docs/workflow-asset-library-layout.md`
 
 The intended split is:

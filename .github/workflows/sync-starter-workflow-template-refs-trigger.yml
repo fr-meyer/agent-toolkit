@@ -1,4 +1,4 @@
-name: Sync starter-workflow template refs
+name: Sync starter-workflow template refs (trigger)
 
 on:
   push:

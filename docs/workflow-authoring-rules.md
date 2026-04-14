@@ -29,10 +29,10 @@ This includes repo-local trigger entrypoints when their canonical form should re
 - Canonical reusable engine:
   - `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
 - Canonical trigger/entrypoint template:
-  - `templates/starter-workflows/sync-starter-workflow-template-refs.yml`
+  - `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`
 - Materialized runtime copies:
   - `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
-  - `.github/workflows/sync-starter-workflow-template-refs.yml`
+  - `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
 
 ## When creating or modifying a workflow
 

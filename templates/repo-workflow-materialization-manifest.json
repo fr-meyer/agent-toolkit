@@ -7,8 +7,8 @@
       "target": ".github/workflows/sync-starter-workflow-template-refs-reusable.yml"
     },
     {
-      "source": "templates/starter-workflows/sync-starter-workflow-template-refs.yml",
-      "target": ".github/workflows/sync-starter-workflow-template-refs.yml"
+      "source": "templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml",
+      "target": ".github/workflows/sync-starter-workflow-template-refs-trigger.yml"
     }
   ]
 }

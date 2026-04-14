@@ -13,7 +13,7 @@ agent-toolkit/
 ├── .github/
 │   └── workflows/
 │       ├── sync-starter-workflow-template-refs-reusable.yml
-│       └── sync-starter-workflow-template-refs.yml
+│       └── sync-starter-workflow-template-refs-trigger.yml
 ├── templates/
 │   ├── reusable-workflows/
 │   │   ├── coderabbit-pr-automation.yml
@@ -21,7 +21,7 @@ agent-toolkit/
 │   ├── starter-workflows/
 │   │   ├── coderabbit-pr-automation-wrapper.yml
 │   │   ├── coderabbit-pr-comment-trigger.yml
-│   │   └── sync-starter-workflow-template-refs.yml
+│   │   └── sync-starter-workflow-template-refs-trigger.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
 ├── scripts/
@@ -112,4 +112,4 @@ This repository is **not** currently using:
 - `.github/workflow-templates/` as its canonical storage layout
 - GitHub native template-picker metadata as part of the active architecture
 
-For the current maintenance flow, the canonical reusable implementation lives in `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`, gets materialized to `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`, and is called by the live trigger entrypoint `.github/workflows/sync-starter-workflow-template-refs.yml`, whose canonical source lives in `templates/starter-workflows/sync-starter-workflow-template-refs.yml`.
+For the current maintenance flow, the canonical reusable implementation lives in `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`, gets materialized to `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`, and is called by the live trigger entrypoint `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`, whose canonical source lives in `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`.
