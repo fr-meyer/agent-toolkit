@@ -1,10 +1,14 @@
 {
   "schemaVersion": "1.0.0",
-  "description": "Maps canonical reusable-workflow source assets under templates/ to their materialized live repo-local .github/workflows copies.",
+  "description": "Maps canonical workflow source assets under templates/ to their materialized live repo-local .github/workflows copies.",
   "workflows": [
     {
-      "source": "templates/reusable-workflows/sync-starter-workflow-template-refs.yml",
+      "source": "templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml",
       "target": ".github/workflows/sync-starter-workflow-template-refs-reusable.yml"
+    },
+    {
+      "source": "templates/starter-workflows/sync-starter-workflow-template-refs.yml",
+      "target": ".github/workflows/sync-starter-workflow-template-refs.yml"
     }
   ]
 }

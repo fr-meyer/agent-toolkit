@@ -1,0 +1,67 @@
+name: Sync starter-workflow template refs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - templates/reusable-workflows/*.yml
+      - templates/reusable-workflows/*.yaml
+  workflow_dispatch:
+    inputs:
+      before_sha:
+        description: Optional diff base SHA for the reusable-workflow change
+        required: false
+        type: string
+        default: ''
+      after_sha:
+        description: Optional target SHA for the reusable-workflow change
+        required: false
+        type: string
+        default: ''
+      auto_commit:
+        description: Commit workflow-asset maintenance updates back to the current branch
+        required: false
+        type: boolean
+        default: true
+      auto_push:
+        description: Push the maintenance commit after validation
+        required: false
+        type: boolean
+        default: false
+      python_version:
+        description: Python version used by the helper scripts
+        required: false
+        type: string
+        default: '3.11'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: sync-starter-workflow-refs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync-on-push:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/sync-starter-workflow-template-refs-reusable.yml
+    with:
+      before_sha: ${{ github.event.before }}
+      after_sha: ${{ github.sha }}
+      auto_commit: true
+      auto_push: false
+      python_version: '3.11'
+      triggered_by_push: true
+
+  sync-on-dispatch:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/sync-starter-workflow-template-refs-reusable.yml
+    with:
+      before_sha: ${{ inputs.before_sha }}
+      after_sha: ${{ inputs.after_sha }}
+      auto_commit: ${{ inputs.auto_commit }}
+      auto_push: ${{ inputs.auto_push }}
+      python_version: ${{ inputs.python_version }}
+      triggered_by_push: false
