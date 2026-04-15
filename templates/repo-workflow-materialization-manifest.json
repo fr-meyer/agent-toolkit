@@ -3,6 +3,10 @@
   "description": "Maps canonical workflow source assets under templates/ to their materialized live repo-local .github/workflows copies.",
   "workflows": [
     {
+      "source": "templates/reusable-workflows/coderabbit-pr-automation.yml",
+      "target": ".github/workflows/coderabbit-pr-automation.yml"
+    },
+    {
       "source": "templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml",
       "target": ".github/workflows/sync-starter-workflow-template-refs-reusable.yml"
     },

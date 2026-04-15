@@ -14,6 +14,7 @@ Keep workflow files here as canonical source assets, without treating this repos
 agent-toolkit/
 ├── .github/
 │   └── workflows/
+│       ├── coderabbit-pr-automation.yml
 │       ├── sync-starter-workflow-template-refs-reusable.yml
 │       └── sync-starter-workflow-template-refs-trigger.yml
 ├── templates/

@@ -30,7 +30,7 @@ For exact source-to-target bindings, also consult:
 
 | Name | Type | Canonical source | Live/runtime copy | Primary purpose |
 | --- | --- | --- | --- | --- |
-| CodeRabbit PR automation | Reusable | `templates/reusable-workflows/coderabbit-pr-automation.yml` | none in this repo | Shared remediation engine for CodeRabbit PR review issues |
+| CodeRabbit PR automation | Reusable | `templates/reusable-workflows/coderabbit-pr-automation.yml` | `.github/workflows/coderabbit-pr-automation.yml` | Shared remediation engine for CodeRabbit PR review issues |
 | CodeRabbit PR automation wrapper | Starter | `templates/starter-workflows/coderabbit-pr-automation-wrapper.yml` | none in this repo | Consumer-facing PR automation entrypoint wired to the reusable engine |
 | CodeRabbit PR comment trigger | Starter | `templates/starter-workflows/coderabbit-pr-comment-trigger.yml` | none in this repo | Consumer-facing comment-triggered entrypoint that resolves PR context, then calls the reusable engine |
 | Sync starter-workflow template refs (reusable) | Reusable | `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml` | `.github/workflows/sync-starter-workflow-template-refs-reusable.yml` | Deterministic maintenance workflow that materializes local workflow copies and syncs pinned reusable-workflow refs |
@@ -45,7 +45,7 @@ For exact source-to-target bindings, also consult:
 - **Type:** reusable workflow
 - **Canonical source:** `templates/reusable-workflows/coderabbit-pr-automation.yml`
 - **Published call shape:** `fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@<sha>`
-- **Live/runtime copy in this repo:** none currently materialized
+- **Live/runtime copy in this repo:** `.github/workflows/coderabbit-pr-automation.yml`
 - **Governed by:**
   - ref-sync source in `templates/workflow-ref-sync-manifest.json`
 - **Purpose:**
@@ -263,10 +263,12 @@ Use this as the repo entrypoint that invokes maintenance whenever reusable workf
 ## Live runtime copies in this repo
 
 These files exist under `.github/workflows/` and should not be treated as the primary authoring location:
+- `.github/workflows/coderabbit-pr-automation.yml`
 - `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
 - `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
 
 Their canonical sources are:
+- `templates/reusable-workflows/coderabbit-pr-automation.yml`
 - `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
 - `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`
 
