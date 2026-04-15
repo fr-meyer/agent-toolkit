@@ -183,19 +183,23 @@ jobs:
 
     steps:
       - name: Checkout consumer repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: refs/pull/${{ inputs.pr_number }}/head
           path: ${{ inputs.target_checkout_path }}
           fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+          persist-credentials: false
 
       - name: Checkout shared toolkit repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ inputs.shared_repository }}
           ref: ${{ inputs.shared_repository_ref }}
           path: ${{ inputs.shared_checkout_path }}
           fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -393,28 +397,33 @@ jobs:
             exit 1
           fi
 
-      - name: Configure privileged push URL
-        if: steps.issue_count.outputs.count != '0' && inputs.auto_commit && inputs.auto_push && steps.push_requirements.outputs.requires_workflow_push_token == 'true'
-        shell: bash
-        env:
-          WORKFLOW_PUSH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN }}
-        run: |
-          set -euo pipefail
-          git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" remote set-url --push origin \
-            "https://x-access-token:${WORKFLOW_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-
       - name: Push post-remediation commit(s)
         if: steps.issue_count.outputs.count != '0' && inputs.auto_commit && inputs.auto_push
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          WORKFLOW_PUSH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN }}
+          REQUIRES_WORKFLOW_PUSH_TOKEN: ${{ steps.push_requirements.outputs.requires_workflow_push_token }}
         run: |
           set -euo pipefail
           BRANCH=$(git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" rev-parse --abbrev-ref HEAD)
           AHEAD=$(git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" rev-list --count "origin/$BRANCH..HEAD")
-          if [[ "$AHEAD" -gt 0 ]]; then
-            git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" push origin "HEAD:refs/heads/$BRANCH"
-          else
+          if [[ "$AHEAD" -eq 0 ]]; then
             echo "No new local commits to push."
+            exit 0
           fi
+
+          PUSH_TOKEN="$GH_TOKEN"
+          if [[ "${REQUIRES_WORKFLOW_PUSH_TOKEN:-false}" == "true" ]]; then
+            PUSH_TOKEN="$WORKFLOW_PUSH_TOKEN"
+          fi
+
+          git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" config --local --unset-all http.https://github.com/.extraheader || true
+          git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" remote set-url origin \
+            "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" remote set-url --push origin \
+            "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" push origin "HEAD:refs/heads/$BRANCH"
 
       - name: Upload CodeRabbit workflow artifacts
         if: always()
