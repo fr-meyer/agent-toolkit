@@ -38,10 +38,6 @@ permissions:
   contents: write
   actions: read
 
-concurrency:
-  group: sync-starter-workflow-refs-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   sync-starter-workflow-refs:
     name: Sync starter-workflow template refs
