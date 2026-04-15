@@ -4,6 +4,7 @@ Status: draft concrete spec
 
 Related concept draft:
 - `docs/cross-repo-workflow-distribution.md`
+- `docs/cross-repo-workflow-updater-contract.md`
 
 ## 1. Purpose
 
@@ -176,7 +177,9 @@ If consumer-specific customization is needed, model it through:
 V1 divergence policy is **exact-managed only**.
 
 Meaning:
-- if the consumer target file differs from the last known managed shared rendering for reasons not explained by the incoming update, the updater must treat that as divergence
+- if the consumer target file differs from the current starter template, the updater should check whether it still matches a historical revision of that same starter template
+- if it matches a historical shared revision, it can still be treated as a safe managed outdated copy
+- otherwise, the updater must treat that as divergence
 - the updater must not overwrite such a file silently
 
 ### V1 divergence handling
@@ -187,8 +190,14 @@ When divergence is detected:
 - instead mark the binding as needing manual review
 - include the divergence reason in the run summary
 
-Optional V1.1 improvement:
-- open a manual-review PR or issue with a diagnostic summary but no destructive overwrite
+Preferred next-step improvement:
+- open an **AI-assisted manual-review PR** that does not silently normalize the workflow, but instead presents a bounded divergence report and, when confidence is high enough, may include an explicit proposed normalization patch for human review
+
+That manual-review PR should clearly separate:
+- verified diff facts
+- interpretation of whether the consumer looks like an older managed copy or an intentional customization
+- confidence level and open doubts
+- recommendation: normalize now, or adjudicate first
 
 ## 14. Provenance tracking
 
@@ -226,6 +235,14 @@ V1 update delivery mode:
 Base branch behavior:
 - if `baseBranch` is present in a consumer entry, target that branch
 - otherwise, target the consumer repo's current default branch resolved at run time
+
+V1 implementation note:
+- the first updater implementation lives at `scripts/github/cross_repo_workflow_updater.py`
+- it currently relies on local consumer clones for branch resolution and content preview/apply work
+- PR creation uses `git` plus GitHub CLI (`gh`)
+
+Recommended follow-up mode:
+- when divergence blocks a normal sync PR, the updater may optionally switch to an AI-assisted manual-review PR path that creates a review artifact instead of a silent overwrite
 
 Branch naming:
 - `chore/sync-shared-workflows-<shortsha>`
