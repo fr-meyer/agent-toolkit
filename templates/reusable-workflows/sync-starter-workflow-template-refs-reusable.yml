@@ -138,19 +138,36 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -c "import subprocess; allowed_prefixes = ('templates/starter-workflows/', '.github/workflows/', '.tmp/reusable-workflow-ref-sync/'); completed = subprocess.run(['git', 'status', '--porcelain'], text=True, capture_output=True, check=True); bad = [];
-for raw in completed.stdout.splitlines():
-    if not raw.strip():
-        continue
-    path = raw[3:].strip().replace('\\', '/');
-    if ' -> ' in path:
-        path = path.split(' -> ', 1)[1].strip();
-    if not path.startswith(allowed_prefixes):
-        bad.append(path)
+          python - <<'PY'
+          import subprocess
 
-if bad:
-    raise SystemExit('Maintenance modified files outside allowed scope: ' + ', '.join(sorted(set(bad))))
-print('Maintenance file scope check passed.')"
+          allowed_prefixes = (
+              'templates/starter-workflows/',
+              '.github/workflows/',
+              '.tmp/reusable-workflow-ref-sync/',
+          )
+          completed = subprocess.run(
+              ['git', 'status', '--porcelain'],
+              text=True,
+              capture_output=True,
+              check=True,
+          )
+          bad = []
+          for raw in completed.stdout.splitlines():
+              if not raw.strip():
+                  continue
+              path = raw[3:].strip().replace('\\\\', '/')
+              if ' -> ' in path:
+                  path = path.split(' -> ', 1)[1].strip()
+              if not path.startswith(allowed_prefixes):
+                  bad.append(path)
+
+          if bad:
+              raise SystemExit(
+                  'Maintenance modified files outside allowed scope: ' + ', '.join(sorted(set(bad)))
+              )
+          print('Maintenance file scope check passed.')
+          PY
 
       - name: Validate pinned reusable-workflow refs
         if: steps.context_summary.outputs.changed_workflows != '0' && steps.context_summary.outputs.target_template_files != '0'
