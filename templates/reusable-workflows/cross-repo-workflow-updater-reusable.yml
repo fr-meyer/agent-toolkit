@@ -89,6 +89,13 @@ jobs:
         with:
           python-version: ${{ inputs.python_version }}
 
+      - name: Configure git author
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Prepare consumer repository clones
         shell: bash
         run: |
