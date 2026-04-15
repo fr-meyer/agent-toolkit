@@ -174,11 +174,13 @@ def main() -> int:
     manifest_data = load_manifest(manifest_path)
 
     changed = resolve_changed_workflows(repo_root, args.before, args.after)
-    if not changed:
-        print("No reusable workflow source changes detected.")
-        return 0
+    targets: list[str] = []
+    mappings: list[dict] = []
 
-    targets, mappings = build_targets(manifest_data, changed, repo_root)
+    if changed:
+        targets, mappings = build_targets(manifest_data, changed, repo_root)
+    else:
+        print("No reusable workflow source changes detected. Writing empty context.")
 
     write_context(
         (repo_root / args.out_dir).resolve(),
