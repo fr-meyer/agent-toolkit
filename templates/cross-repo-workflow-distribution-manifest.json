@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0.0",
+  "description": "Registers consumer repositories whose live .github/workflows files are exact-managed from canonical starter templates in this shared workflow asset library.",
+  "sharedRepository": "fr-meyer/agent-toolkit",
+  "sourceBranch": "main",
+  "consumers": [
+    {
+      "repo": "fr-meyer/zotero-docai-pipeline",
+      "updateMode": "pull_request",
+      "managedBindings": [
+        {
+          "starterTemplate": "templates/starter-workflows/coderabbit-pr-automation-wrapper.yml",
+          "targetPath": ".github/workflows/coderabbit-pr-automation.yml",
+          "divergencePolicy": "exact",
+          "enabled": true,
+          "notes": "Target the repository default branch when baseBranch is omitted. Current observed default branch: feature/package-cli-app. Consumer repo must provide the vars and secrets expected by the shared CodeRabbit automation wrapper."
+        },
+        {
+          "starterTemplate": "templates/starter-workflows/coderabbit-pr-comment-trigger.yml",
+          "targetPath": ".github/workflows/coderabbit-pr-comment-trigger.yml",
+          "divergencePolicy": "exact",
+          "enabled": true,
+          "notes": "Target the repository default branch when baseBranch is omitted. Current observed default branch: feature/package-cli-app. Consumer repo must provide the vars and secrets expected by the shared CodeRabbit comment trigger template."
+        }
+      ]
+    }
+  ]
+}
