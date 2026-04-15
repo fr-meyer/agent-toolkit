@@ -96,6 +96,7 @@ This repository now treats GitHub Actions files as **source assets**, not as act
 - **Materialized live reusable maintenance workflow:** `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
 - **Live repo entrypoint workflow:** `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
 - **Architecture note:** `docs/workflow-asset-library-layout.md`
+- **Workflow catalog:** `docs/github-actions-template-catalog.md`
 
 The intended split is:
 - this repository stores the canonical workflow source assets under `templates/`
@@ -133,6 +134,7 @@ This repository is for **shared, reusable content only**. It should not contain 
 - `docs/setup.md` — setup, linking, overrides, verification, and repo-rename migration
 - `docs/repo-scope.md` — what belongs in the repo and what does not
 - `docs/workflow-asset-library-layout.md` — canonical layout for workflow source assets in this repository
+- `docs/github-actions-template-catalog.md` — human-readable catalog of available workflow assets, their purpose, and how they relate
 - `docs/workflow-authoring-rules.md` — workflow classification and edit rules for humans and agents
 - `AGENTS.md` — repo-local operating instructions and doc map for future agents
 - `scripts/coderabbit/README.md` — runtime notes for the CodeRabbit helper scripts

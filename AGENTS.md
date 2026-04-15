@@ -5,12 +5,14 @@ Repo-local instructions for humans and agents working in `shared-agent-skills`.
 ## Read this first when touching workflow assets
 
 1. `README.md`
-2. `docs/workflow-asset-library-layout.md`
-3. `docs/workflow-authoring-rules.md`
-4. `docs/repo-scope.md`
+2. `docs/github-actions-template-catalog.md`
+3. `docs/workflow-asset-library-layout.md`
+4. `docs/workflow-authoring-rules.md`
+5. `docs/repo-scope.md`
 
 ## Workflow rule summary
 
+- The fastest human/agent entrypoint for workflow discovery is `docs/github-actions-template-catalog.md`.
 - Author workflow source files under `templates/`, not primarily under `.github/workflows/`.
 - Classify by role:
   - callable reusable workflows -> `templates/reusable-workflows/`

@@ -2,6 +2,8 @@
 
 This repository uses a source-library layout for GitHub Actions assets.
 
+For the inventory of currently available workflow assets and their purpose, see `docs/github-actions-template-catalog.md`.
+
 ## Goal
 
 Keep workflow files here as canonical source assets, without treating this repository itself as the active GitHub serving surface.
