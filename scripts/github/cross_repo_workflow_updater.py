@@ -12,8 +12,13 @@ Current behavior:
 - performs a safe divergence check by comparing consumer workflow files against
   current and historical revisions of the registered shared starter template
 - can preview or apply exact-managed workflow updates in local consumer clones
-- can push an updater branch and create a pull request through GitHub CLI
+- can push an updater branch and create a pull request through an automatic provider chain
 - writes a machine-readable summary artifact
+
+Current local runtime requirements:
+- git
+- python3
+- at least one PR provider/auth path: `gh`, or a GitHub token discoverable via env / `gh auth token` / `.netrc`, or embedded HTTPS remote credentials
 """
 
 from __future__ import annotations
@@ -21,17 +26,31 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import netrc
+import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-import re
 
 
 ALLOWED_BINDING_PREFIX = "templates/starter-workflows/"
 ALLOWED_TARGET_PREFIX = ".github/workflows/"
+GITHUB_TOKEN_ENV_NAMES = (
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "GITHUB_PAT",
+    "GITHUB_API_TOKEN",
+    "GITHUB_OAUTH_TOKEN",
+    "GITHUB_APP_TOKEN",
+)
 SHA_RE = re.compile(r"^[a-f0-9]{40}$")
 USES_SHA_RE = re.compile(r"^\s*uses:\s*[^\s#]+@([a-f0-9]{40})\s*$", re.MULTILINE)
 SHARED_REF_RE = re.compile(r"^\s*shared_repository_ref:\s*([a-f0-9]{40})\s*$", re.MULTILINE)
@@ -58,9 +77,20 @@ class ConsumerPreview:
     local_repo_path: str | None = None
     updater_branch: str | None = None
     pull_request_url: str | None = None
+    pull_request_provider: str | None = None
     commit_sha: str | None = None
     review_report_path: str | None = None
     normalization_patch_path: str | None = None
+
+
+@dataclass
+class GitHubRemote:
+    host: str
+    owner: str
+    repo: str
+    api_base: str
+    graphql_url: str
+    embedded_token: str | None = None
 
 
 class StarterTemplateHistory:
@@ -103,7 +133,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-summary", default="artifacts/cross-repo-workflow-updater-summary.json", type=Path)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--execute", action="store_true", help="Apply updates into local consumer clones and create local commits")
-    parser.add_argument("--create-pr", action="store_true", help="Push updater branches and open pull requests with gh after executing")
+    parser.add_argument(
+        "--create-pr",
+        action="store_true",
+        help="Push updater branches and open pull requests using the automatic provider chain (gh, REST API, GraphQL API)",
+    )
     parser.add_argument(
         "--manual-review-on-divergence",
         action="store_true",
@@ -425,6 +459,10 @@ def collect_binding_diff_facts(repo_root: Path, local_repo: Path, binding: Bindi
 
     if "WORKFLOW_PUSH_TOKEN" in source_text and "WORKFLOW_PUSH_TOKEN" not in target_text:
         facts.append("Consumer file does not pass through `WORKFLOW_PUSH_TOKEN`, while the shared starter template does.")
+    if "auto_commit: true" in target_text and "auto_commit: true" not in source_text:
+        facts.append("Consumer file currently forces `auto_commit: true`, while the shared starter template defers to vars/default false.")
+    if "auto_push: true" in target_text and "auto_push: true" not in source_text:
+        facts.append("Consumer file currently forces `auto_push: true`, while the shared starter template defers to vars/default false.")
 
     source_shared_lines = [line.strip() for line in source_text.splitlines() if "shared_repository_ref:" in line]
     target_shared_lines = [line.strip() for line in target_text.splitlines() if "shared_repository_ref:" in line]
@@ -510,6 +548,7 @@ def build_manual_review_report(
             "Questions to answer in review:",
             "- Should this consumer remain on the older dynamic `shared_repository_ref` behavior, or be normalized to the current pinned shared-template model?",
             "- Should `WORKFLOW_PUSH_TOKEN` passthrough be adopted here, or intentionally remain absent?",
+            "- Should this consumer continue forcing `auto_commit` / `auto_push`, or should it inherit the newer shared starter-template defaults?",
             "",
             "Any proposed normalization patch in this PR is optional and should be treated as review material, not as an automatically approved overwrite.",
         ]
@@ -610,9 +649,16 @@ def build_manual_review_body(
     lines.extend(
         [
             "",
+            "Artifact lifecycle for this PR:",
+            "- These files are review scaffolding only. They are meant to support adjudication, not to become permanent runtime assets by default.",
+            "- This PR should normally stay discussion-only until the reviewer decides whether to normalize the workflows or treat this repo as intentionally customized.",
+            "- If normalization is approved, the preferred next step is a clean follow-up PR that changes the live `.github/workflows/` files directly, without keeping these review artifacts as long-term repo content unless there is a specific reason to archive them.",
+            "- If customization is intentional, the preferred next step is to close this PR and relax or remove exact-managed treatment for these bindings rather than merging artifact-only files into the long-term branch by accident.",
+            "",
             "Review focus:",
             "- Were the current consumer workflows intentionally kept on the older `shared_repository_ref` behavior?",
             "- Should `WORKFLOW_PUSH_TOKEN` passthrough be adopted here?",
+            "- Should the repo keep forcing `auto_commit` / `auto_push`, or move to the newer shared-template defaults?",
             "- Should this consumer stay in exact-managed scope, or be treated as intentionally customized?",
             "",
             "This PR is for adjudication first. Any normalization patch included here is optional review material.",
@@ -621,7 +667,137 @@ def build_manual_review_body(
     return "\n".join(lines) + "\n"
 
 
-def detect_existing_pr(local_repo: Path, updater_branch: str) -> str | None:
+def command_exists(name: str) -> bool:
+    return shutil.which(name) is not None
+
+
+def resolve_github_remote(local_repo: Path) -> GitHubRemote | None:
+    remote_url = run_command(["git", "remote", "get-url", "origin"], cwd=local_repo, check=False).strip()
+    if not remote_url:
+        return None
+
+    host: str | None = None
+    owner: str | None = None
+    repo: str | None = None
+    embedded_token: str | None = None
+
+    parsed = urllib.parse.urlparse(remote_url)
+    if parsed.scheme in {"http", "https", "ssh"} and parsed.hostname:
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 2:
+            host = parsed.hostname
+            owner = parts[0]
+            repo = parts[1]
+            if parsed.password:
+                embedded_token = parsed.password
+    else:
+        match = re.match(r"^git@([^:]+):([^/]+)/([^/]+?)(?:\.git)?$", remote_url)
+        if match:
+            host, owner, repo = match.groups()
+
+    if not host or not owner or not repo:
+        return None
+
+    if repo.endswith(".git"):
+        repo = repo[:-4]
+    if host == "github.com":
+        api_base = "https://api.github.com"
+        graphql_url = "https://api.github.com/graphql"
+    else:
+        api_base = f"https://{host}/api/v3"
+        graphql_url = f"https://{host}/api/graphql"
+    return GitHubRemote(
+        host=host,
+        owner=owner,
+        repo=repo,
+        api_base=api_base,
+        graphql_url=graphql_url,
+        embedded_token=embedded_token,
+    )
+
+
+def discover_github_token(remote: GitHubRemote | None, local_repo: Path) -> tuple[str | None, str | None]:
+    for env_name in GITHUB_TOKEN_ENV_NAMES:
+        value = (os.environ.get(env_name) or "").strip()
+        if value:
+            return value, f"env:{env_name}"
+
+    if remote and remote.embedded_token:
+        return remote.embedded_token, "git-remote-embedded"
+
+    if command_exists("gh"):
+        cmd = ["gh", "auth", "token"]
+        if remote and remote.host:
+            cmd.extend(["--hostname", remote.host])
+        completed = subprocess.run(cmd, cwd=local_repo, text=True, capture_output=True, check=False)
+        token = (completed.stdout or "").strip()
+        if completed.returncode == 0 and token:
+            return token, "gh-auth-token"
+
+    if remote:
+        hosts_to_try = [remote.host]
+        if remote.host == "github.com":
+            hosts_to_try.append("api.github.com")
+        try:
+            auths = netrc.netrc()
+            for host in hosts_to_try:
+                creds = auths.authenticators(host)
+                if creds and creds[2]:
+                    return creds[2], f"netrc:{host}"
+        except (FileNotFoundError, netrc.NetrcParseError):
+            pass
+
+    return None, None
+
+
+def github_json_request(
+    method: str,
+    url: str,
+    token: str,
+    payload: dict[str, Any] | None = None,
+) -> Any:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "User-Agent": "cross-repo-workflow-updater",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(request) as response:
+            body = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            error_payload = json.loads(body) if body else None
+        except Exception:
+            error_payload = body
+        detail = error_payload.get("message") if isinstance(error_payload, dict) else str(error_payload)
+        if isinstance(error_payload, dict) and error_payload.get("errors"):
+            detail = f"{detail}; errors={error_payload['errors']}"
+        raise RuntimeError(f"GitHub API request failed ({method} {url}): {detail}") from exc
+    if not body:
+        return None
+    try:
+        return json.loads(body)
+    except Exception as exc:
+        raise RuntimeError(f"GitHub API returned non-JSON response for {method} {url}") from exc
+
+
+def github_graphql_request(endpoint: str, token: str, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+    payload = github_json_request("POST", endpoint, token, {"query": query, "variables": variables})
+    if not isinstance(payload, dict):
+        raise RuntimeError("GitHub GraphQL response was not a JSON object.")
+    if payload.get("errors"):
+        raise RuntimeError(f"GitHub GraphQL request failed: {payload['errors']}")
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise RuntimeError("GitHub GraphQL response did not include a data object.")
+    return data
+
+
+def detect_existing_pr_with_gh(local_repo: Path, updater_branch: str) -> str | None:
     completed = subprocess.run(
         ["gh", "pr", "list", "--head", updater_branch, "--state", "open", "--json", "url"],
         cwd=local_repo,
@@ -630,27 +806,86 @@ def detect_existing_pr(local_repo: Path, updater_branch: str) -> str | None:
         check=False,
     )
     if completed.returncode != 0:
-        return None
+        stderr = (completed.stderr or completed.stdout or "").strip()
+        raise RuntimeError(stderr or "gh pr list failed")
     try:
         data = json.loads(completed.stdout or "[]")
-    except Exception:
-        return None
+    except Exception as exc:
+        raise RuntimeError("gh pr list returned invalid JSON") from exc
     if isinstance(data, list) and data:
         url = data[0].get("url")
         return str(url) if url else None
     return None
 
 
-def create_pull_request(local_repo: Path, base_branch: str, updater_branch: str, title: str, body: str) -> str:
-    existing = detect_existing_pr(local_repo, updater_branch)
-    run_command(["git", "push", "--force-with-lease", "--set-upstream", "origin", updater_branch], cwd=local_repo)
-    if existing:
-        return existing
+def detect_existing_pr_with_rest(local_repo: Path, remote: GitHubRemote, updater_branch: str, token: str) -> str | None:
+    query = urllib.parse.urlencode({"head": f"{remote.owner}:{updater_branch}", "state": "open", "per_page": 1})
+    payload = github_json_request("GET", f"{remote.api_base}/repos/{remote.owner}/{remote.repo}/pulls?{query}", token)
+    if isinstance(payload, list) and payload:
+        url = payload[0].get("html_url") or payload[0].get("url")
+        return str(url) if url else None
+    return None
 
+
+def detect_existing_pr_with_graphql(remote: GitHubRemote, updater_branch: str, token: str) -> str | None:
+    data = github_graphql_request(
+        remote.graphql_url,
+        token,
+        """
+        query($owner: String!, $name: String!, $branch: String!) {
+          repository(owner: $owner, name: $name) {
+            pullRequests(states: OPEN, headRefName: $branch, first: 1) {
+              nodes {
+                url
+              }
+            }
+          }
+        }
+        """,
+        {"owner": remote.owner, "name": remote.repo, "branch": updater_branch},
+    )
+    repository = data.get("repository") or {}
+    pull_requests = repository.get("pullRequests") or {}
+    nodes = pull_requests.get("nodes") or []
+    if nodes:
+        url = nodes[0].get("url")
+        return str(url) if url else None
+    return None
+
+
+def detect_existing_pr(local_repo: Path, updater_branch: str, remote: GitHubRemote | None, token: str | None) -> tuple[str | None, str | None, list[str]]:
+    errors: list[str] = []
+
+    if command_exists("gh"):
+        try:
+            url = detect_existing_pr_with_gh(local_repo, updater_branch)
+            if url:
+                return url, "gh", errors
+        except RuntimeError as exc:
+            errors.append(f"gh detect existing PR failed: {exc}")
+
+    if remote and token:
+        try:
+            url = detect_existing_pr_with_rest(local_repo, remote, updater_branch, token)
+            if url:
+                return url, "rest", errors
+        except RuntimeError as exc:
+            errors.append(f"rest detect existing PR failed: {exc}")
+
+        try:
+            url = detect_existing_pr_with_graphql(remote, updater_branch, token)
+            if url:
+                return url, "graphql", errors
+        except RuntimeError as exc:
+            errors.append(f"graphql detect existing PR failed: {exc}")
+
+    return None, None, errors
+
+
+def create_pull_request_with_gh(local_repo: Path, base_branch: str, updater_branch: str, title: str, body: str) -> str:
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
         handle.write(body)
         body_path = handle.name
-
     try:
         url = run_command(
             ["gh", "pr", "create", "--base", base_branch, "--head", updater_branch, "--title", title, "--body-file", body_path],
@@ -659,6 +894,145 @@ def create_pull_request(local_repo: Path, base_branch: str, updater_branch: str,
         return url.strip()
     finally:
         Path(body_path).unlink(missing_ok=True)
+
+
+def create_pull_request_with_rest(
+    local_repo: Path,
+    remote: GitHubRemote,
+    base_branch: str,
+    updater_branch: str,
+    title: str,
+    body: str,
+    token: str,
+) -> str:
+    existing = detect_existing_pr_with_rest(local_repo, remote, updater_branch, token)
+    if existing:
+        return existing
+    payload = github_json_request(
+        "POST",
+        f"{remote.api_base}/repos/{remote.owner}/{remote.repo}/pulls",
+        token,
+        {
+            "title": title,
+            "head": updater_branch,
+            "base": base_branch,
+            "body": body,
+        },
+    )
+    if not isinstance(payload, dict):
+        raise RuntimeError("GitHub REST PR creation returned a non-object response.")
+    url = payload.get("html_url") or payload.get("url")
+    if not url:
+        raise RuntimeError("GitHub REST PR creation did not return a PR URL.")
+    return str(url)
+
+
+def create_pull_request_with_graphql(
+    remote: GitHubRemote,
+    base_branch: str,
+    updater_branch: str,
+    title: str,
+    body: str,
+    token: str,
+) -> str:
+    existing = detect_existing_pr_with_graphql(remote, updater_branch, token)
+    if existing:
+        return existing
+    repository_data = github_graphql_request(
+        remote.graphql_url,
+        token,
+        """
+        query($owner: String!, $name: String!) {
+          repository(owner: $owner, name: $name) {
+            id
+          }
+        }
+        """,
+        {"owner": remote.owner, "name": remote.repo},
+    )
+    repository = repository_data.get("repository") or {}
+    repository_id = repository.get("id")
+    if not repository_id:
+        raise RuntimeError("GitHub GraphQL repository lookup did not return an id.")
+    mutation_data = github_graphql_request(
+        remote.graphql_url,
+        token,
+        """
+        mutation(
+          $repositoryId: ID!,
+          $baseRefName: String!,
+          $headRefName: String!,
+          $title: String!,
+          $body: String!
+        ) {
+          createPullRequest(
+            input: {
+              repositoryId: $repositoryId,
+              baseRefName: $baseRefName,
+              headRefName: $headRefName,
+              title: $title,
+              body: $body
+            }
+          ) {
+            pullRequest {
+              url
+            }
+          }
+        }
+        """,
+        {
+            "repositoryId": repository_id,
+            "baseRefName": base_branch,
+            "headRefName": updater_branch,
+            "title": title,
+            "body": body,
+        },
+    )
+    create_pr = (mutation_data.get("createPullRequest") or {}).get("pullRequest") or {}
+    url = create_pr.get("url")
+    if not url:
+        raise RuntimeError("GitHub GraphQL PR creation did not return a PR URL.")
+    return str(url)
+
+
+def create_pull_request(local_repo: Path, base_branch: str, updater_branch: str, title: str, body: str) -> tuple[str, str]:
+    run_command(["git", "push", "--force-with-lease", "--set-upstream", "origin", updater_branch], cwd=local_repo)
+    remote = resolve_github_remote(local_repo)
+    token, token_source = discover_github_token(remote, local_repo)
+    existing, existing_provider, detect_errors = detect_existing_pr(local_repo, updater_branch, remote, token)
+    if existing:
+        suffix = f"+{token_source}" if existing_provider in {"rest", "graphql"} and token_source else ""
+        return existing, f"{existing_provider}{suffix}"
+
+    errors = list(detect_errors)
+
+    if command_exists("gh"):
+        try:
+            return create_pull_request_with_gh(local_repo, base_branch, updater_branch, title, body), "gh"
+        except RuntimeError as exc:
+            errors.append(f"gh create PR failed: {exc}")
+    else:
+        errors.append("gh create PR skipped: gh not installed")
+
+    if remote and token:
+        try:
+            return create_pull_request_with_rest(local_repo, remote, base_branch, updater_branch, title, body, token), f"rest+{token_source}"
+        except RuntimeError as exc:
+            errors.append(f"rest create PR failed: {exc}")
+
+        try:
+            return create_pull_request_with_graphql(remote, base_branch, updater_branch, title, body, token), f"graphql+{token_source}"
+        except RuntimeError as exc:
+            errors.append(f"graphql create PR failed: {exc}")
+    else:
+        if not remote:
+            errors.append("API create PR skipped: could not resolve GitHub origin remote")
+        if not token:
+            errors.append(
+                "API create PR skipped: no GitHub token found via env, embedded remote credentials, gh auth token, or netrc"
+            )
+
+    raise RuntimeError("Failed to open pull request automatically. Tried providers: " + " | ".join(errors))
 
 
 def evaluate_consumer(
@@ -800,10 +1174,11 @@ def evaluate_consumer(
 
             pr_title = build_manual_review_title(shared_repository, source_commit)
             pr_body = build_manual_review_body(shared_repository, source_commit, preview_for_pr)
-            pr_url = create_pull_request(local_repo, base_branch, updater_branch, pr_title, pr_body)
+            pr_url, pr_provider = create_pull_request(local_repo, base_branch, updater_branch, pr_title, pr_body)
             preview_for_pr.status = "manual_review_pr_opened"
             preview_for_pr.message = "Opened a manual-review PR for shared-workflow divergence."
             preview_for_pr.pull_request_url = pr_url
+            preview_for_pr.pull_request_provider = pr_provider
             return preview_for_pr
         except RuntimeError as exc:
             return ConsumerPreview(
@@ -908,7 +1283,7 @@ def evaluate_consumer(
             ),
             validation_messages=validation_messages,
         )
-        pr_url = create_pull_request(local_repo, base_branch, updater_branch, pr_title, pr_body)
+        pr_url, pr_provider = create_pull_request(local_repo, base_branch, updater_branch, pr_title, pr_body)
         return ConsumerPreview(
             repo=repo_slug,
             resolved_base_branch=base_branch,
@@ -918,6 +1293,7 @@ def evaluate_consumer(
             local_repo_path=str(local_repo),
             updater_branch=updater_branch,
             pull_request_url=pr_url,
+            pull_request_provider=pr_provider,
             commit_sha=commit_sha,
         )
     except RuntimeError as exc:
@@ -941,6 +1317,7 @@ def preview_to_dict(preview: ConsumerPreview) -> dict[str, Any]:
         "localRepoPath": preview.local_repo_path,
         "updaterBranch": preview.updater_branch,
         "pullRequestUrl": preview.pull_request_url,
+        "pullRequestProvider": preview.pull_request_provider,
         "commitSha": preview.commit_sha,
         "reviewReportPath": preview.review_report_path,
         "normalizationPatchPath": preview.normalization_patch_path,
@@ -1022,7 +1399,7 @@ def main() -> int:
         "consumers": [preview_to_dict(item) for item in previews],
         "limitations": [
             "Remote consumer clone/bootstrap is not implemented yet.",
-            "PR creation depends on local consumer clones and GitHub CLI authentication.",
+            "PR creation depends on local consumer clones plus at least one working PR provider/auth path (gh, GitHub REST API token, or GitHub GraphQL token).",
         ],
     }
     write_summary(out_summary, summary)

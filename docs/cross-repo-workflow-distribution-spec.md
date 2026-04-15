@@ -239,10 +239,15 @@ Base branch behavior:
 V1 implementation note:
 - the first updater implementation lives at `scripts/github/cross_repo_workflow_updater.py`
 - it currently relies on local consumer clones for branch resolution and content preview/apply work
-- PR creation uses `git` plus GitHub CLI (`gh`)
+- PR creation uses `git` plus an automatic provider chain:
+  1. GitHub CLI (`gh`)
+  2. GitHub REST API
+  3. GitHub GraphQL API
+- API-based fallbacks can authenticate from supported environment variables, `gh auth token`, `.netrc`, or embedded HTTPS remote credentials
 
 Recommended follow-up mode:
 - when divergence blocks a normal sync PR, the updater may optionally switch to an AI-assisted manual-review PR path that creates a review artifact instead of a silent overwrite
+- those review artifacts should normally be treated as temporary adjudication scaffolding, not as permanent repo assets; if normalization is later approved, prefer a clean workflow-change PR rather than merging artifact-only files by accident
 
 Branch naming:
 - `chore/sync-shared-workflows-<shortsha>`

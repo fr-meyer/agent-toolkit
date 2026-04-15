@@ -74,6 +74,18 @@ The updater must have credentials that can:
 - push an update branch or fork branch
 - open a PR in the consumer repo
 
+Required local tooling for the current V1 implementation:
+- `git`
+- `python3`
+- at least one working PR provider/auth path:
+  - `gh`, or
+  - a GitHub token discoverable via environment variable, or
+  - `gh auth token`, or
+  - `.netrc`, or
+  - embedded HTTPS remote credentials
+
+`gh` is the easiest path to install and operate, but it is no longer the only non-manual PR-opening path.
+
 ## 4. Required invariants
 
 Before updating any consumer repo, the updater must assume or verify:
@@ -255,7 +267,10 @@ When a PR is opened, the updater must:
 V1 implementation path:
 - local consumer clone required
 - `git` is used for fetch, branch preparation, staging, commit, and push
-- GitHub CLI (`gh`) is used for PR discovery and creation
+- PR discovery/creation uses an automatic provider chain in this order:
+  1. GitHub CLI (`gh`)
+  2. GitHub REST API
+  3. GitHub GraphQL API
 
 ### 9.1 AI-assisted manual-review PR mode
 
@@ -287,6 +302,41 @@ Contract rules for manual-review PR mode:
 - make any proposed patch explicitly optional/reviewable
 - make clear whether the PR is for discussion only or intended for merge
 
+### 9.1.1 Manual-review artifact lifecycle
+
+Default policy for manual-review artifacts such as divergence reports and optional normalization patches:
+- treat them as temporary review scaffolding, not as permanent runtime assets by default
+- make the artifact purpose explicit in the PR body
+- keep them on the review branch while adjudication is in progress
+- if normalization is approved, prefer a clean follow-up PR that changes the live `.github/workflows/` files directly and does not keep the review artifacts unless there is a specific archival reason
+- if customization is intentional, prefer closing the review PR and changing manifest/policy treatment rather than merging artifact-only files into the long-term branch by accident
+
+The updater should therefore frame these artifacts as evidence and proposal material, not as the desired long-term repository state.
+
+## 9.2 Current PR opening dependency and automatic fallbacks
+
+Current V1 implementation now uses an automatic fallback chain for PR discovery and creation:
+1. `gh`
+2. GitHub REST API
+3. GitHub GraphQL API
+
+Credential discovery for the API-based fallbacks currently tries, in order:
+1. environment variables (`GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT`, `GITHUB_API_TOKEN`, `GITHUB_OAUTH_TOKEN`, `GITHUB_APP_TOKEN`)
+2. embedded HTTPS remote credentials
+3. `gh auth token`
+4. `.netrc`
+
+Installation note for macOS with Homebrew:
+- `brew install gh`
+- then authenticate with `gh auth login`
+
+The main requirement is not specifically `gh`; it is the ability to reliably:
+- detect an existing PR for the updater branch
+- open a new PR against the resolved base branch
+- return the PR URL and provider into the updater summary
+
+A future first-class OpenClaw GitHub/PR tool would also be an acceptable provider path if one is later available.
+
 PR title format:
 - `chore(ci): sync shared workflows from fr-meyer/agent-toolkit@<shortsha>`
 
@@ -298,6 +348,7 @@ PR body must include:
 - previous and new pinned reusable-workflow SHAs when detectable
 - validation summary
 - explicit note that the PR is safe to revert if needed
+- for manual-review PRs, explicit lifecycle guidance for any included review artifacts and what the expected follow-up path is after adjudication
 
 ## 10. Idempotency contract
 
@@ -341,6 +392,7 @@ Recommended top-level summary shape:
         }
       ],
       "pullRequestUrl": "https://github.com/...",
+      "pullRequestProvider": "rest+env:GITHUB_TOKEN",
       "message": "Updated 1 managed workflow file."
     }
   ]
