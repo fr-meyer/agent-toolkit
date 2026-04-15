@@ -1,0 +1,259 @@
+name: Cross-repo workflow updater (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      source_commit:
+        description: Shared repo source commit to distribute from
+        required: false
+        type: string
+        default: ''
+      previous_source_commit:
+        description: Previous shared repo source commit for diffing
+        required: false
+        type: string
+        default: ''
+      create_pr:
+        description: Open PRs in consumer repos when candidate updates exist
+        required: false
+        type: boolean
+        default: true
+      dry_run:
+        description: Preview only, do not write consumer repos or open PRs
+        required: false
+        type: boolean
+        default: false
+      manual_review_on_divergence:
+        description: Allow manual-review PRs when exact-managed consumer workflows diverge
+        required: false
+        type: boolean
+        default: true
+      include_normalization_patch:
+        description: Include optional normalization patch in manual-review artifacts
+        required: false
+        type: boolean
+        default: true
+      branch_prefix:
+        description: Updater branch prefix used in consumer repos
+        required: false
+        type: string
+        default: chore/sync-shared-workflows-
+      consumer_local_root:
+        description: Local directory where consumer repositories will be cloned
+        required: false
+        type: string
+        default: .tmp/cross-repo-workflow-updater/consumers
+      python_version:
+        description: Python version used for the helper steps
+        required: false
+        type: string
+        default: '3.11'
+      consumer_filter:
+        description: Optional newline or comma separated repo slug filter
+        required: false
+        type: string
+        default: ''
+      starter_template_filter:
+        description: Optional newline or comma separated starter template filter
+        required: false
+        type: string
+        default: ''
+    secrets:
+      GH_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: cross-repo-workflow-updater-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  updater:
+    name: Cross-repo workflow updater
+    runs-on: ubuntu-latest
+
+    env:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      CONSUMER_LOCAL_ROOT: ${{ inputs.consumer_local_root }}
+      MANIFEST_PATH: templates/cross-repo-workflow-distribution-manifest.json
+
+    steps:
+      - name: Checkout shared workflow repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Prepare consumer repository clones
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$CONSUMER_LOCAL_ROOT"
+          mkdir -p "$CONSUMER_LOCAL_ROOT"
+
+          python - <<'PY'
+          import json
+          import os
+          import shutil
+          import subprocess
+          from pathlib import Path
+
+          root = Path(os.environ["CONSUMER_LOCAL_ROOT"])
+          token = os.environ["GH_TOKEN"]
+          manifest = json.loads(Path("templates/cross-repo-workflow-distribution-manifest.json").read_text(encoding="utf-8"))
+
+          for consumer in manifest.get("consumers", []):
+              repo = str(consumer.get("repo") or "").strip()
+              if not repo:
+                  continue
+              dest = root / repo.split("/", 1)[1]
+              base_branch = str(consumer.get("baseBranch") or "").strip()
+              if dest.exists():
+                  shutil.rmtree(dest)
+              clone_url = f"https://x-access-token:{token}@github.com/{repo}.git"
+              cmd = ["git", "clone", "--depth", "1"]
+              if base_branch:
+                  cmd.extend(["--branch", base_branch])
+              cmd.extend([clone_url, str(dest)])
+              subprocess.run(cmd, check=True)
+          PY
+
+      - name: Run cross-repo workflow updater
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          PREVIOUS_SOURCE_COMMIT: ${{ inputs.previous_source_commit }}
+          CREATE_PR: ${{ inputs.create_pr }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          MANUAL_REVIEW_ON_DIVERGENCE: ${{ inputs.manual_review_on_divergence }}
+          INCLUDE_NORMALIZATION_PATCH: ${{ inputs.include_normalization_patch }}
+          BRANCH_PREFIX: ${{ inputs.branch_prefix }}
+          CONSUMER_FILTER: ${{ inputs.consumer_filter }}
+          STARTER_TEMPLATE_FILTER: ${{ inputs.starter_template_filter }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${SOURCE_COMMIT:-}" ]]; then
+            SOURCE_COMMIT="$(git rev-parse HEAD)"
+          fi
+          if [[ -z "${PREVIOUS_SOURCE_COMMIT:-}" ]]; then
+            PREVIOUS_SOURCE_COMMIT="$(git rev-parse "${SOURCE_COMMIT}^" 2>/dev/null || echo "")"
+          fi
+          if [[ -z "${PREVIOUS_SOURCE_COMMIT:-}" ]]; then
+            PREVIOUS_SOURCE_COMMIT="$(git rev-list --max-parents=0 "$SOURCE_COMMIT" | tail -n 1)"
+          fi
+
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+
+          def split_items(raw: str) -> list[str]:
+              items: list[str] = []
+              for chunk in raw.replace("\n", ",").split(","):
+                  item = chunk.strip()
+                  if item:
+                      items.append(item)
+              return items
+
+          cmd = [
+              sys.executable,
+              "scripts/github/cross_repo_workflow_updater.py",
+              "--repo-root",
+              ".",
+              "--manifest-path",
+              "templates/cross-repo-workflow-distribution-manifest.json",
+              "--source-commit",
+              os.environ["SOURCE_COMMIT"],
+              "--previous-source-commit",
+              os.environ["PREVIOUS_SOURCE_COMMIT"],
+              "--consumer-local-root",
+              os.environ["CONSUMER_LOCAL_ROOT"],
+              "--branch-prefix",
+              os.environ["BRANCH_PREFIX"],
+              "--out-summary",
+              "artifacts/cross-repo-workflow-updater-summary.json",
+          ]
+
+          if os.environ.get("DRY_RUN", "false").lower() == "true":
+              cmd.append("--dry-run")
+          elif os.environ.get("CREATE_PR", "true").lower() == "true":
+              cmd.append("--create-pr")
+          else:
+              cmd.append("--execute")
+          if os.environ.get("MANUAL_REVIEW_ON_DIVERGENCE", "true").lower() == "true":
+              cmd.append("--manual-review-on-divergence")
+          if os.environ.get("INCLUDE_NORMALIZATION_PATCH", "true").lower() == "true":
+              cmd.append("--include-normalization-patch")
+
+          for item in split_items(os.environ.get("CONSUMER_FILTER", "")):
+              cmd.extend(["--consumer-filter", item])
+          for item in split_items(os.environ.get("STARTER_TEMPLATE_FILTER", "")):
+              cmd.extend(["--starter-template-filter", item])
+
+          print("Running:", " ".join(cmd))
+          subprocess.run(cmd, check=True)
+          PY
+
+      - name: Fail on critical updater failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          summary_path = Path("artifacts/cross-repo-workflow-updater-summary.json")
+          if not summary_path.exists():
+              raise SystemExit("Updater summary artifact was not created.")
+
+          data = json.loads(summary_path.read_text(encoding="utf-8"))
+          critical = {
+              "branch_resolution_failed",
+              "checkout_failed",
+              "preview_incomplete",
+              "render_failed",
+              "validation_failed",
+              "pr_creation_failed",
+              "manual_review_required",
+          }
+          bad: list[str] = []
+          for consumer in data.get("consumers", []):
+              status = str(consumer.get("status") or "")
+              repo = str(consumer.get("repo") or "unknown-repo")
+              if status in critical:
+                  bad.append(f"{repo}={status}")
+              for binding in consumer.get("bindings", []):
+                  bstatus = str(binding.get("status") or "")
+                  target = str(binding.get("targetPath") or "unknown-target")
+                  if bstatus in critical:
+                      bad.append(f"{repo}:{target}={bstatus}")
+
+          if bad:
+              print("Critical updater failures detected:")
+              for item in bad:
+                  print(f"- {item}")
+              raise SystemExit(1)
+
+          print("Updater summary passed.")
+          PY
+
+      - name: Upload updater artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-repo-workflow-updater-${{ github.run_id }}
+          path: |
+            artifacts/cross-repo-workflow-updater-summary.json
+            .tmp/cross-repo-workflow-updater
+          if-no-files-found: warn

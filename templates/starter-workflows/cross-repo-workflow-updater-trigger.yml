@@ -1,0 +1,112 @@
+name: Cross-repo workflow updater (trigger)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - templates/starter-workflows/**
+      - templates/cross-repo-workflow-distribution-manifest.json
+      - scripts/github/cross_repo_workflow_updater.py
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Shared repo source commit to distribute from (blank uses current HEAD)
+        required: false
+        type: string
+        default: ''
+      previous_source_commit:
+        description: Previous shared repo source commit for diffing (blank uses the source commit parent)
+        required: false
+        type: string
+        default: ''
+      create_pr:
+        description: Open PRs in consumer repos when candidate updates exist
+        required: false
+        type: boolean
+        default: true
+      dry_run:
+        description: Preview only, do not write consumer repos or open PRs
+        required: false
+        type: boolean
+        default: false
+      manual_review_on_divergence:
+        description: Allow manual-review PRs when exact-managed consumer workflows diverge
+        required: false
+        type: boolean
+        default: true
+      include_normalization_patch:
+        description: Include optional normalization patch in manual-review artifacts
+        required: false
+        type: boolean
+        default: true
+      branch_prefix:
+        description: Updater branch prefix used in consumer repos
+        required: false
+        type: string
+        default: chore/sync-shared-workflows-
+      consumer_local_root:
+        description: Local directory where consumer repositories will be cloned
+        required: false
+        type: string
+        default: .tmp/cross-repo-workflow-updater/consumers
+      python_version:
+        description: Python version used for the helper steps
+        required: false
+        type: string
+        default: '3.11'
+      consumer_filter:
+        description: Optional newline or comma separated repo slug filter
+        required: false
+        type: string
+        default: ''
+      starter_template_filter:
+        description: Optional newline or comma separated starter template filter
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: cross-repo-workflow-updater-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run-on-push:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/cross-repo-workflow-updater-reusable.yml
+    with:
+      source_commit: ${{ github.sha }}
+      previous_source_commit: ${{ github.event.before }}
+      create_pr: true
+      dry_run: false
+      manual_review_on_divergence: true
+      include_normalization_patch: true
+      branch_prefix: chore/sync-shared-workflows-
+      consumer_local_root: .tmp/cross-repo-workflow-updater/consumers
+      python_version: '3.11'
+      consumer_filter: ''
+      starter_template_filter: ''
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+  run-on-dispatch:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/cross-repo-workflow-updater-reusable.yml
+    with:
+      source_commit: ${{ inputs.source_commit }}
+      previous_source_commit: ${{ inputs.previous_source_commit }}
+      create_pr: ${{ inputs.create_pr }}
+      dry_run: ${{ inputs.dry_run }}
+      manual_review_on_divergence: ${{ inputs.manual_review_on_divergence }}
+      include_normalization_patch: ${{ inputs.include_normalization_patch }}
+      branch_prefix: ${{ inputs.branch_prefix }}
+      consumer_local_root: ${{ inputs.consumer_local_root }}
+      python_version: ${{ inputs.python_version }}
+      consumer_filter: ${{ inputs.consumer_filter }}
+      starter_template_filter: ${{ inputs.starter_template_filter }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}

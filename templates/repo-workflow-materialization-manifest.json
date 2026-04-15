@@ -11,8 +11,16 @@
       "target": ".github/workflows/sync-starter-workflow-template-refs-reusable.yml"
     },
     {
+      "source": "templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml",
+      "target": ".github/workflows/cross-repo-workflow-updater-reusable.yml"
+    },
+    {
       "source": "templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml",
       "target": ".github/workflows/sync-starter-workflow-template-refs-trigger.yml"
+    },
+    {
+      "source": "templates/starter-workflows/cross-repo-workflow-updater-trigger.yml",
+      "target": ".github/workflows/cross-repo-workflow-updater-trigger.yml"
     }
   ]
 }
