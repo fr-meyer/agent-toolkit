@@ -420,6 +420,21 @@ def prepare_updater_branch(local_repo: Path, base_branch: str, updater_branch: s
         raise RuntimeError("Consumer repo working tree became dirty immediately after branch preparation.")
 
 
+def fetch_remote_updater_branch_for_lease(local_repo: Path, updater_branch: str) -> None:
+    subprocess.run(
+        [
+            "git",
+            "fetch",
+            "origin",
+            f"{updater_branch}:refs/remotes/origin/{updater_branch}",
+        ],
+        cwd=local_repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
 def apply_managed_updates(repo_root: Path, local_repo: Path, bindings: list[BindingPreview]) -> list[str]:
     changed_paths: list[str] = []
     for binding in bindings:
@@ -996,6 +1011,7 @@ def create_pull_request_with_graphql(
 
 
 def create_pull_request(local_repo: Path, base_branch: str, updater_branch: str, title: str, body: str) -> tuple[str, str]:
+    fetch_remote_updater_branch_for_lease(local_repo, updater_branch)
     run_command(["git", "push", "--force-with-lease", "--set-upstream", "origin", updater_branch], cwd=local_repo)
     remote = resolve_github_remote(local_repo)
     token, token_source = discover_github_token(remote, local_repo)
