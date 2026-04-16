@@ -212,7 +212,7 @@ Secrets may include:
 - **Governed by:**
   - target in `templates/workflow-ref-sync-manifest.json`
 - **Purpose:**
-  - react to CodeRabbit-authored PR comments or review comments
+  - react to CodeRabbit-authored PR comments, review comments, or review summaries
   - resolve the PR number and reject fork cases
   - call the shared CodeRabbit remediation engine only when the context is eligible
 
@@ -222,10 +222,12 @@ Use this when a consumer repository wants remediation to start from CodeRabbit c
 ### Trigger shape
 - `issue_comment` created
 - `pull_request_review_comment` created
+- `pull_request_review` submitted
 
 ### Special behavior
 - intentionally scoped to CodeRabbit-authored comments only
 - resolves PR context in a separate job before calling the reusable workflow
+- ignores review-summary events when the same review already contains inline review comments, to avoid duplicate runs
 - skips fork-based cases
 
 ### Calls
