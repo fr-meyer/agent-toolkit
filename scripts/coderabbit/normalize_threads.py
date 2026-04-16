@@ -26,13 +26,13 @@ DETAILS_SECTION_PATTERN = re.compile(
 )
 PROMPT_SECTION_PATTERNS = [
     re.compile(
-        r"(?ims)^#{1,6}\s*prompt\s+for\s+ai\s+agents\s*$\n(?P<body>.*?)(?=^#{1,6}\s+\S|\Z)"
+        r"(?ims)^#{1,6}\s*.*prompt.*ai\s+agents.*$\n(?P<body>.*?)(?=^#{1,6}\s+\S|\Z)"
     ),
     re.compile(
-        r"(?ims)^\*\*prompt\s+for\s+ai\s+agents\*\*: ?\s*$\n(?P<body>.*?)(?=^\*\*|^#{1,6}\s+\S|\Z)"
+        r"(?ims)^\*\*.*prompt.*ai\s+agents.*\*\*: ?\s*$\n(?P<body>.*?)(?=^\*\*|^#{1,6}\s+\S|\Z)"
     ),
     re.compile(
-        r"(?ims)^prompt\s+for\s+ai\s+agents\s*: ?\s*$\n(?P<body>.*)$"
+        r"(?ims)^.*prompt.*ai\s+agents.*: ?\s*$\n(?P<body>.*)$"
     ),
 ]
 
@@ -45,6 +45,10 @@ HTML_TAGS = re.compile(r"(?is)</?(?:p|div|li|ul|ol|blockquote|details|summary|st
 ANY_HTML_TAG = re.compile(r"(?is)<[^>]+>")
 LEADING_LIST_MARKER = re.compile(r"^(?:[-*+]|\d+[.)])\s+")
 WHITESPACE = re.compile(r"[ \t]+")
+SUMMARY_REVIEW_PATH_PATTERN = re.compile(r"(?i)\bin\s+@(?P<path>[A-Za-z0-9._/\-]+)")
+SUMMARY_REVIEW_LINE_RANGE_PATTERN = re.compile(r"(?i)\baround\s+lines?\s+(?P<start>\d+)\s*[-–]\s*(?P<end>\d+)")
+SUMMARY_REVIEW_LINE_PATTERN = re.compile(r"(?i)\baround\s+line\s+(?P<line>\d+)")
+BULLET_LINE_PATTERN = re.compile(r"^(?:[-*+])\s+(?P<text>.+)$")
 BLANK_LINES = re.compile(r"\n{3,}")
 NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
@@ -174,7 +178,8 @@ def remove_header(body: str) -> str:
 
 
 def is_prompt_label(label: str) -> bool:
-    return "prompt for ai agents" in normalize_label(label)
+    normalized = normalize_label(label)
+    return "prompt" in normalized and "ai agents" in normalized
 
 
 def extract_prompt_section(body: str) -> Optional[str]:
@@ -197,6 +202,39 @@ def extract_prompt_section(body: str) -> Optional[str]:
             return prompt
 
     return None
+
+
+def first_prompt_bullet(prompt: str) -> Optional[str]:
+    for raw_line in normalize_newlines(prompt).splitlines():
+        line = raw_line.strip()
+        match = BULLET_LINE_PATTERN.match(line)
+        if match:
+            return clean_inline_text(match.group("text"))
+    return None
+
+
+def extract_summary_review_path(text: str) -> Optional[str]:
+    match = SUMMARY_REVIEW_PATH_PATTERN.search(normalize_newlines(text))
+    if not match:
+        return None
+    return match.group("path").rstrip(":.,`'\"")
+
+
+def extract_summary_review_lines(text: str) -> Tuple[Optional[int], Optional[int], Optional[int]]:
+    normalized = normalize_newlines(text)
+
+    match = SUMMARY_REVIEW_LINE_RANGE_PATTERN.search(normalized)
+    if match:
+        start_line = int(match.group("start"))
+        end_line = int(match.group("end"))
+        return start_line, start_line, end_line
+
+    match = SUMMARY_REVIEW_LINE_PATTERN.search(normalized)
+    if match:
+        line = int(match.group("line"))
+        return line, line, line
+
+    return None, None, None
 
 
 def remove_prompt_sections(body: str) -> str:
@@ -422,6 +460,80 @@ def build_issue(thread: Dict[str, Any], index: int) -> Optional[Dict[str, Any]]:
     return issue
 
 
+def build_issue_from_summary_review(review: Dict[str, Any], index: int) -> Optional[Dict[str, Any]]:
+    body = (review.get("body") or "").strip()
+    if not body:
+        return None
+
+    prompt = extract_prompt_section(body)
+    if not prompt:
+        return None
+
+    path = extract_summary_review_path(prompt) or extract_summary_review_path(body)
+    if not path:
+        return None
+
+    line, start_line, end_line = extract_summary_review_lines(prompt)
+    severity = detect_severity(None, body)
+    fallback_title = (
+        f"CodeRabbit summary review issue in {path}:{line}"
+        if line is not None
+        else f"CodeRabbit summary review issue in {path}"
+    )
+
+    title = clean_inline_text(first_prompt_bullet(prompt) or fallback_title)
+    if len(title) > 160:
+        title = title[:157].rstrip() + "..."
+
+    description = clean_multiline_text(prompt)
+
+    issue_label = "nitpick" if "nitpick" in normalize_label(prompt) else "summary review"
+
+    issue: Dict[str, Any] = {
+        "id": f"cr_{index:03d}_review_{sanitize_issue_id(str(review.get('id') or index))}",
+        "threadId": f"review_{review.get('id') or index}",
+        "commentId": str(review.get("id") or ""),
+        "author": ((review.get("author") or {}).get("login") or ""),
+        "status": "open",
+        "file": path,
+        "severity": severity,
+        "type": detect_issue_type(issue_label, prompt, title),
+        "title": title,
+        "description": description or fallback_title,
+        "agentPrompt": prompt,
+        "rawBody": body,
+    }
+
+    if line is not None:
+        issue["line"] = line
+    if start_line is not None:
+        issue["startLine"] = start_line
+    if end_line is not None:
+        issue["endLine"] = end_line
+
+    if not issue["commentId"]:
+        issue.pop("commentId")
+    if not issue["author"]:
+        issue.pop("author")
+
+    return issue
+
+
+def fallback_summary_review_issue(reviews: Iterable[Dict[str, Any]], index: int) -> Optional[Dict[str, Any]]:
+    candidates = [
+        review for review in reviews
+        if isinstance(review, dict)
+        and is_coderabbit_author(review.get("author"))
+        and (review.get("state") or "").upper() == "COMMENTED"
+        and extract_prompt_section((review.get("body") or "").strip())
+    ]
+    if not candidates:
+        return None
+
+    latest_review = max(candidates, key=lambda review: review.get("submittedAt") or "")
+    return build_issue_from_summary_review(latest_review, index)
+
+
 def normalize_issues(threads: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     issues: List[Dict[str, Any]] = []
     for index, thread in enumerate(threads, start=1):
@@ -476,7 +588,12 @@ def main() -> int:
     pr_url = pull_request.get("url") or None
 
     threads = raw.get("reviewThreads") or []
+    reviews = raw.get("reviews") or []
     issues = normalize_issues(threads)
+    if not issues:
+        summary_issue = fallback_summary_review_issue(reviews, 1)
+        if summary_issue is not None:
+            issues = [summary_issue]
 
     artifact = {
         "pr": {
@@ -517,15 +634,24 @@ def main() -> int:
     outdated_unresolved_threads = [thread for thread in unresolved_threads if thread.get("isOutdated")]
     coderabbit_root_unresolved_threads = [thread for thread in unresolved_threads if has_coderabbit_root_comment(thread)]
     actionable_threads = [thread for thread in threads if is_actionable_thread(thread)]
+    coderabbit_summary_reviews = [
+        review for review in reviews
+        if isinstance(review, dict)
+        and is_coderabbit_author(review.get("author"))
+        and (review.get("state") or "").upper() == "COMMENTED"
+        and (review.get("body") or "").strip()
+    ]
 
     summary = {
         "status": "ok",
         "repository": repo_name,
         "prNumber": pr_number,
         "totalThreads": len(threads),
+        "totalReviews": len(reviews),
         "unresolvedThreads": len(unresolved_threads),
         "outdatedUnresolvedThreads": len(outdated_unresolved_threads),
         "coderabbitRootUnresolvedThreads": len(coderabbit_root_unresolved_threads),
+        "coderabbitSummaryReviews": len(coderabbit_summary_reviews),
         "actionableIssues": len(issues),
         "actionableThreads": len(actionable_threads),
         "artifactPath": str(out_dir / "actionable-issues.json"),

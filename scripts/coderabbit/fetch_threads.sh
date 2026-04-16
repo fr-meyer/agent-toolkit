@@ -95,6 +95,21 @@ query($owner: String!, $name: String!, $number: Int!, $after: String) {
           endCursor
         }
       }
+      reviews(last: 20) {
+        nodes {
+          id
+          body
+          state
+          submittedAt
+          url
+          author {
+            __typename
+            login
+            resourcePath
+            url
+          }
+        }
+      }
     }
   }
 }
@@ -170,6 +185,7 @@ if not page_files:
 
 pull_request = None
 threads = []
+reviews_by_id = {}
 for path in page_files:
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -186,17 +202,25 @@ for path in page_files:
             'baseRefName': pr.get('baseRefName'),
         }
     threads.extend((pr.get('reviewThreads') or {}).get('nodes') or [])
+    for review in (pr.get('reviews') or {}).get('nodes') or []:
+        review_id = str((review or {}).get('id') or '').strip()
+        if review_id and review_id not in reviews_by_id:
+            reviews_by_id[review_id] = review
+
+reviews = list(reviews_by_id.values())
 
 combined = {
     'repository': repo_name,
     'repoPath': repo_path,
     'pullRequest': pull_request,
     'reviewThreads': threads,
+    'reviews': reviews,
     'metadata': {
         'source': 'github-graphql-review-thread-fetch',
         'createdAt': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         'fetchedPages': len(page_files),
         'totalThreads': len(threads),
+        'totalReviews': len(reviews),
         'requestedPrNumber': pr_number,
     },
 }
@@ -231,6 +255,12 @@ def is_coderabbit_author(author) -> bool:
 
 unresolved_threads = [thread for thread in threads if not thread.get('isResolved')]
 outdated_unresolved_threads = [thread for thread in unresolved_threads if thread.get('isOutdated')]
+coderabbit_summary_reviews = [
+    review for review in reviews
+    if is_coderabbit_author(review.get('author'))
+    and (review.get('state') or '').upper() == 'COMMENTED'
+    and (review.get('body') or '').strip()
+]
 coderabbit_root_unresolved_threads = []
 for thread in unresolved_threads:
     comments = ((thread.get('comments') or {}).get('nodes') or [])
@@ -249,6 +279,8 @@ summary = {
     'totalThreads': len(threads),
     'unresolvedThreads': len(unresolved_threads),
     'outdatedUnresolvedThreads': len(outdated_unresolved_threads),
+    'summaryReviews': len(reviews),
+    'coderabbitSummaryReviews': len(coderabbit_summary_reviews),
     'coderabbitRootUnresolvedThreads': len(coderabbit_root_unresolved_threads),
     'rawPath': str(out_path),
 }

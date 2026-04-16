@@ -212,7 +212,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$CODERABBIT_OUT_DIR"
 
-      - name: Fetch raw PR review-thread data
+      - name: Fetch raw PR review and thread data
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
