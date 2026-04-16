@@ -31,7 +31,8 @@ For exact source-to-target bindings, also consult:
 | Name | Type | Canonical source | Live/runtime copy | Primary purpose |
 | --- | --- | --- | --- | --- |
 | CodeRabbit PR automation | Reusable | `templates/reusable-workflows/coderabbit-pr-automation.yml` | `.github/workflows/coderabbit-pr-automation.yml` | Shared remediation engine for CodeRabbit PR review issues |
-| CodeRabbit PR automation wrapper | Starter | `templates/starter-workflows/coderabbit-pr-automation-wrapper.yml` | none in this repo | Consumer-facing PR automation entrypoint wired to the reusable engine |
+| CodeRabbit PR automation (PR trigger) | Starter | `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml` | none in this repo | Consumer-facing PR-event entrypoint wired to the reusable engine |
+| CodeRabbit PR automation (manual trigger) | Starter | `templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml` | none in this repo | Consumer-facing manual-dispatch entrypoint wired to the reusable engine |
 | CodeRabbit PR comment trigger | Starter | `templates/starter-workflows/coderabbit-pr-comment-trigger.yml` | none in this repo | Consumer-facing comment-triggered entrypoint that resolves PR context, then calls the reusable engine |
 | Sync starter-workflow template refs (reusable) | Reusable | `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml` | `.github/workflows/sync-starter-workflow-template-refs-reusable.yml` | Deterministic maintenance workflow that materializes local workflow copies and syncs pinned reusable-workflow refs |
 | Cross-repo workflow updater (reusable) | Reusable | `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml` | `.github/workflows/cross-repo-workflow-updater-reusable.yml` | Shared engine that clones consumer repos, renders starter-template updates, and opens consumer PRs |
@@ -104,26 +105,25 @@ Use this as the shared engine when a repository wants AI-assisted remediation fo
 - may create and push remediation commits when enabled
 
 ### Notes
-- This is the main reusable engine behind the two CodeRabbit starter workflows below.
+- This is the main reusable engine behind the three CodeRabbit starter workflows below.
 - The paired `shared_repository_ref` should stay aligned with the pinned `uses: ...@<sha>` ref in calling templates when present.
 
 ---
 
-## 2. CodeRabbit PR automation wrapper
+## 2. CodeRabbit PR automation (PR trigger)
 
 - **Type:** starter workflow
-- **Canonical source:** `templates/starter-workflows/coderabbit-pr-automation-wrapper.yml`
+- **Canonical source:** `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml`
 - **Live/runtime copy in this repo:** none currently materialized
 - **Governed by:**
   - target in `templates/workflow-ref-sync-manifest.json`
 - **Purpose:**
-  - provide a consumer-facing entrypoint that runs the reusable CodeRabbit automation workflow on PR events or manual dispatch
+  - provide a consumer-facing entrypoint that runs the reusable CodeRabbit automation workflow on PR events
 
 ### When to use
-Use this when a consumer repository wants a standard CodeRabbit PR remediation entrypoint without hand-writing the reusable-workflow wiring.
+Use this when a consumer repository wants automatic remediation on PR open, synchronize, or reopen events without hand-writing the reusable-workflow wiring.
 
 ### Trigger shape
-- `workflow_dispatch`
 - `pull_request` on `opened`, `synchronize`, `reopened`
 
 ### Consumer setup expected
@@ -157,7 +157,54 @@ Secrets may include:
 
 ---
 
-## 3. CodeRabbit PR comment trigger
+## 3. CodeRabbit PR automation (manual trigger)
+
+- **Type:** starter workflow
+- **Canonical source:** `templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml`
+- **Live/runtime copy in this repo:** none currently materialized
+- **Governed by:**
+  - target in `templates/workflow-ref-sync-manifest.json`
+- **Purpose:**
+  - provide a consumer-facing manual-dispatch entrypoint that runs the reusable CodeRabbit automation workflow for a chosen PR number
+
+### When to use
+Use this when a consumer repository wants an explicit Run workflow button for CodeRabbit remediation without mixing that trigger surface into PR-event runs.
+
+### Trigger shape
+- `workflow_dispatch`
+
+### Consumer setup expected
+Repository or organization variables may include:
+- `CODERABBIT_RUNNER_LABELS_JSON`
+- `CODERABBIT_AGENT_RUNTIME`
+- `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
+- `CODERABBIT_CLI`
+- `CURSOR_CLI`
+- `CODERABBIT_INSTALL_SHARED_SKILLS`
+- `CODERABBIT_INSTALL_CURSOR_RULES`
+- `CODERABBIT_SHARED_SKILLS_INSTALL_MODE`
+- `CODERABBIT_AUTO_COMMIT`
+- `CODERABBIT_AUTO_PUSH`
+- `CODERABBIT_COMMIT_STRATEGY`
+- `CODERABBIT_COMMIT_COUNT_MODE`
+- `CODERABBIT_FIXED_COMMIT_COUNT`
+- `CODERABBIT_STOP_ON_AMBIGUOUS_REMAINDER`
+
+Secrets may include:
+- `CURSOR_API_KEY`
+- `CODERABBIT_API_KEY`
+- `WORKFLOW_PUSH_TOKEN`
+
+### Calls
+- `fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@<sha>`
+
+### Notes
+- This is a starter template, not a runtime workflow in this repo.
+- It should remain thin and consumer-facing, with heavy logic kept in the reusable workflow.
+
+---
+
+## 4. CodeRabbit PR comment trigger
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/coderabbit-pr-comment-trigger.yml`
@@ -185,11 +232,11 @@ Use this when a consumer repository wants remediation to start from CodeRabbit c
 - `fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@<sha>`
 
 ### Consumer setup expected
-Uses the same general variable and secret model as the automation wrapper.
+Uses the same general variable and secret model as the split PR and manual trigger starters.
 
 ---
 
-## 4. Sync starter-workflow template refs (reusable)
+## 5. Sync starter-workflow template refs (reusable)
 
 - **Type:** reusable workflow
 - **Canonical source:** `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
@@ -229,7 +276,7 @@ Use this as the maintenance engine that keeps starter templates and linked live 
 
 ---
 
-## 5. Sync starter-workflow template refs (trigger)
+## 6. Sync starter-workflow template refs (trigger)
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`
@@ -264,7 +311,7 @@ Use this as the repo entrypoint that invokes maintenance whenever reusable workf
 
 ---
 
-## 6. Cross-repo workflow updater (reusable)
+## 7. Cross-repo workflow updater (reusable)
 
 - **Type:** reusable workflow
 - **Canonical source:** `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml`
@@ -309,7 +356,7 @@ Use this as the shared engine for distributing starter-workflow updates from thi
 
 ---
 
-## 7. Cross-repo workflow updater (trigger)
+## 8. Cross-repo workflow updater (trigger)
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/cross-repo-workflow-updater-trigger.yml`

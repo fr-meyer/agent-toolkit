@@ -52,7 +52,8 @@ agent-toolkit/
 │   │   ├── coderabbit-pr-automation.yml
 │   │   └── sync-starter-workflow-template-refs-reusable.yml
 │   ├── starter-workflows/
-│   │   ├── coderabbit-pr-automation-wrapper.yml
+│   │   ├── coderabbit-pr-automation-pr-trigger.yml
+│   │   ├── coderabbit-pr-automation-manual-trigger.yml
 │   │   ├── coderabbit-pr-comment-trigger.yml
 │   │   └── sync-starter-workflow-template-refs-trigger.yml
 │   ├── workflow-ref-sync-manifest.json
@@ -90,6 +91,7 @@ This repository now treats GitHub Actions files as **source assets**, not as act
 - **Reusable workflow source:** `templates/reusable-workflows/coderabbit-pr-automation.yml`
 - **Reusable maintenance workflow source:** `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
 - **Starter workflow sources:** `templates/starter-workflows/`, including `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`
+- **CodeRabbit split-trigger starter sources:** `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml` and `templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml`
 - **Ref-sync manifest:** `templates/workflow-ref-sync-manifest.json`
 - **Repo-workflow materialization manifest:** `templates/repo-workflow-materialization-manifest.json`
 - **Helper scripts:** `scripts/coderabbit/` plus `scripts/github/` (including the deterministic ref updater and repo-workflow materializer)

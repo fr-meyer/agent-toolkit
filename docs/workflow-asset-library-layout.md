@@ -24,7 +24,8 @@ agent-toolkit/
 │   │   ├── sync-starter-workflow-template-refs-reusable.yml
 │   │   └── cross-repo-workflow-updater-reusable.yml
 │   ├── starter-workflows/
-│   │   ├── coderabbit-pr-automation-wrapper.yml
+│   │   ├── coderabbit-pr-automation-pr-trigger.yml
+│   │   ├── coderabbit-pr-automation-manual-trigger.yml
 │   │   ├── coderabbit-pr-comment-trigger.yml
 │   │   ├── sync-starter-workflow-template-refs-trigger.yml
 │   │   └── cross-repo-workflow-updater-trigger.yml

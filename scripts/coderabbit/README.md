@@ -46,7 +46,8 @@ Notes:
   - ambiguous remainder handling via `stop_on_ambiguous_remainder`
 - The commit-pass helpers are policy and scope guards only. They should not implement their own commit-message generation logic; commit planning and message drafting stay delegated to `git-repo-sync` and `changeset-commit-partitioner`.
 - The current starter workflow source assets live at:
-  - `templates/starter-workflows/coderabbit-pr-automation-wrapper.yml`
+  - `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml`
+  - `templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml`
   - `templates/starter-workflows/coderabbit-pr-comment-trigger.yml`
 - Layout guidance for this source-library model lives at:
   - `docs/workflow-asset-library-layout.md`

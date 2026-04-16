@@ -7,7 +7,10 @@
       "publishedWorkflowPath": ".github/workflows/coderabbit-pr-automation.yml",
       "templates": [
         {
-          "path": "templates/starter-workflows/coderabbit-pr-automation-wrapper.yml"
+          "path": "templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml"
+        },
+        {
+          "path": "templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml"
         },
         {
           "path": "templates/starter-workflows/coderabbit-pr-comment-trigger.yml"

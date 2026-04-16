@@ -24,6 +24,8 @@ Use this folder for copy/adapt entrypoints and consumer-facing workflow template
 
 This includes repo-local trigger entrypoints when their canonical form should remain reusable as a template, even if this repository materializes a live copy under `.github/workflows/` for its own runtime.
 
+When different trigger surfaces exist primarily for clarity rather than shared logic, prefer separate starter workflows over a single multi-trigger wrapper with trigger-gated sibling jobs. This keeps consumer CI signals cleaner and avoids irrelevant skipped jobs.
+
 ## Current maintenance-flow example
 
 - Canonical reusable engine:

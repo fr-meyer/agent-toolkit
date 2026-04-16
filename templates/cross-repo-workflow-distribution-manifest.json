@@ -9,11 +9,18 @@
       "updateMode": "pull_request",
       "managedBindings": [
         {
-          "starterTemplate": "templates/starter-workflows/coderabbit-pr-automation-wrapper.yml",
-          "targetPath": ".github/workflows/coderabbit-pr-automation.yml",
+          "starterTemplate": "templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml",
+          "targetPath": ".github/workflows/coderabbit-pr-automation-pr.yml",
           "divergencePolicy": "exact",
           "enabled": true,
-          "notes": "Target the repository default branch when baseBranch is omitted. Current observed default branch: feature/package-cli-app. Consumer repo must provide the vars and secrets expected by the shared CodeRabbit automation wrapper."
+          "notes": "Target the repository default branch when baseBranch is omitted. Current observed default branch: feature/package-cli-app. Consumer repo must provide the vars and secrets expected by the shared CodeRabbit PR trigger template."
+        },
+        {
+          "starterTemplate": "templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml",
+          "targetPath": ".github/workflows/coderabbit-pr-automation-manual.yml",
+          "divergencePolicy": "exact",
+          "enabled": true,
+          "notes": "Target the repository default branch when baseBranch is omitted. Current observed default branch: feature/package-cli-app. Consumer repo must provide the vars and secrets expected by the shared CodeRabbit manual trigger template."
         },
         {
           "starterTemplate": "templates/starter-workflows/coderabbit-pr-comment-trigger.yml",
