@@ -7,7 +7,7 @@ name: Sync starter-workflow template refs (trigger)
 on:
   push:
     branches:
-      - main
+      - dev
     paths:
       - templates/reusable-workflows/*.yml
       - templates/reusable-workflows/*.yaml

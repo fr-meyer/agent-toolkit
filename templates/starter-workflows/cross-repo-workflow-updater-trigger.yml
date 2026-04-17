@@ -3,7 +3,7 @@ name: Cross-repo workflow updater (trigger)
 on:
   push:
     branches:
-      - main
+      - dev
     paths:
       - templates/starter-workflows/**
       - templates/cross-repo-workflow-distribution-manifest.json

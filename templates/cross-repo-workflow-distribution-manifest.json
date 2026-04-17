@@ -2,10 +2,11 @@
   "schemaVersion": "1.0.0",
   "description": "Registers consumer repositories whose live .github/workflows files are exact-managed from canonical starter templates in this shared workflow asset library.",
   "sharedRepository": "fr-meyer/agent-toolkit",
-  "sourceBranch": "main",
+  "sourceBranch": "dev",
   "consumers": [
     {
       "repo": "fr-meyer/zotero-docai-pipeline",
+      "baseBranch": "dev",
       "updateMode": "pull_request",
       "managedBindings": [
         {
@@ -13,21 +14,21 @@
           "targetPath": ".github/workflows/coderabbit-pr-automation-pr.yml",
           "divergencePolicy": "exact",
           "enabled": true,
-          "notes": "Target the repository default branch when baseBranch is omitted. Current observed default branch: feature/package-cli-app. Consumer repo must provide the vars and secrets expected by the shared CodeRabbit PR trigger template."
+          "notes": "Automation branches and PRs for this consumer must be based on dev. Consumer repo must provide the vars and secrets expected by the shared CodeRabbit PR trigger template."
         },
         {
           "starterTemplate": "templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml",
           "targetPath": ".github/workflows/coderabbit-pr-automation-manual.yml",
           "divergencePolicy": "exact",
           "enabled": true,
-          "notes": "Target the repository default branch when baseBranch is omitted. Current observed default branch: feature/package-cli-app. Consumer repo must provide the vars and secrets expected by the shared CodeRabbit manual trigger template."
+          "notes": "Automation branches and PRs for this consumer must be based on dev. Consumer repo must provide the vars and secrets expected by the shared CodeRabbit manual trigger template."
         },
         {
           "starterTemplate": "templates/starter-workflows/coderabbit-pr-comment-trigger.yml",
           "targetPath": ".github/workflows/coderabbit-pr-comment-trigger.yml",
           "divergencePolicy": "exact",
           "enabled": true,
-          "notes": "Target the repository default branch when baseBranch is omitted. Current observed default branch: feature/package-cli-app. Consumer repo must provide the vars and secrets expected by the shared CodeRabbit comment trigger template."
+          "notes": "Automation branches and PRs for this consumer must be based on dev. Consumer repo must provide the vars and secrets expected by the shared CodeRabbit comment trigger template."
         }
       ]
     }

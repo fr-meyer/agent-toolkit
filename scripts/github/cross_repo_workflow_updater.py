@@ -185,9 +185,17 @@ def load_manifest(manifest_path: Path) -> dict[str, Any]:
         repo = str(consumer.get("repo") or "").strip()
         if not repo or "/" not in repo:
             raise SystemExit(f"Consumer entry has invalid repo slug: {repo!r}")
-        base_branch = consumer.get("baseBranch")
-        if base_branch is not None and not str(base_branch).strip():
-            raise SystemExit(f"Consumer {repo} has an empty baseBranch value.")
+        base_branch = str(consumer.get("baseBranch") or "").strip()
+        if not base_branch:
+            raise SystemExit(
+                f"Consumer {repo} must declare baseBranch='dev' under current automation policy."
+            )
+        if base_branch in {"main", "master"}:
+            raise SystemExit(
+                f"Consumer {repo} uses forbidden baseBranch={base_branch!r}. "
+                "Automation-created branches must start from 'dev'."
+            )
+        consumer["baseBranch"] = base_branch
 
         bindings = consumer.get("managedBindings")
         if not isinstance(bindings, list):
