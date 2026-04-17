@@ -57,9 +57,14 @@ on:
         type: number
         default: 3
 
+concurrency:
+  group: coderabbit-pr-automation-${{ inputs.pr_number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   resolve-pr-context:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
       pr_number: ${{ steps.resolve.outputs.pr_number }}
@@ -90,6 +95,7 @@ jobs:
     needs: resolve-pr-context
     if: ${{ needs.resolve-pr-context.outputs.should_run != 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Fail for fork PRs
         run: |
