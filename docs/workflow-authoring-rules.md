@@ -36,6 +36,12 @@ When different trigger surfaces exist primarily for clarity rather than shared l
   - `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
   - `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
 
+## Current automation policy
+
+- Dedicated automation branches must start from `dev`.
+- Repo-local workflow maintenance changes should be proposed in a separate PR, not pushed directly back onto the triggering branch.
+- Cross-repo divergence review should be attached to the update PR as a managed PR comment by default.
+
 ## Manifest responsibilities
 
 ### `templates/repo-workflow-materialization-manifest.json`
