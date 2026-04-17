@@ -31,12 +31,20 @@ on:
         type: boolean
         default: false
       manual_review_on_divergence:
-        description: Allow manual-review PRs when exact-managed consumer workflows diverge
+        description: Allow manual-review output when exact-managed consumer workflows diverge
         required: false
         type: boolean
         default: true
+      manual_review_delivery:
+        description: How divergence review should be delivered
+        required: false
+        type: choice
+        default: pr-comment
+        options:
+          - pr-comment
+          - commit-artifacts
       include_normalization_patch:
-        description: Include optional normalization patch in manual-review artifacts
+        description: Include optional normalization patch in divergence review output
         required: false
         type: boolean
         default: true
@@ -84,6 +92,7 @@ jobs:
       create_pr: true
       dry_run: false
       manual_review_on_divergence: true
+      manual_review_delivery: pr-comment
       include_normalization_patch: true
       branch_prefix: chore/sync-shared-workflows-
       consumer_local_root: .tmp/cross-repo-workflow-updater/consumers
@@ -102,6 +111,7 @@ jobs:
       create_pr: ${{ inputs.create_pr }}
       dry_run: ${{ inputs.dry_run }}
       manual_review_on_divergence: ${{ inputs.manual_review_on_divergence }}
+      manual_review_delivery: ${{ inputs.manual_review_delivery }}
       include_normalization_patch: ${{ inputs.include_normalization_patch }}
       branch_prefix: ${{ inputs.branch_prefix }}
       consumer_local_root: ${{ inputs.consumer_local_root }}
