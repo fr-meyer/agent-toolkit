@@ -24,12 +24,12 @@ on:
         type: string
         default: ''
       auto_commit:
-        description: Commit workflow-asset maintenance updates back to the current branch
+        description: Commit workflow-asset maintenance updates onto a dedicated workflow-sync branch
         required: false
         type: boolean
         default: true
       auto_push:
-        description: Push the maintenance commit after validation
+        description: Deprecated compatibility flag, dedicated workflow-sync branches are pushed when a commit is created
         required: false
         type: boolean
         default: false
@@ -41,6 +41,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
   actions: read
 
 concurrency:
