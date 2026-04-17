@@ -24,12 +24,17 @@ on:
         type: boolean
         default: false
       manual_review_on_divergence:
-        description: Allow manual-review PRs when exact-managed consumer workflows diverge
+        description: Allow manual-review output when exact-managed consumer workflows diverge
         required: false
         type: boolean
         default: true
+      manual_review_delivery:
+        description: How divergence review should be delivered
+        required: false
+        type: string
+        default: pr-comment
       include_normalization_patch:
-        description: Include optional normalization patch in manual-review artifacts
+        description: Include optional normalization patch in divergence review output
         required: false
         type: boolean
         default: true
@@ -138,6 +143,7 @@ jobs:
           CREATE_PR: ${{ inputs.create_pr }}
           DRY_RUN: ${{ inputs.dry_run }}
           MANUAL_REVIEW_ON_DIVERGENCE: ${{ inputs.manual_review_on_divergence }}
+          MANUAL_REVIEW_DELIVERY: ${{ inputs.manual_review_delivery }}
           INCLUDE_NORMALIZATION_PATCH: ${{ inputs.include_normalization_patch }}
           BRANCH_PREFIX: ${{ inputs.branch_prefix }}
           CONSUMER_FILTER: ${{ inputs.consumer_filter }}
@@ -195,6 +201,8 @@ jobs:
               cmd.append("--execute")
           if os.environ.get("MANUAL_REVIEW_ON_DIVERGENCE", "true").lower() == "true":
               cmd.append("--manual-review-on-divergence")
+          if os.environ.get("MANUAL_REVIEW_DELIVERY", "").strip():
+              cmd.extend(["--manual-review-delivery", os.environ["MANUAL_REVIEW_DELIVERY"]])
           if os.environ.get("INCLUDE_NORMALIZATION_PATCH", "true").lower() == "true":
               cmd.append("--include-normalization-patch")
 
@@ -229,6 +237,8 @@ jobs:
               "validation_failed",
               "pr_creation_failed",
               "manual_review_required",
+              "manual_review_required_no_pr",
+              "manual_review_comment_failed",
           }
           bad: list[str] = []
           for consumer in data.get("consumers", []):
