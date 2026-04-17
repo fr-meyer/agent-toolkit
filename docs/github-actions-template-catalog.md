@@ -33,7 +33,7 @@ For exact source-to-target bindings, also consult:
 | CodeRabbit PR automation | Reusable | `templates/reusable-workflows/coderabbit-pr-automation.yml` | `.github/workflows/coderabbit-pr-automation.yml` | Shared remediation engine for CodeRabbit PR review issues |
 | CodeRabbit PR automation (PR trigger) | Starter | `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml` | none in this repo | Consumer-facing PR-event entrypoint wired to the reusable engine |
 | CodeRabbit PR automation (manual trigger) | Starter | `templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml` | none in this repo | Consumer-facing manual-dispatch entrypoint wired to the reusable engine |
-| CodeRabbit PR comment trigger | Starter | `templates/starter-workflows/coderabbit-pr-comment-trigger.yml` | none in this repo | Consumer-facing comment-triggered entrypoint that resolves PR context, then calls the reusable engine |
+| CodeRabbit PR comment trigger | Starter | `templates/starter-workflows/coderabbit-pr-comment-trigger.yml` | `.github/workflows/coderabbit-pr-comment-trigger.yml` | Repo-local and consumer-facing comment-triggered entrypoint that resolves PR context, then calls the reusable engine |
 | Sync starter-workflow template refs (reusable) | Reusable | `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml` | `.github/workflows/sync-starter-workflow-template-refs-reusable.yml` | Deterministic maintenance workflow that materializes local workflow copies and syncs pinned reusable-workflow refs |
 | Cross-repo workflow updater (reusable) | Reusable | `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml` | `.github/workflows/cross-repo-workflow-updater-reusable.yml` | Shared engine that clones consumer repos, renders starter-template updates, and opens consumer PRs |
 | Sync starter-workflow template refs (trigger) | Starter | `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml` | `.github/workflows/sync-starter-workflow-template-refs-trigger.yml` | Repo-local trigger surface that calls the reusable maintenance workflow on push or manual dispatch |
@@ -114,9 +114,10 @@ Use this as the shared engine when a repository wants AI-assisted remediation fo
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml`
-- **Live/runtime copy in this repo:** none currently materialized
+- **Live/runtime copy in this repo:** `.github/workflows/coderabbit-pr-comment-trigger.yml`
 - **Governed by:**
   - target in `templates/workflow-ref-sync-manifest.json`
+  - target in `templates/repo-workflow-materialization-manifest.json`
 - **Purpose:**
   - provide a consumer-facing entrypoint that runs the reusable CodeRabbit automation workflow on PR events
 
@@ -208,16 +209,17 @@ Secrets may include:
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/coderabbit-pr-comment-trigger.yml`
-- **Live/runtime copy in this repo:** none currently materialized
+- **Live/runtime copy in this repo:** `.github/workflows/coderabbit-pr-comment-trigger.yml`
 - **Governed by:**
   - target in `templates/workflow-ref-sync-manifest.json`
+  - target in `templates/repo-workflow-materialization-manifest.json`
 - **Purpose:**
   - react to CodeRabbit-authored PR comments, review comments, or review summaries
   - resolve the PR number and reject fork cases
   - call the shared CodeRabbit remediation engine only when the context is eligible
 
 ### When to use
-Use this when a consumer repository wants remediation to start from CodeRabbit comment activity rather than directly from PR open/sync events.
+Use this when a consumer repository or this repository itself wants remediation to start from CodeRabbit comment activity rather than directly from PR open/sync events.
 
 ### Trigger shape
 - `issue_comment` created
@@ -235,6 +237,10 @@ Use this when a consumer repository wants remediation to start from CodeRabbit c
 
 ### Consumer setup expected
 Uses the same general variable and secret model as the split PR and manual trigger starters.
+
+### Notes
+- This starter is now materialized as a live repo-local workflow in `.github/workflows/`.
+- Keep the live copy aligned through both the materialization manifest and the ref-sync manifest.
 
 ---
 
