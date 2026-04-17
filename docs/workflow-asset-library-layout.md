@@ -15,6 +15,7 @@ agent-toolkit/
 ├── .github/
 │   └── workflows/
 │       ├── coderabbit-pr-automation.yml
+│       ├── coderabbit-pr-comment-trigger.yml
 │       ├── sync-starter-workflow-template-refs-reusable.yml
 │       ├── cross-repo-workflow-updater-reusable.yml
 │       └── cross-repo-workflow-updater-trigger.yml

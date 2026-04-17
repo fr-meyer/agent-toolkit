@@ -7,6 +7,10 @@
       "target": ".github/workflows/coderabbit-pr-automation.yml"
     },
     {
+      "source": "templates/starter-workflows/coderabbit-pr-comment-trigger.yml",
+      "target": ".github/workflows/coderabbit-pr-comment-trigger.yml"
+    },
+    {
       "source": "templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml",
       "target": ".github/workflows/sync-starter-workflow-template-refs-reusable.yml"
     },

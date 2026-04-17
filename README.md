@@ -45,8 +45,12 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 agent-toolkit/
 ├── .github/
 │   └── workflows/
+│       ├── coderabbit-pr-automation.yml
+│       ├── coderabbit-pr-comment-trigger.yml
 │       ├── sync-starter-workflow-template-refs-reusable.yml
-│       └── sync-starter-workflow-template-refs-trigger.yml
+│       ├── sync-starter-workflow-template-refs-trigger.yml
+│       ├── cross-repo-workflow-updater-reusable.yml
+│       └── cross-repo-workflow-updater-trigger.yml
 ├── templates/
 │   ├── reusable-workflows/
 │   │   ├── coderabbit-pr-automation.yml
