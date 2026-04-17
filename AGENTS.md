@@ -34,6 +34,13 @@ When a workflow asset changes:
 6. verify pinned `uses: ...@<sha>` refs still match the intended reusable workflow commit, and update `shared_repository_ref` too when that field exists
 7. update docs if the architecture or rule changed
 
+## Current automation policy
+
+- Workflow-maintenance branches must be created from `dev`, not `main` or `master`.
+- Repo-local workflow maintenance should land through a dedicated PR branch, not by pushing workflow-sync commits directly onto the triggering branch.
+- Cross-repo divergence review should be delivered on the update PR as a managed PR comment by default.
+- Legacy committed review artifacts under `docs/shared-workflow-reviews/` are transitional only and should not be the long-term review mechanism.
+
 ## Intent
 
 This repo is a shared workflow and skill library. Keep the structure stable, explicit, and easy for future agents to recover.

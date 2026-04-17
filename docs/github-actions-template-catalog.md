@@ -294,7 +294,7 @@ Use this as the maintenance engine that keeps starter templates and linked live 
 Use this as the repo entrypoint that invokes maintenance whenever reusable workflow sources change, or when a human manually dispatches the maintenance workflow.
 
 ### Trigger shape
-- `push` on `main` for changes under `templates/reusable-workflows/`
+- `push` on `dev` for changes under `templates/reusable-workflows/`
 - `workflow_dispatch`
 
 ### Calls
@@ -310,6 +310,7 @@ Use this as the repo entrypoint that invokes maintenance whenever reusable workf
 ### Notes
 - The trigger and the reusable maintenance workflow are intentionally separate.
 - The trigger is itself managed by the same pinned-ref maintenance model it invokes.
+- When maintenance produces a diff, it creates a dedicated workflow-sync branch from `dev` and opens or reuses a PR for that branch.
 
 ---
 
@@ -335,6 +336,7 @@ Use this as the shared engine for distributing starter-workflow updates from thi
 - `create_pr`
 - `dry_run`
 - `manual_review_on_divergence`
+- `manual_review_delivery`
 - `include_normalization_patch`
 - `branch_prefix`
 - `consumer_local_root`
@@ -350,6 +352,7 @@ Use this as the shared engine for distributing starter-workflow updates from thi
 - clones consumer repositories into a local workspace directory
 - may create updater branches in consumer repos
 - may open reviewable PRs in consumer repos
+- may post or update a managed divergence-review comment on the opened PR
 - uploads the updater summary artifact and local consumer clone workspace
 
 ### Notes
@@ -372,7 +375,7 @@ Use this as the shared engine for distributing starter-workflow updates from thi
 Use this as the repository entrypoint that reacts to starter-template changes in the shared library and dispatches the reusable updater engine.
 
 ### Trigger shape
-- `push` on `main` for changes under:
+- `push` on `dev` for changes under:
   - `templates/starter-workflows/**`
   - `templates/cross-repo-workflow-distribution-manifest.json`
   - `scripts/github/cross_repo_workflow_updater.py`
@@ -387,6 +390,7 @@ Use this as the repository entrypoint that reacts to starter-template changes in
 - `create_pr`
 - `dry_run`
 - `manual_review_on_divergence`
+- `manual_review_delivery`
 - `include_normalization_patch`
 - `branch_prefix`
 - `consumer_local_root`
@@ -397,6 +401,7 @@ Use this as the repository entrypoint that reacts to starter-template changes in
 ### Notes
 - The trigger and reusable updater are intentionally separated.
 - This asset keeps the repo-local automation pathway reusable as a canonical template plus a materialized live copy.
+- Default divergence delivery is a managed PR comment on the update PR. Legacy committed review docs are fallback-only behavior.
 
 ## Live runtime copies in this repo
 

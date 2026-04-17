@@ -109,6 +109,11 @@ The intended split is:
 - repo-local GitHub execution can use thin entrypoint workflows under `.github/workflows/` that call materialized reusable workflow copies
 - `.github/workflows/` contains the live runtime files used by this repository at runtime, while reusable workflow source of truth stays under `templates/reusable-workflows/`
 
+Current workflow-maintenance policy:
+- workflow-maintenance branches are created from `dev`
+- repo-local workflow-sync automation opens a dedicated PR instead of pushing maintenance commits directly onto the triggering branch
+- cross-repo workflow divergence is reviewed through managed PR comments by default, not committed `docs/shared-workflow-reviews/*` files
+
 Important note for the current starter workflow sources:
 - they still show the eventual GitHub reusable-workflow serving path shape, for example `owner/repo/.github/workflows/<file>@<ref>`
 - that `uses:` path is a publication-target shape, not a claim that this source-library repo currently serves that workflow at HEAD

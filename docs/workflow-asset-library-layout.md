@@ -141,3 +141,5 @@ This repository is **not** currently using:
 For the current maintenance flow, the canonical reusable implementation lives in `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`, gets materialized to `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`, and is called by the live trigger entrypoint `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`, whose canonical source lives in `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`.
 
 The cross-repo updater follows the same layout pattern: its canonical reusable engine lives in `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml`, its canonical trigger wrapper lives in `templates/starter-workflows/cross-repo-workflow-updater-trigger.yml`, and both materialize to matching live copies under `.github/workflows/`. 
+
+Under the current policy, workflow-maintenance automation creates PR branches from `dev`, and cross-repo divergence review is delivered on the update PR as a managed comment by default rather than as committed review-doc files.
