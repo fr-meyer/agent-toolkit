@@ -209,9 +209,10 @@ Secrets may include:
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/coderabbit-pr-comment-trigger.yml`
-- **Live/runtime copy in this repo:** none currently materialized
+- **Live/runtime copy in this repo:** `.github/workflows/coderabbit-pr-comment-trigger.yml`
 - **Governed by:**
   - target in `templates/workflow-ref-sync-manifest.json`
+  - target in `templates/repo-workflow-materialization-manifest.json`
 - **Purpose:**
   - react to CodeRabbit-authored PR comments, review comments, or review summaries
   - resolve the PR number and reject fork cases
