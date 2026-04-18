@@ -321,7 +321,7 @@ Current V1 implementation now uses an automatic fallback chain for PR discovery 
 3. GitHub GraphQL API
 
 Credential discovery for the API-based fallbacks currently tries, in order:
-1. environment variables (`GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT`, `GITHUB_API_TOKEN`, `GITHUB_OAUTH_TOKEN`, `GITHUB_APP_TOKEN`)
+1. environment variables (`ELEVATED_GITHUB_TOKEN`, `GITHUB_TOKEN`, `GITHUB_PAT`, `GITHUB_API_TOKEN`, `GITHUB_OAUTH_TOKEN`, `GITHUB_APP_TOKEN`)
 2. embedded HTTPS remote credentials
 3. `gh auth token`
 4. `.netrc`

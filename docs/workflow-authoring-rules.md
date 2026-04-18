@@ -12,7 +12,7 @@ Live files under `.github/workflows/` are runtime copies, not the preferred auth
 
 Prefer GitHub's built-in `GITHUB_TOKEN` for default GitHub authentication.
 
-Do not introduce alias names like `GH_TOKEN` just to forward the built-in token through starter workflows or reusable workflows.
+Do not introduce ad hoc alias names just to forward the built-in token through starter workflows or reusable workflows.
 
 Use `ELEVATED_GITHUB_TOKEN` as the single explicit override when the built-in token is not enough, for example:
 - cross-repo clone, branch, PR, or write operations
