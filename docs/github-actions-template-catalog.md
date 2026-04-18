@@ -37,7 +37,8 @@ For exact source-to-target bindings, also consult:
 | Sync starter-workflow template refs (reusable) | Reusable | `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml` | `.github/workflows/sync-starter-workflow-template-refs-reusable.yml` | Deterministic maintenance workflow that materializes local workflow copies and syncs pinned reusable-workflow refs |
 | Cross-repo workflow updater (reusable) | Reusable | `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml` | `.github/workflows/cross-repo-workflow-updater-reusable.yml` | Shared engine that clones consumer repos, renders starter-template updates, and opens consumer PRs |
 | Sync starter-workflow template refs (trigger) | Starter | `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml` | `.github/workflows/sync-starter-workflow-template-refs-trigger.yml` | Repo-local trigger surface that calls the reusable maintenance workflow on push or manual dispatch |
-| Cross-repo workflow updater (trigger) | Starter | `templates/starter-workflows/cross-repo-workflow-updater-trigger.yml` | `.github/workflows/cross-repo-workflow-updater-trigger.yml` | Repo-local trigger surface that calls the reusable cross-repo updater on push or manual dispatch |
+| Cross-repo workflow updater (push trigger) | Starter | `templates/starter-workflows/cross-repo-workflow-updater-push-trigger.yml` | `.github/workflows/cross-repo-workflow-updater-push-trigger.yml` | Repo-local push entrypoint that calls the reusable cross-repo updater when shared starter assets change |
+| Cross-repo workflow updater (manual trigger) | Starter | `templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml` | `.github/workflows/cross-repo-workflow-updater-manual-trigger.yml` | Repo-local manual-dispatch entrypoint that calls the reusable cross-repo updater without an irrelevant skipped sibling job |
 
 ## Asset details
 
@@ -365,28 +366,53 @@ Use this as the shared engine for distributing starter-workflow updates from thi
 
 ### Notes
 - This reusable engine is intentionally separate from the trigger wrapper so the repo-local workflow layout stays aligned with the source-library model.
-- The trigger wrapper for this engine lives in `templates/starter-workflows/cross-repo-workflow-updater-trigger.yml`.
+- The repo-local entrypoint wrappers for this engine live in `templates/starter-workflows/cross-repo-workflow-updater-push-trigger.yml` and `templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml`.
 
 ---
 
-## 8. Cross-repo workflow updater (trigger)
+## 8. Cross-repo workflow updater (push trigger)
 
 - **Type:** starter workflow
-- **Canonical source:** `templates/starter-workflows/cross-repo-workflow-updater-trigger.yml`
-- **Live/runtime copy in this repo:** `.github/workflows/cross-repo-workflow-updater-trigger.yml`
+- **Canonical source:** `templates/starter-workflows/cross-repo-workflow-updater-push-trigger.yml`
+- **Live/runtime copy in this repo:** `.github/workflows/cross-repo-workflow-updater-push-trigger.yml`
 - **Governed by:**
   - source in `templates/repo-workflow-materialization-manifest.json`
 - **Purpose:**
-  - provide the repo-local trigger surface that invokes the reusable cross-repo updater on push or manual dispatch
+  - provide the repo-local push trigger surface that invokes the reusable cross-repo updater when shared starter assets change
 
 ### When to use
-Use this as the repository entrypoint that reacts to starter-template changes in the shared library and dispatches the reusable updater engine.
+Use this as the repository entrypoint that reacts automatically to starter-template changes in the shared library and dispatches the reusable updater engine without an irrelevant skipped manual sibling job.
 
 ### Trigger shape
 - `push` on `dev` for changes under:
   - `templates/starter-workflows/**`
   - `templates/cross-repo-workflow-distribution-manifest.json`
   - `scripts/github/cross_repo_workflow_updater.py`
+
+### Calls
+- `./.github/workflows/cross-repo-workflow-updater-reusable.yml`
+
+### Notes
+- The trigger and reusable updater are intentionally separated.
+- This asset keeps the repo-local automation pathway reusable as a canonical template plus a materialized live copy.
+- Default divergence delivery is a managed PR comment on the update PR. Legacy committed review docs are fallback-only behavior.
+
+---
+
+## 9. Cross-repo workflow updater (manual trigger)
+
+- **Type:** starter workflow
+- **Canonical source:** `templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml`
+- **Live/runtime copy in this repo:** `.github/workflows/cross-repo-workflow-updater-manual-trigger.yml`
+- **Governed by:**
+  - source in `templates/repo-workflow-materialization-manifest.json`
+- **Purpose:**
+  - provide the repo-local manual-dispatch trigger surface that invokes the reusable cross-repo updater for ad hoc runs
+
+### When to use
+Use this when you want an explicit Run workflow button for the cross-repo updater without carrying a permanently skipped push sibling job in the same run.
+
+### Trigger shape
 - `workflow_dispatch`
 
 ### Calls
@@ -408,7 +434,7 @@ Use this as the repository entrypoint that reacts to starter-template changes in
 
 ### Notes
 - The trigger and reusable updater are intentionally separated.
-- This asset keeps the repo-local automation pathway reusable as a canonical template plus a materialized live copy.
+- This asset exists separately from the push trigger to keep the Actions UI clean and avoid irrelevant skipped sibling jobs.
 - Default divergence delivery is a managed PR comment on the update PR. Legacy committed review docs are fallback-only behavior.
 
 ## Live runtime copies in this repo
@@ -418,14 +444,16 @@ These files exist under `.github/workflows/` and should not be treated as the pr
 - `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
 - `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
 - `.github/workflows/cross-repo-workflow-updater-reusable.yml`
-- `.github/workflows/cross-repo-workflow-updater-trigger.yml`
+- `.github/workflows/cross-repo-workflow-updater-push-trigger.yml`
+- `.github/workflows/cross-repo-workflow-updater-manual-trigger.yml`
 
 Their canonical sources are:
 - `templates/reusable-workflows/coderabbit-pr-automation.yml`
 - `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
 - `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`
 - `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml`
-- `templates/starter-workflows/cross-repo-workflow-updater-trigger.yml`
+- `templates/starter-workflows/cross-repo-workflow-updater-push-trigger.yml`
+- `templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml`
 
 ## Maintenance rule for this catalog
 
