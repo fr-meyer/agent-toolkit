@@ -96,7 +96,7 @@ Use this as the shared engine when a repository wants AI-assisted remediation fo
 - optional:
   - `CURSOR_API_KEY`
   - `CODERABBIT_API_KEY`
-  - `WORKFLOW_PUSH_TOKEN` for elevated workflow writes or cross-repo access
+  - `ELEVATED_GITHUB_TOKEN` when default GitHub permissions are not enough
 
 ### Side effects
 - checks out the consumer repo and the shared repo
@@ -147,7 +147,7 @@ Repository or organization variables may include:
 Secrets may include:
 - `CURSOR_API_KEY`
 - `CODERABBIT_API_KEY`
-- `WORKFLOW_PUSH_TOKEN` when built-in `GITHUB_TOKEN` is not enough
+- `ELEVATED_GITHUB_TOKEN` when default GitHub permissions are not enough
 
 ### Calls
 - `fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@<sha>`
@@ -194,7 +194,7 @@ Repository or organization variables may include:
 Secrets may include:
 - `CURSOR_API_KEY`
 - `CODERABBIT_API_KEY`
-- `WORKFLOW_PUSH_TOKEN` when built-in `GITHUB_TOKEN` is not enough
+- `ELEVATED_GITHUB_TOKEN` when default GitHub permissions are not enough
 
 ### Calls
 - `fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@<sha>`
@@ -353,8 +353,8 @@ Use this as the shared engine for distributing starter-workflow updates from thi
 ### Secrets expected
 - built-in by default:
   - `GITHUB_TOKEN`
-- optional but usually needed for real cross-repo write flows:
-  - `WORKFLOW_PUSH_TOKEN`
+- optional when cross-repo or other elevated GitHub operations need more rights than the default token:
+  - `ELEVATED_GITHUB_TOKEN`
 
 ### Side effects
 - clones consumer repositories into a local workspace directory

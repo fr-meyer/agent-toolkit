@@ -27,9 +27,9 @@ name: CodeRabbit PR comment trigger
 # 3. Configure repository or organization secrets as needed:
 #    - CURSOR_API_KEY when CODERABBIT_AGENT_RUNTIME=cursor
 #    - CODERABBIT_API_KEY only if you explicitly enable CodeRabbit CLI validation
-#    - WORKFLOW_PUSH_TOKEN when remediation may need to push changes under .github/workflows/
+#    - ELEVATED_GITHUB_TOKEN when default GitHub permissions are not enough, for example for cross-repo access or privileged writes
 # 4. The reusable workflow uses the built-in GITHUB_TOKEN by default.
-#    Configure WORKFLOW_PUSH_TOKEN only when cross-repo or elevated workflow writes need stronger auth.
+#    Configure ELEVATED_GITHUB_TOKEN only when default GitHub permissions are not enough.
 
 permissions:
   contents: read
@@ -131,4 +131,4 @@ jobs:
     secrets:
       CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
       CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}
-      WORKFLOW_PUSH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN }}
+      ELEVATED_GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN }}

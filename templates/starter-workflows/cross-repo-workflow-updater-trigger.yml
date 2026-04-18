@@ -100,7 +100,7 @@ jobs:
       consumer_filter: ''
       starter_template_filter: ''
     secrets:
-      WORKFLOW_PUSH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN }}
+      ELEVATED_GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN }}
 
   run-on-dispatch:
     if: github.event_name == 'workflow_dispatch'
@@ -119,4 +119,4 @@ jobs:
       consumer_filter: ${{ inputs.consumer_filter }}
       starter_template_filter: ${{ inputs.starter_template_filter }}
     secrets:
-      WORKFLOW_PUSH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN }}
+      ELEVATED_GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN }}

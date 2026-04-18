@@ -3,8 +3,8 @@ name: Sync starter-workflow template refs (reusable)
 on:
   workflow_call:
     secrets:
-      WORKFLOW_PUSH_TOKEN:
-        description: Optional PAT for gh pr create to trigger downstream workflows on PRs
+      ELEVATED_GITHUB_TOKEN:
+        description: Optional PAT for GitHub operations that need more rights than the built-in GITHUB_TOKEN
         required: false
     inputs:
       before_sha:
@@ -248,7 +248,7 @@ jobs:
         if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit) && steps.maintenance_commit.outputs.committed == 'true'
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           branch="$(git branch --show-current)"

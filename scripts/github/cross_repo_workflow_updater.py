@@ -501,8 +501,8 @@ def collect_binding_diff_facts(repo_root: Path, local_repo: Path, binding: Bindi
             f"Pinned reusable-workflow refs differ: current={binding.current_pinned_refs or []}, candidate={binding.candidate_pinned_refs or []}."
         )
 
-    if "WORKFLOW_PUSH_TOKEN" in source_text and "WORKFLOW_PUSH_TOKEN" not in target_text:
-        facts.append("Consumer file does not pass through `WORKFLOW_PUSH_TOKEN`, while the shared starter template does.")
+    if "ELEVATED_GITHUB_TOKEN" in source_text and "ELEVATED_GITHUB_TOKEN" not in target_text:
+        facts.append("Consumer file does not pass through `ELEVATED_GITHUB_TOKEN`, while the shared starter template does.")
     if "auto_commit: true" in target_text and "auto_commit: true" not in source_text:
         facts.append("Consumer file currently forces `auto_commit: true`, while the shared starter template defers to vars/default false.")
     if "auto_push: true" in target_text and "auto_push: true" not in source_text:
@@ -591,7 +591,7 @@ def build_manual_review_report(
             "",
             "Questions to answer in review:",
             "- Should this consumer remain on the older dynamic `shared_repository_ref` behavior, or be normalized to the current pinned shared-template model?",
-            "- Should `WORKFLOW_PUSH_TOKEN` passthrough be adopted here, or intentionally remain absent?",
+            "- Should `ELEVATED_GITHUB_TOKEN` passthrough be adopted here, or intentionally remain absent?",
             "- Should this consumer continue forcing `auto_commit` / `auto_push`, or should it inherit the newer shared starter-template defaults?",
             "",
             "Any proposed normalization patch in this PR is optional and should be treated as review material, not as an automatically approved overwrite.",
@@ -701,7 +701,7 @@ def build_manual_review_body(
             "",
             "Review focus:",
             "- Were the current consumer workflows intentionally kept on the older `shared_repository_ref` behavior?",
-            "- Should `WORKFLOW_PUSH_TOKEN` passthrough be adopted here?",
+            "- Should `ELEVATED_GITHUB_TOKEN` passthrough be adopted here?",
             "- Should the repo keep forcing `auto_commit` / `auto_push`, or move to the newer shared-template defaults?",
             "- Should this consumer stay in exact-managed scope, or be treated as intentionally customized?",
             "",
@@ -746,7 +746,7 @@ def build_manual_review_comment_body(
             "",
             "### Review questions",
             "- Should this consumer remain on the older `shared_repository_ref` behavior?",
-            "- Should `WORKFLOW_PUSH_TOKEN` passthrough be adopted here?",
+            "- Should `ELEVATED_GITHUB_TOKEN` passthrough be adopted here?",
             "- Should `auto_commit` / `auto_push` remain forced, or follow shared-template defaults?",
         ]
     )
