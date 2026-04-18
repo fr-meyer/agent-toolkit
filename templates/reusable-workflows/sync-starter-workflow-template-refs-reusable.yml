@@ -2,6 +2,10 @@ name: Sync starter-workflow template refs (reusable)
 
 on:
   workflow_call:
+    secrets:
+      WORKFLOW_PUSH_TOKEN:
+        description: Optional PAT for gh pr create to trigger downstream workflows on PRs
+        required: false
     inputs:
       before_sha:
         description: Optional diff base SHA for the reusable-workflow change
@@ -213,7 +217,7 @@ jobs:
           sync_branch="chore/sync-workflow-assets-${short_sha}"
           git fetch origin dev
           git checkout -B "$sync_branch" origin/dev
-          git apply "$WORKFLOW_REF_SYNC_CONTEXT_DIR/workflow-asset-maintenance.patch"
+          git apply --3way "$WORKFLOW_REF_SYNC_CONTEXT_DIR/workflow-asset-maintenance.patch"
 
       - name: Commit workflow-asset maintenance
         id: maintenance_commit
@@ -244,7 +248,7 @@ jobs:
         if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit) && steps.maintenance_commit.outputs.committed == 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN || github.token }}
         run: |
           set -euo pipefail
           branch="$(git branch --show-current)"

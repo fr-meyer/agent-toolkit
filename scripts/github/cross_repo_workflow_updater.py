@@ -43,6 +43,7 @@ from typing import Any
 
 ALLOWED_BINDING_PREFIX = "templates/starter-workflows/"
 ALLOWED_TARGET_PREFIX = ".github/workflows/"
+GITHUB_ISSUE_COMMENT_BODY_CHAR_LIMIT = 65536
 GITHUB_TOKEN_ENV_NAMES = (
     "GITHUB_TOKEN",
     "GH_TOKEN",
@@ -210,10 +211,10 @@ def load_manifest(manifest_path: Path) -> dict[str, Any]:
             raise SystemExit(
                 f"Consumer {repo} must declare baseBranch='dev' under current automation policy."
             )
-        if base_branch in {"main", "master"}:
+        if base_branch != "dev":
             raise SystemExit(
-                f"Consumer {repo} uses forbidden baseBranch={base_branch!r}. "
-                "Automation-created branches must start from 'dev'."
+                f"Consumer {repo} must set baseBranch='dev' under current automation policy "
+                f"(got {base_branch!r})."
             )
         consumer["baseBranch"] = base_branch
 
@@ -753,9 +754,58 @@ def build_manual_review_comment_body(
     if include_normalization_patch:
         patch_text = build_normalization_patch_text(repo_root, local_repo, diverged_bindings)
         patch_lines = patch_text.splitlines()
-        truncated = len(patch_lines) > max_patch_lines
-        if truncated:
+        line_truncated = len(patch_lines) > max_patch_lines
+        if line_truncated:
             patch_text = "\n".join(patch_lines[:max_patch_lines])
+
+        header_lines = list(lines)
+
+        def _body_len_for_patch(pt: str, line_note: bool, size_note: bool) -> int:
+            out = list(header_lines)
+            out.extend(
+                [
+                    "",
+                    "<details>",
+                    "<summary>Optional normalization patch</summary>",
+                    "",
+                    "```diff",
+                    pt,
+                    "```",
+                ]
+            )
+            if line_note:
+                out.extend(
+                    [
+                        "",
+                        "_Patch truncated by line count. Full review detail should remain available in workflow artifacts when emitted._",
+                    ]
+                )
+            if size_note:
+                out.extend(
+                    [
+                        "",
+                        "_Patch truncated to fit GitHub issue comment size limits. Full review detail should remain available in workflow artifacts when emitted._",
+                    ]
+                )
+            out.extend(["", "</details>"])
+            out.append("")
+            return len("\n".join(out) + "\n")
+
+        size_truncated = False
+        if patch_text:
+            lo, hi = 0, len(patch_text)
+            best = ""
+            while lo <= hi:
+                mid = (lo + hi) // 2
+                candidate = patch_text[:mid]
+                if _body_len_for_patch(candidate, line_truncated, False) <= GITHUB_ISSUE_COMMENT_BODY_CHAR_LIMIT:
+                    best = candidate
+                    lo = mid + 1
+                else:
+                    hi = mid - 1
+            if best != patch_text:
+                patch_text = best
+                size_truncated = True
 
         lines.extend(
             [
@@ -768,11 +818,18 @@ def build_manual_review_comment_body(
                 "```",
             ]
         )
-        if truncated:
+        if line_truncated:
             lines.extend(
                 [
                     "",
-                    "_Patch truncated in comment. Full review detail should remain available in workflow artifacts when emitted._",
+                    "_Patch truncated by line count. Full review detail should remain available in workflow artifacts when emitted._",
+                ]
+            )
+        if size_truncated:
+            lines.extend(
+                [
+                    "",
+                    "_Patch truncated to fit GitHub issue comment size limits. Full review detail should remain available in workflow artifacts when emitted._",
                 ]
             )
         lines.extend(["", "</details>"])
@@ -900,21 +957,67 @@ def github_json_request(
 
 
 def extract_pr_number_from_url(pr_url: str) -> int | None:
-    match = re.search(r"/pull/(\d+)", pr_url)
+    match = re.search(r"/pulls?/(\d+)", pr_url)
     if not match:
         return None
     return int(match.group(1))
 
 
+def _parse_github_next_link(link_header: str | None) -> str | None:
+    if not link_header:
+        return None
+    for segment in link_header.split(","):
+        segment = segment.strip()
+        if 'rel="next"' not in segment and "rel='next'" not in segment:
+            continue
+        start = segment.find("<")
+        end = segment.find(">", start + 1)
+        if start != -1 and end != -1:
+            return segment[start + 1 : end]
+    return None
+
+
+def _github_json_get_with_link(url: str, token: str) -> tuple[Any, str | None]:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "User-Agent": "cross-repo-workflow-updater",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(request) as response:
+            body = response.read().decode("utf-8")
+            link = response.headers.get("Link")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            error_payload = json.loads(body) if body else None
+        except Exception:
+            error_payload = body
+        detail = error_payload.get("message") if isinstance(error_payload, dict) else str(error_payload)
+        if isinstance(error_payload, dict) and error_payload.get("errors"):
+            detail = f"{detail}; errors={error_payload['errors']}"
+        raise RuntimeError(f"GitHub API request failed (GET {url}): {detail}") from exc
+    if not body:
+        return None, link
+    try:
+        return json.loads(body), link
+    except Exception as exc:
+        raise RuntimeError(f"GitHub API returned non-JSON response for GET {url}") from exc
+
+
 def list_issue_comments(remote: GitHubRemote, issue_number: int, token: str) -> list[dict[str, Any]]:
-    payload = github_json_request(
-        "GET",
-        f"{remote.api_base}/repos/{remote.owner}/{remote.repo}/issues/{issue_number}/comments",
-        token,
-    )
-    if not isinstance(payload, list):
-        raise RuntimeError("Issue comment list response was not a list.")
-    return payload
+    base = f"{remote.api_base}/repos/{remote.owner}/{remote.repo}/issues/{issue_number}/comments"
+    url: str | None = f"{base}?per_page=100"
+    merged: list[dict[str, Any]] = []
+    while url:
+        payload, link = _github_json_get_with_link(url, token)
+        if not isinstance(payload, list):
+            raise RuntimeError("Issue comment list response was not a list.")
+        merged.extend(payload)
+        url = _parse_github_next_link(link)
+    return merged
 
 
 def find_existing_managed_comment(comments: list[dict[str, Any]], marker: str) -> dict[str, Any] | None:
