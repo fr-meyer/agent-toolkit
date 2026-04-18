@@ -6,6 +6,12 @@ Every live workflow under `.github/workflows/` should have a canonical source un
 
 Live `.github/workflows/` files are runtime copies, not the preferred authoring location.
 
+## Token naming rule
+
+Prefer built-in `GITHUB_TOKEN` for default GitHub auth.
+Use `ELEVATED_GITHUB_TOKEN` only when extra GitHub rights are required.
+Do not introduce ad hoc aliases for the default token when these two names already cover the need.
+
 ## Classification rule
 
 Classify by role:
@@ -45,5 +51,6 @@ Ref-sync targets can include starter templates and linked live workflows.
 - classifying by execution location instead of workflow role
 - renaming a canonical source without updating manifests and callers
 - forgetting that materialization and SHA diffusion are controlled by two different manifests
+- introducing workflow-specific token aliases when `GITHUB_TOKEN` or `ELEVATED_GITHUB_TOKEN` already cover the auth boundary
 - leaving a reusable workflow unbound in the ref-sync manifest when its SHA should be diffused into starter or linked live targets
 - leaving a live workflow without a canonical template source
