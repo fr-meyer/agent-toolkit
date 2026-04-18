@@ -115,10 +115,9 @@ Use this as the shared engine when a repository wants AI-assisted remediation fo
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml`
-- **Live/runtime copy in this repo:** `.github/workflows/coderabbit-pr-comment-trigger.yml`
+- **Live/runtime copy in this repo:** none in this repo
 - **Governed by:**
   - target in `templates/workflow-ref-sync-manifest.json`
-  - target in `templates/repo-workflow-materialization-manifest.json`
 - **Purpose:**
   - provide a consumer-facing entrypoint that runs the reusable CodeRabbit automation workflow on PR events
 

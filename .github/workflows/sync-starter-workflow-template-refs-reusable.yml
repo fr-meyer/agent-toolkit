@@ -239,9 +239,12 @@ jobs:
       - name: Push workflow-sync branch
         if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit) && steps.maintenance_commit.outputs.committed == 'true'
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           branch="$(git branch --show-current)"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           git push --force-with-lease --set-upstream origin "$branch"
 
       - name: Open or reuse workflow-sync PR

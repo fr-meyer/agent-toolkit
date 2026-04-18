@@ -40,6 +40,7 @@ When a workflow asset changes:
 - Workflow-maintenance branches must be created from `dev`, not `main` or `master`.
 - Repo-local workflow maintenance should land through a dedicated PR branch, not by pushing workflow-sync commits directly onto the triggering branch.
 - Cross-repo divergence review should be delivered on the update PR as a managed PR comment by default.
+- Cross-repo updater runs that need to clone, branch, or open PRs in consumer repositories should be configured with `ELEVATED_GITHUB_TOKEN`; the built-in `GITHUB_TOKEN` is only sufficient for same-repo or public read-only cases.
 - Legacy committed review artifacts under `docs/shared-workflow-reviews/` are transitional only and should not be the long-term review mechanism.
 
 ## Intent

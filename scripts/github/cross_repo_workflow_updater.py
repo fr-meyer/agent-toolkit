@@ -798,7 +798,7 @@ def build_manual_review_comment_body(
             while lo <= hi:
                 mid = (lo + hi) // 2
                 candidate = patch_text[:mid]
-                if _body_len_for_patch(candidate, line_truncated, False) <= GITHUB_ISSUE_COMMENT_BODY_CHAR_LIMIT:
+                if _body_len_for_patch(candidate, line_truncated, True) <= GITHUB_ISSUE_COMMENT_BODY_CHAR_LIMIT:
                     best = candidate
                     lo = mid + 1
                 else:
@@ -1434,8 +1434,6 @@ def evaluate_consumer(
             updater_branch=updater_branch,
             manual_review_delivery=manual_review_delivery,
         )
-        if not manual_review_on_divergence:
-            return base_preview
         if dry_run or not execute:
             base_preview.status = "would_open_manual_review_pr"
             base_preview.message = (
