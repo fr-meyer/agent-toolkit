@@ -91,12 +91,12 @@ Use this as the shared engine when a repository wants AI-assisted remediation fo
   - `stop_on_ambiguous_remainder`
 
 ### Secrets expected
-- required:
-  - `GH_TOKEN`
+- built-in by default:
+  - `GITHUB_TOKEN`
 - optional:
   - `CURSOR_API_KEY`
   - `CODERABBIT_API_KEY`
-  - `WORKFLOW_PUSH_TOKEN`
+  - `WORKFLOW_PUSH_TOKEN` for elevated workflow writes or cross-repo access
 
 ### Side effects
 - checks out the consumer repo and the shared repo
@@ -147,7 +147,7 @@ Repository or organization variables may include:
 Secrets may include:
 - `CURSOR_API_KEY`
 - `CODERABBIT_API_KEY`
-- `WORKFLOW_PUSH_TOKEN`
+- `WORKFLOW_PUSH_TOKEN` when built-in `GITHUB_TOKEN` is not enough
 
 ### Calls
 - `fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@<sha>`
@@ -194,7 +194,7 @@ Repository or organization variables may include:
 Secrets may include:
 - `CURSOR_API_KEY`
 - `CODERABBIT_API_KEY`
-- `WORKFLOW_PUSH_TOKEN`
+- `WORKFLOW_PUSH_TOKEN` when built-in `GITHUB_TOKEN` is not enough
 
 ### Calls
 - `fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@<sha>`
@@ -351,8 +351,10 @@ Use this as the shared engine for distributing starter-workflow updates from thi
 - `starter_template_filter`
 
 ### Secrets expected
-- required:
-  - `GH_TOKEN`
+- built-in by default:
+  - `GITHUB_TOKEN`
+- optional but usually needed for real cross-repo write flows:
+  - `WORKFLOW_PUSH_TOKEN`
 
 ### Side effects
 - clones consumer repositories into a local workspace directory

@@ -248,7 +248,7 @@ jobs:
         if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit) && steps.maintenance_commit.outputs.committed == 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           branch="$(git branch --show-current)"

@@ -8,6 +8,26 @@ Every workflow that exists under `.github/workflows/` should have a canonical so
 
 Live files under `.github/workflows/` are runtime copies, not the preferred authoring location.
 
+## Token and configuration naming rule
+
+Prefer GitHub's built-in `GITHUB_TOKEN` for default GitHub authentication.
+
+Do not introduce alias names like `GH_TOKEN` just to forward the built-in token through starter workflows or reusable workflows.
+
+Use `WORKFLOW_PUSH_TOKEN` as the single explicit override when the built-in token is not enough, for example:
+- cross-repo clone, branch, PR, or write operations
+- pushes that touch `.github/workflows/**`
+- private shared-repository access that the built-in token cannot read
+
+When a workflow can run with default auth but may occasionally need stronger auth, code it to fall back from `WORKFLOW_PUSH_TOKEN` to `secrets.GITHUB_TOKEN`.
+
+Keep third-party secrets product-scoped, for example `CURSOR_API_KEY` and `CODERABBIT_API_KEY`, and keep workflow variables namespaced by workflow family, for example `CODERABBIT_*`.
+
+Important GitHub nuance:
+- the built-in `GITHUB_TOKEN` is provided by Actions
+- do not assume you can override it by creating a manual repository secret with the same name
+- if stronger auth is required, add a separate explicit secret such as `WORKFLOW_PUSH_TOKEN`
+
 ## Classification rule
 
 Classify workflow templates by **role**, not by where a rendered copy happens to run.

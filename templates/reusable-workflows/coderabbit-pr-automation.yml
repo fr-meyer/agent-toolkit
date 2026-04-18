@@ -138,8 +138,6 @@ on:
         type: boolean
         default: true
     secrets:
-      GH_TOKEN:
-        required: true
       CURSOR_API_KEY:
         required: false
       CODERABBIT_API_KEY:
@@ -188,7 +186,7 @@ jobs:
           ref: refs/pull/${{ inputs.pr_number }}/head
           path: ${{ inputs.target_checkout_path }}
           fetch-depth: 0
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: false
 
       - name: Checkout shared toolkit repository
@@ -198,7 +196,7 @@ jobs:
           ref: ${{ inputs.shared_repository_ref }}
           path: ${{ inputs.shared_checkout_path }}
           fetch-depth: 0
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.WORKFLOW_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
           persist-credentials: false
 
       - name: Set up Python
@@ -215,7 +213,7 @@ jobs:
       - name: Fetch raw PR review and thread data
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           bash "$SHARED_CHECKOUT_PATH/scripts/coderabbit/fetch_threads.sh" \
@@ -341,7 +339,7 @@ jobs:
         if: steps.issue_count.outputs.count != '0'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
         run: |
           set -euo pipefail
@@ -401,7 +399,7 @@ jobs:
         if: steps.issue_count.outputs.count != '0' && inputs.auto_commit && inputs.auto_push
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WORKFLOW_PUSH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN }}
           REQUIRES_WORKFLOW_PUSH_TOKEN: ${{ steps.push_requirements.outputs.requires_workflow_push_token }}
         run: |
@@ -413,7 +411,7 @@ jobs:
             exit 0
           fi
 
-          PUSH_TOKEN="$GH_TOKEN"
+          PUSH_TOKEN="$GITHUB_TOKEN"
           if [[ "${REQUIRES_WORKFLOW_PUSH_TOKEN:-false}" == "true" ]]; then
             PUSH_TOKEN="$WORKFLOW_PUSH_TOKEN"
           fi

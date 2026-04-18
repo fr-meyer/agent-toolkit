@@ -18,6 +18,7 @@ Repo-local instructions for humans and agents working in `shared-agent-skills`.
   - callable reusable workflows -> `templates/reusable-workflows/`
   - copy/adapt entrypoints and starter templates -> `templates/starter-workflows/`
 - Treat `.github/workflows/` as live rendered runtime copies.
+- Prefer built-in `GITHUB_TOKEN` for default GitHub auth, and reserve `WORKFLOW_PUSH_TOKEN` for elevated or cross-repo auth.
 - Every live workflow in `.github/workflows/` should have a canonical template source.
 - `templates/repo-workflow-materialization-manifest.json` binds canonical template sources to their live `.github/workflows/` copies.
 - `templates/workflow-ref-sync-manifest.json` binds reusable workflow sources to the starter and linked live workflow targets whose pinned `uses: ...@<sha>` refs should be diffused automatically.
