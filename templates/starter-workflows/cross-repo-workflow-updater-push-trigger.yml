@@ -1,0 +1,37 @@
+name: Cross-repo workflow updater (push trigger)
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - templates/starter-workflows/**
+      - templates/cross-repo-workflow-distribution-manifest.json
+      - scripts/github/cross_repo_workflow_updater.py
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: cross-repo-workflow-updater-push-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  updater:
+    uses: ./.github/workflows/cross-repo-workflow-updater-reusable.yml
+    with:
+      source_commit: ${{ github.sha }}
+      previous_source_commit: ${{ github.event.before }}
+      create_pr: true
+      dry_run: false
+      manual_review_on_divergence: true
+      manual_review_delivery: pr-comment
+      include_normalization_patch: true
+      branch_prefix: chore/sync-shared-workflows-
+      consumer_local_root: .tmp/cross-repo-workflow-updater/consumers
+      python_version: '3.11'
+      consumer_filter: ''
+      starter_template_filter: ''
+    secrets:
+      ELEVATED_GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN }}

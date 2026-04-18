@@ -7,7 +7,7 @@ name: Sync starter-workflow template refs (trigger)
 on:
   push:
     branches:
-      - main
+      - dev
     paths:
       - templates/reusable-workflows/*.yml
       - templates/reusable-workflows/*.yaml
@@ -24,12 +24,12 @@ on:
         type: string
         default: ''
       auto_commit:
-        description: Commit workflow-asset maintenance updates back to the current branch
+        description: Commit workflow-asset maintenance updates onto a dedicated workflow-sync branch
         required: false
         type: boolean
         default: true
       auto_push:
-        description: Push the maintenance commit after validation
+        description: Deprecated compatibility flag, dedicated workflow-sync branches are pushed when a commit is created
         required: false
         type: boolean
         default: false
@@ -41,6 +41,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
   actions: read
 
 concurrency:
@@ -50,7 +51,8 @@ concurrency:
 jobs:
   sync-on-push:
     if: github.event_name == 'push'
-    uses: fr-meyer/agent-toolkit/.github/workflows/sync-starter-workflow-template-refs-reusable.yml@596ff56c26dedc22e0c36f79188f18e2c48dcd37
+    uses: fr-meyer/agent-toolkit/.github/workflows/sync-starter-workflow-template-refs-reusable.yml@5849da63647c5a9fecd627664f77fe850b1b0f8c
+    secrets: inherit
     with:
       before_sha: ${{ github.event.before }}
       after_sha: ${{ github.sha }}
@@ -61,7 +63,8 @@ jobs:
 
   sync-on-dispatch:
     if: github.event_name == 'workflow_dispatch'
-    uses: fr-meyer/agent-toolkit/.github/workflows/sync-starter-workflow-template-refs-reusable.yml@596ff56c26dedc22e0c36f79188f18e2c48dcd37
+    uses: fr-meyer/agent-toolkit/.github/workflows/sync-starter-workflow-template-refs-reusable.yml@5849da63647c5a9fecd627664f77fe850b1b0f8c
+    secrets: inherit
     with:
       before_sha: ${{ inputs.before_sha }}
       after_sha: ${{ inputs.after_sha }}

@@ -45,17 +45,25 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 agent-toolkit/
 ├── .github/
 │   └── workflows/
+│       ├── coderabbit-pr-automation.yml
+│       ├── coderabbit-pr-comment-trigger.yml
 │       ├── sync-starter-workflow-template-refs-reusable.yml
-│       └── sync-starter-workflow-template-refs-trigger.yml
+│       ├── sync-starter-workflow-template-refs-trigger.yml
+│       ├── cross-repo-workflow-updater-reusable.yml
+│       ├── cross-repo-workflow-updater-push-trigger.yml
+│       └── cross-repo-workflow-updater-manual-trigger.yml
 ├── templates/
 │   ├── reusable-workflows/
 │   │   ├── coderabbit-pr-automation.yml
-│   │   └── sync-starter-workflow-template-refs-reusable.yml
+│   │   ├── sync-starter-workflow-template-refs-reusable.yml
+│   │   └── cross-repo-workflow-updater-reusable.yml
 │   ├── starter-workflows/
 │   │   ├── coderabbit-pr-automation-pr-trigger.yml
 │   │   ├── coderabbit-pr-automation-manual-trigger.yml
 │   │   ├── coderabbit-pr-comment-trigger.yml
-│   │   └── sync-starter-workflow-template-refs-trigger.yml
+│   │   ├── sync-starter-workflow-template-refs-trigger.yml
+│   │   ├── cross-repo-workflow-updater-push-trigger.yml
+│   │   └── cross-repo-workflow-updater-manual-trigger.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
 ├── skills/
@@ -108,6 +116,11 @@ The intended split is:
 - workflow classification is based on role, not on whether this repo happens to execute a rendered copy locally
 - repo-local GitHub execution can use thin entrypoint workflows under `.github/workflows/` that call materialized reusable workflow copies
 - `.github/workflows/` contains the live runtime files used by this repository at runtime, while reusable workflow source of truth stays under `templates/reusable-workflows/`
+
+Current workflow-maintenance policy:
+- workflow-maintenance branches are created from `dev`
+- repo-local workflow-sync automation opens a dedicated PR instead of pushing maintenance commits directly onto the triggering branch
+- cross-repo workflow divergence is reviewed through managed PR comments by default, not committed `docs/shared-workflow-reviews/*` files
 
 Important note for the current starter workflow sources:
 - they still show the eventual GitHub reusable-workflow serving path shape, for example `owner/repo/.github/workflows/<file>@<ref>`

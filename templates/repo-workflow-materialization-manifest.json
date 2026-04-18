@@ -7,6 +7,10 @@
       "target": ".github/workflows/coderabbit-pr-automation.yml"
     },
     {
+      "source": "templates/starter-workflows/coderabbit-pr-comment-trigger.yml",
+      "target": ".github/workflows/coderabbit-pr-comment-trigger.yml"
+    },
+    {
       "source": "templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml",
       "target": ".github/workflows/sync-starter-workflow-template-refs-reusable.yml"
     },
@@ -19,8 +23,12 @@
       "target": ".github/workflows/sync-starter-workflow-template-refs-trigger.yml"
     },
     {
-      "source": "templates/starter-workflows/cross-repo-workflow-updater-trigger.yml",
-      "target": ".github/workflows/cross-repo-workflow-updater-trigger.yml"
+      "source": "templates/starter-workflows/cross-repo-workflow-updater-push-trigger.yml",
+      "target": ".github/workflows/cross-repo-workflow-updater-push-trigger.yml"
+    },
+    {
+      "source": "templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml",
+      "target": ".github/workflows/cross-repo-workflow-updater-manual-trigger.yml"
     }
   ]
 }

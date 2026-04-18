@@ -2,6 +2,10 @@ name: Sync starter-workflow template refs (reusable)
 
 on:
   workflow_call:
+    secrets:
+      ELEVATED_GITHUB_TOKEN:
+        description: Optional PAT for GitHub operations that need more rights than the built-in GITHUB_TOKEN
+        required: false
     inputs:
       before_sha:
         description: Optional diff base SHA for the reusable-workflow change
@@ -14,12 +18,12 @@ on:
         type: string
         default: ''
       auto_commit:
-        description: Commit workflow-asset maintenance updates back to the current branch
+        description: Commit workflow-asset maintenance updates onto a dedicated workflow-sync branch
         required: false
         type: boolean
         default: true
       auto_push:
-        description: Push the maintenance commit after validation
+        description: Deprecated compatibility flag, dedicated workflow-sync branches are pushed when a commit is created
         required: false
         type: boolean
         default: false
@@ -36,6 +40,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
   actions: read
 
 jobs:
@@ -194,7 +199,28 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
+      - name: Capture workflow-asset maintenance patch
+        if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --binary -- templates/starter-workflows .github/workflows > "$WORKFLOW_REF_SYNC_CONTEXT_DIR/workflow-asset-maintenance.patch"
+
+      - name: Create workflow-sync branch from dev
+        if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git reset --hard HEAD
+          short_sha='${{ steps.bounds.outputs.after_sha }}'
+          short_sha="${short_sha:0:7}"
+          sync_branch="chore/sync-workflow-assets-${short_sha}"
+          git fetch origin dev
+          git checkout -B "$sync_branch" origin/dev
+          git apply --3way "$WORKFLOW_REF_SYNC_CONTEXT_DIR/workflow-asset-maintenance.patch"
+
       - name: Commit workflow-asset maintenance
+        id: maintenance_commit
         if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit)
         shell: bash
         run: |
@@ -202,15 +228,47 @@ jobs:
           short_sha='${{ steps.bounds.outputs.after_sha }}'
           short_sha="${short_sha:0:12}"
           git add templates/starter-workflows .github/workflows
+          if git diff --cached --quiet; then
+            echo 'No workflow-asset diff remained after rebasing onto dev.'
+            echo 'committed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git commit -m "ci: sync workflow assets to ${short_sha}"
+          echo 'committed=true' >> "$GITHUB_OUTPUT"
 
-      - name: Push maintenance commit
-        if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit) && (inputs.triggered_by_push || inputs.auto_push)
+      - name: Push workflow-sync branch
+        if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit) && steps.maintenance_commit.outputs.committed == 'true'
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          branch='${{ github.ref_name }}'
-          git push origin "HEAD:refs/heads/$branch"
+          branch="$(git branch --show-current)"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+          git push --force-with-lease --set-upstream origin "$branch"
+
+      - name: Open or reuse workflow-sync PR
+        if: steps.workflow_asset_diff.outputs.changed == 'true' && (inputs.triggered_by_push || inputs.auto_commit) && steps.maintenance_commit.outputs.committed == 'true'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          branch="$(git branch --show-current)"
+          existing="$(gh pr list --base dev --head "$branch" --json url --jq '.[0].url // empty')"
+          if [[ -n "$existing" ]]; then
+            echo "PR already exists: $existing"
+            exit 0
+          fi
+
+          short_sha='${{ steps.bounds.outputs.after_sha }}'
+          short_sha="${short_sha:0:12}"
+
+          gh pr create \
+            --base dev \
+            --head "$branch" \
+            --title "ci: sync workflow assets to ${short_sha}" \
+            --body "Automated workflow asset sync PR generated from canonical template changes."
 
       - name: Upload maintenance artifacts
         if: always()

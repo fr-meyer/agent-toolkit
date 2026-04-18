@@ -138,13 +138,11 @@ on:
         type: boolean
         default: true
     secrets:
-      GH_TOKEN:
-        required: true
       CURSOR_API_KEY:
         required: false
       CODERABBIT_API_KEY:
         required: false
-      WORKFLOW_PUSH_TOKEN:
+      ELEVATED_GITHUB_TOKEN:
         required: false
 
 jobs:
@@ -188,7 +186,7 @@ jobs:
           ref: refs/pull/${{ inputs.pr_number }}/head
           path: ${{ inputs.target_checkout_path }}
           fetch-depth: 0
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: false
 
       - name: Checkout shared toolkit repository
@@ -198,7 +196,7 @@ jobs:
           ref: ${{ inputs.shared_repository_ref }}
           path: ${{ inputs.shared_checkout_path }}
           fetch-depth: 0
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.ELEVATED_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           persist-credentials: false
 
       - name: Set up Python
@@ -215,7 +213,7 @@ jobs:
       - name: Fetch raw PR review and thread data
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           bash "$SHARED_CHECKOUT_PATH/scripts/coderabbit/fetch_threads.sh" \
@@ -269,7 +267,7 @@ jobs:
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}
-          WORKFLOW_PUSH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN }}
+          ELEVATED_GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if [[ -n "${CURSOR_API_KEY:-}" ]]; then
@@ -278,8 +276,8 @@ jobs:
           if [[ -n "${CODERABBIT_API_KEY:-}" ]]; then
             echo "::add-mask::$CODERABBIT_API_KEY"
           fi
-          if [[ -n "${WORKFLOW_PUSH_TOKEN:-}" ]]; then
-            echo "::add-mask::$WORKFLOW_PUSH_TOKEN"
+          if [[ -n "${ELEVATED_GITHUB_TOKEN:-}" ]]; then
+            echo "::add-mask::$ELEVATED_GITHUB_TOKEN"
           fi
 
       - name: Set up selected agent runtime
@@ -341,7 +339,7 @@ jobs:
         if: steps.issue_count.outputs.count != '0'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
         run: |
           set -euo pipefail
@@ -374,7 +372,7 @@ jobs:
         if: steps.issue_count.outputs.count != '0' && inputs.auto_commit && inputs.auto_push
         shell: bash
         env:
-          WORKFLOW_PUSH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN }}
+          ELEVATED_GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           BRANCH=$(git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" rev-parse --abbrev-ref HEAD)
@@ -383,17 +381,17 @@ jobs:
             WORKFLOW_DIFF=$(git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" diff --name-only "origin/$BRANCH..HEAD" -- .github/workflows || true)
           fi
           if [[ -z "$WORKFLOW_DIFF" ]]; then
-            echo "requires_workflow_push_token=false" >> "$GITHUB_OUTPUT"
+            echo "requires_elevated_github_token=false" >> "$GITHUB_OUTPUT"
             echo "No workflow-path changes detected in outgoing push."
             exit 0
           fi
 
-          echo "requires_workflow_push_token=true" >> "$GITHUB_OUTPUT"
+          echo "requires_elevated_github_token=true" >> "$GITHUB_OUTPUT"
           echo "Workflow-path changes detected in outgoing push:"
           printf '%s\n' "$WORKFLOW_DIFF"
 
-          if [[ -z "${WORKFLOW_PUSH_TOKEN:-}" ]]; then
-            echo "Pending push touches .github/workflows/**, but WORKFLOW_PUSH_TOKEN is not configured." >&2
+          if [[ -z "${ELEVATED_GITHUB_TOKEN:-}" ]]; then
+            echo "Pending push touches .github/workflows/**, but ELEVATED_GITHUB_TOKEN is not configured." >&2
             exit 1
           fi
 
@@ -401,9 +399,9 @@ jobs:
         if: steps.issue_count.outputs.count != '0' && inputs.auto_commit && inputs.auto_push
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          WORKFLOW_PUSH_TOKEN: ${{ secrets.WORKFLOW_PUSH_TOKEN }}
-          REQUIRES_WORKFLOW_PUSH_TOKEN: ${{ steps.push_requirements.outputs.requires_workflow_push_token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ELEVATED_GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN }}
+          REQUIRES_ELEVATED_GITHUB_TOKEN: ${{ steps.push_requirements.outputs.requires_elevated_github_token }}
         run: |
           set -euo pipefail
           BRANCH=$(git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" rev-parse --abbrev-ref HEAD)
@@ -413,9 +411,9 @@ jobs:
             exit 0
           fi
 
-          PUSH_TOKEN="$GH_TOKEN"
-          if [[ "${REQUIRES_WORKFLOW_PUSH_TOKEN:-false}" == "true" ]]; then
-            PUSH_TOKEN="$WORKFLOW_PUSH_TOKEN"
+          PUSH_TOKEN="$GITHUB_TOKEN"
+          if [[ "${REQUIRES_ELEVATED_GITHUB_TOKEN:-false}" == "true" ]]; then
+            PUSH_TOKEN="$ELEVATED_GITHUB_TOKEN"
           fi
 
           git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" config --local --unset-all http.https://github.com/.extraheader || true

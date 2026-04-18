@@ -8,6 +8,26 @@ Every workflow that exists under `.github/workflows/` should have a canonical so
 
 Live files under `.github/workflows/` are runtime copies, not the preferred authoring location.
 
+## Token and configuration naming rule
+
+Prefer GitHub's built-in `GITHUB_TOKEN` for default GitHub authentication.
+
+Do not introduce ad hoc alias names just to forward the built-in token through starter workflows or reusable workflows.
+
+Use `ELEVATED_GITHUB_TOKEN` as the single explicit override when the built-in token is not enough, for example:
+- cross-repo clone, branch, PR, or write operations
+- privileged writes, including pushes that touch `.github/workflows/**`
+- private shared-repository access that the built-in token cannot read
+
+When a workflow can run with default auth but may occasionally need stronger auth, code it to fall back from `ELEVATED_GITHUB_TOKEN` to `secrets.GITHUB_TOKEN`.
+
+Keep third-party secrets product-scoped, for example `CURSOR_API_KEY` and `CODERABBIT_API_KEY`, and keep workflow variables namespaced by workflow family, for example `CODERABBIT_*`.
+
+Important GitHub nuance:
+- the built-in `GITHUB_TOKEN` is provided by Actions
+- do not assume you can override it by creating a manual repository secret with the same name
+- if stronger auth is required, add a separate explicit secret such as `ELEVATED_GITHUB_TOKEN`
+
 ## Classification rule
 
 Classify workflow templates by **role**, not by where a rendered copy happens to run.
@@ -35,6 +55,12 @@ When different trigger surfaces exist primarily for clarity rather than shared l
 - Materialized runtime copies:
   - `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
   - `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
+
+## Current automation policy
+
+- Dedicated automation branches must start from `dev`.
+- Repo-local workflow maintenance changes should be proposed in a separate PR, not pushed directly back onto the triggering branch.
+- Cross-repo divergence review should be attached to the update PR as a managed PR comment by default.
 
 ## Manifest responsibilities
 

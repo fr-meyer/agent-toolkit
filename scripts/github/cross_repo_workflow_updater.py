@@ -43,9 +43,10 @@ from typing import Any
 
 ALLOWED_BINDING_PREFIX = "templates/starter-workflows/"
 ALLOWED_TARGET_PREFIX = ".github/workflows/"
+GITHUB_ISSUE_COMMENT_BODY_CHAR_LIMIT = 65536
 GITHUB_TOKEN_ENV_NAMES = (
+    "ELEVATED_GITHUB_TOKEN",
     "GITHUB_TOKEN",
-    "GH_TOKEN",
     "GITHUB_PAT",
     "GITHUB_API_TOKEN",
     "GITHUB_OAUTH_TOKEN",
@@ -81,6 +82,9 @@ class ConsumerPreview:
     commit_sha: str | None = None
     review_report_path: str | None = None
     normalization_patch_path: str | None = None
+    manual_review_delivery: str | None = None
+    manual_review_comment_url: str | None = None
+    manual_review_comment_provider: str | None = None
 
 
 @dataclass
@@ -141,12 +145,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--manual-review-on-divergence",
         action="store_true",
-        help="When divergence blocks a normal sync PR, create a manual-review PR/report path instead of stopping at manual_review_required.",
+        help="When divergence blocks a normal sync PR, create manual-review output instead of stopping at manual_review_required.",
+    )
+    parser.add_argument(
+        "--manual-review-delivery",
+        choices=("pr-comment", "commit-artifacts"),
+        default="pr-comment",
+        help="How divergence review should be delivered.",
+    )
+    parser.add_argument(
+        "--manual-review-comment-marker",
+        default="<!-- cross-repo-workflow-updater:manual-review -->",
+        help="Stable marker used to update an existing managed PR comment.",
+    )
+    parser.add_argument(
+        "--manual-review-max-patch-lines",
+        type=int,
+        default=300,
+        help="Maximum diff lines to inline in the PR comment before truncation.",
     )
     parser.add_argument(
         "--manual-review-artifact-dir",
         default="docs/shared-workflow-reviews",
-        help="Directory inside the consumer repo where manual-review artifacts should be written.",
+        help="Legacy directory used only when manual-review-delivery=commit-artifacts.",
     )
     parser.add_argument(
         "--include-normalization-patch",
@@ -185,9 +206,17 @@ def load_manifest(manifest_path: Path) -> dict[str, Any]:
         repo = str(consumer.get("repo") or "").strip()
         if not repo or "/" not in repo:
             raise SystemExit(f"Consumer entry has invalid repo slug: {repo!r}")
-        base_branch = consumer.get("baseBranch")
-        if base_branch is not None and not str(base_branch).strip():
-            raise SystemExit(f"Consumer {repo} has an empty baseBranch value.")
+        base_branch = str(consumer.get("baseBranch") or "").strip()
+        if not base_branch:
+            raise SystemExit(
+                f"Consumer {repo} must declare baseBranch='dev' under current automation policy."
+            )
+        if base_branch != "dev":
+            raise SystemExit(
+                f"Consumer {repo} must set baseBranch='dev' under current automation policy "
+                f"(got {base_branch!r})."
+            )
+        consumer["baseBranch"] = base_branch
 
         bindings = consumer.get("managedBindings")
         if not isinstance(bindings, list):
@@ -472,8 +501,8 @@ def collect_binding_diff_facts(repo_root: Path, local_repo: Path, binding: Bindi
             f"Pinned reusable-workflow refs differ: current={binding.current_pinned_refs or []}, candidate={binding.candidate_pinned_refs or []}."
         )
 
-    if "WORKFLOW_PUSH_TOKEN" in source_text and "WORKFLOW_PUSH_TOKEN" not in target_text:
-        facts.append("Consumer file does not pass through `WORKFLOW_PUSH_TOKEN`, while the shared starter template does.")
+    if "ELEVATED_GITHUB_TOKEN" in source_text and "ELEVATED_GITHUB_TOKEN" not in target_text:
+        facts.append("Consumer file does not pass through `ELEVATED_GITHUB_TOKEN`, while the shared starter template does.")
     if "auto_commit: true" in target_text and "auto_commit: true" not in source_text:
         facts.append("Consumer file currently forces `auto_commit: true`, while the shared starter template defers to vars/default false.")
     if "auto_push: true" in target_text and "auto_push: true" not in source_text:
@@ -562,7 +591,7 @@ def build_manual_review_report(
             "",
             "Questions to answer in review:",
             "- Should this consumer remain on the older dynamic `shared_repository_ref` behavior, or be normalized to the current pinned shared-template model?",
-            "- Should `WORKFLOW_PUSH_TOKEN` passthrough be adopted here, or intentionally remain absent?",
+            "- Should `ELEVATED_GITHUB_TOKEN` passthrough be adopted here, or intentionally remain absent?",
             "- Should this consumer continue forcing `auto_commit` / `auto_push`, or should it inherit the newer shared starter-template defaults?",
             "",
             "Any proposed normalization patch in this PR is optional and should be treated as review material, not as an automatically approved overwrite.",
@@ -672,7 +701,7 @@ def build_manual_review_body(
             "",
             "Review focus:",
             "- Were the current consumer workflows intentionally kept on the older `shared_repository_ref` behavior?",
-            "- Should `WORKFLOW_PUSH_TOKEN` passthrough be adopted here?",
+            "- Should `ELEVATED_GITHUB_TOKEN` passthrough be adopted here?",
             "- Should the repo keep forcing `auto_commit` / `auto_push`, or move to the newer shared-template defaults?",
             "- Should this consumer stay in exact-managed scope, or be treated as intentionally customized?",
             "",
@@ -680,6 +709,133 @@ def build_manual_review_body(
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def build_manual_review_comment_body(
+    repo_root: Path,
+    local_repo: Path,
+    shared_repository: str,
+    source_commit: str,
+    consumer: ConsumerPreview,
+    diverged_bindings: list[BindingPreview],
+    marker: str,
+    include_normalization_patch: bool,
+    max_patch_lines: int,
+) -> str:
+    lines = [
+        marker,
+        "## Shared workflow divergence review",
+        "",
+        f"Shared source: `{shared_repository}@{source_commit[:7]}`",
+        f"Target branch: `{consumer.resolved_base_branch}`",
+        "",
+        "### Diverged bindings",
+    ]
+
+    for binding in diverged_bindings:
+        lines.append(f"- `{binding.starter_template}` -> `{binding.target_path}`")
+
+    lines.extend(["", "### Verified diff facts"])
+    for binding in diverged_bindings:
+        lines.append(f"- `{binding.target_path}`")
+        for fact in collect_binding_diff_facts(repo_root, local_repo, binding):
+            lines.append(f"  - {fact}")
+
+    lines.extend(
+        [
+            "",
+            "### Review questions",
+            "- Should this consumer remain on the older `shared_repository_ref` behavior?",
+            "- Should `ELEVATED_GITHUB_TOKEN` passthrough be adopted here?",
+            "- Should `auto_commit` / `auto_push` remain forced, or follow shared-template defaults?",
+        ]
+    )
+
+    if include_normalization_patch:
+        patch_text = build_normalization_patch_text(repo_root, local_repo, diverged_bindings)
+        patch_lines = patch_text.splitlines()
+        line_truncated = len(patch_lines) > max_patch_lines
+        if line_truncated:
+            patch_text = "\n".join(patch_lines[:max_patch_lines])
+
+        header_lines = list(lines)
+
+        def _body_len_for_patch(pt: str, line_note: bool, size_note: bool) -> int:
+            out = list(header_lines)
+            out.extend(
+                [
+                    "",
+                    "<details>",
+                    "<summary>Optional normalization patch</summary>",
+                    "",
+                    "```diff",
+                    pt,
+                    "```",
+                ]
+            )
+            if line_note:
+                out.extend(
+                    [
+                        "",
+                        "_Patch truncated by line count. Full review detail should remain available in workflow artifacts when emitted._",
+                    ]
+                )
+            if size_note:
+                out.extend(
+                    [
+                        "",
+                        "_Patch truncated to fit GitHub issue comment size limits. Full review detail should remain available in workflow artifacts when emitted._",
+                    ]
+                )
+            out.extend(["", "</details>"])
+            out.append("")
+            return len("\n".join(out) + "\n")
+
+        size_truncated = False
+        if patch_text:
+            lo, hi = 0, len(patch_text)
+            best = ""
+            while lo <= hi:
+                mid = (lo + hi) // 2
+                candidate = patch_text[:mid]
+                if _body_len_for_patch(candidate, line_truncated, True) <= GITHUB_ISSUE_COMMENT_BODY_CHAR_LIMIT:
+                    best = candidate
+                    lo = mid + 1
+                else:
+                    hi = mid - 1
+            if best != patch_text:
+                patch_text = best
+                size_truncated = True
+
+        lines.extend(
+            [
+                "",
+                "<details>",
+                "<summary>Optional normalization patch</summary>",
+                "",
+                "```diff",
+                patch_text,
+                "```",
+            ]
+        )
+        if line_truncated:
+            lines.extend(
+                [
+                    "",
+                    "_Patch truncated by line count. Full review detail should remain available in workflow artifacts when emitted._",
+                ]
+            )
+        if size_truncated:
+            lines.extend(
+                [
+                    "",
+                    "_Patch truncated to fit GitHub issue comment size limits. Full review detail should remain available in workflow artifacts when emitted._",
+                ]
+            )
+        lines.extend(["", "</details>"])
+
+    lines.append("")
+    return "\n".join(lines)
 
 
 def command_exists(name: str) -> bool:
@@ -798,6 +954,125 @@ def github_json_request(
         return json.loads(body)
     except Exception as exc:
         raise RuntimeError(f"GitHub API returned non-JSON response for {method} {url}") from exc
+
+
+def extract_pr_number_from_url(pr_url: str) -> int | None:
+    match = re.search(r"/pulls?/(\d+)", pr_url)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _parse_github_next_link(link_header: str | None) -> str | None:
+    if not link_header:
+        return None
+    for segment in link_header.split(","):
+        segment = segment.strip()
+        if 'rel="next"' not in segment and "rel='next'" not in segment:
+            continue
+        start = segment.find("<")
+        end = segment.find(">", start + 1)
+        if start != -1 and end != -1:
+            return segment[start + 1 : end]
+    return None
+
+
+def _github_json_get_with_link(url: str, token: str) -> tuple[Any, str | None]:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "User-Agent": "cross-repo-workflow-updater",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(request) as response:
+            body = response.read().decode("utf-8")
+            link = response.headers.get("Link")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            error_payload = json.loads(body) if body else None
+        except Exception:
+            error_payload = body
+        detail = error_payload.get("message") if isinstance(error_payload, dict) else str(error_payload)
+        if isinstance(error_payload, dict) and error_payload.get("errors"):
+            detail = f"{detail}; errors={error_payload['errors']}"
+        raise RuntimeError(f"GitHub API request failed (GET {url}): {detail}") from exc
+    if not body:
+        return None, link
+    try:
+        return json.loads(body), link
+    except Exception as exc:
+        raise RuntimeError(f"GitHub API returned non-JSON response for GET {url}") from exc
+
+
+def list_issue_comments(remote: GitHubRemote, issue_number: int, token: str) -> list[dict[str, Any]]:
+    base = f"{remote.api_base}/repos/{remote.owner}/{remote.repo}/issues/{issue_number}/comments"
+    url: str | None = f"{base}?per_page=100"
+    merged: list[dict[str, Any]] = []
+    while url:
+        payload, link = _github_json_get_with_link(url, token)
+        if not isinstance(payload, list):
+            raise RuntimeError("Issue comment list response was not a list.")
+        merged.extend(payload)
+        url = _parse_github_next_link(link)
+    return merged
+
+
+def find_existing_managed_comment(comments: list[dict[str, Any]], marker: str) -> dict[str, Any] | None:
+    for comment in comments:
+        body = str(comment.get("body") or "")
+        if marker in body:
+            return comment
+    return None
+
+
+def create_issue_comment(remote: GitHubRemote, issue_number: int, body: str, token: str) -> str:
+    payload = github_json_request(
+        "POST",
+        f"{remote.api_base}/repos/{remote.owner}/{remote.repo}/issues/{issue_number}/comments",
+        token,
+        {"body": body},
+    )
+    if not isinstance(payload, dict):
+        raise RuntimeError("Issue comment create response was not an object.")
+    return str(payload.get("html_url") or "")
+
+
+def update_issue_comment(remote: GitHubRemote, comment_id: int, body: str, token: str) -> str:
+    payload = github_json_request(
+        "PATCH",
+        f"{remote.api_base}/repos/{remote.owner}/{remote.repo}/issues/comments/{comment_id}",
+        token,
+        {"body": body},
+    )
+    if not isinstance(payload, dict):
+        raise RuntimeError("Issue comment update response was not an object.")
+    return str(payload.get("html_url") or "")
+
+
+def upsert_pr_comment(local_repo: Path, pr_url: str, body: str, marker: str) -> tuple[str, str]:
+    remote = resolve_github_remote(local_repo)
+    if not remote:
+        raise RuntimeError("Could not resolve GitHub remote for PR comment delivery.")
+    token, _token_source = discover_github_token(remote, local_repo)
+    if not token:
+        raise RuntimeError("Could not discover GitHub token for PR comment delivery.")
+
+    pr_number = extract_pr_number_from_url(pr_url)
+    if not pr_number:
+        raise RuntimeError(f"Could not parse PR number from URL: {pr_url}")
+
+    comments = list_issue_comments(remote, pr_number, token)
+    existing = find_existing_managed_comment(comments, marker)
+    if existing:
+        comment_id = int(existing["id"])
+        url = update_issue_comment(remote, comment_id, body, token)
+        return url, "rest-update"
+
+    url = create_issue_comment(remote, pr_number, body, token)
+    return url, "rest-create"
 
 
 def github_graphql_request(endpoint: str, token: str, query: str, variables: dict[str, Any]) -> dict[str, Any]:
@@ -1063,6 +1338,9 @@ def evaluate_consumer(
     execute: bool,
     create_pr: bool,
     manual_review_on_divergence: bool,
+    manual_review_delivery: str,
+    manual_review_comment_marker: str,
+    manual_review_max_patch_lines: int,
     manual_review_artifact_dir: str,
     include_normalization_patch: bool,
     branch_prefix: str,
@@ -1127,7 +1405,22 @@ def evaluate_consumer(
     diverged_bindings = [item for item in previews if item.status == "diverged"]
     updater_branch = f"{branch_prefix}{source_commit[:7]}"
 
-    if diverged_bindings:
+    if diverged_bindings and not manual_review_on_divergence:
+        return ConsumerPreview(
+            repo=repo_slug,
+            resolved_base_branch=base_branch,
+            status="manual_review_required",
+            message=(
+                f"Found {len(diverged_bindings)} diverged exact-managed binding(s). "
+                "No normal update PR will be created until the divergence is reviewed."
+            ),
+            bindings=previews,
+            local_repo_path=str(local_repo),
+            updater_branch=updater_branch,
+            manual_review_delivery=manual_review_delivery,
+        )
+
+    if diverged_bindings and manual_review_delivery == "commit-artifacts":
         base_preview = ConsumerPreview(
             repo=repo_slug,
             resolved_base_branch=base_branch,
@@ -1139,9 +1432,8 @@ def evaluate_consumer(
             bindings=previews,
             local_repo_path=str(local_repo),
             updater_branch=updater_branch,
+            manual_review_delivery=manual_review_delivery,
         )
-        if not manual_review_on_divergence:
-            return base_preview
         if dry_run or not execute:
             base_preview.status = "would_open_manual_review_pr"
             base_preview.message = (
@@ -1182,6 +1474,7 @@ def evaluate_consumer(
                 commit_sha=commit_sha,
                 review_report_path=report_rel,
                 normalization_patch_path=patch_rel,
+                manual_review_delivery=manual_review_delivery,
             )
             if not create_pr:
                 preview_for_pr.status = "committed_manual_review_no_pr"
@@ -1205,7 +1498,23 @@ def evaluate_consumer(
                 bindings=previews,
                 local_repo_path=str(local_repo),
                 updater_branch=updater_branch,
+                manual_review_delivery=manual_review_delivery,
             )
+
+    if diverged_bindings and not candidate_bindings:
+        return ConsumerPreview(
+            repo=repo_slug,
+            resolved_base_branch=base_branch,
+            status="manual_review_required_no_pr",
+            message=(
+                f"Found {len(diverged_bindings)} diverged exact-managed binding(s), but no safe managed update PR exists. "
+                "Review requires human action."
+            ),
+            bindings=previews,
+            local_repo_path=str(local_repo),
+            updater_branch=updater_branch,
+            manual_review_delivery=manual_review_delivery,
+        )
 
     if not candidate_bindings:
         return ConsumerPreview(
@@ -1216,17 +1525,27 @@ def evaluate_consumer(
             bindings=previews,
             local_repo_path=str(local_repo),
             updater_branch=updater_branch,
+            manual_review_delivery=manual_review_delivery,
         )
 
     if dry_run or not execute:
+        status = "would_open_pr"
+        message = f"Prepared a preview for {len(candidate_bindings)} managed workflow change(s)."
+        if diverged_bindings and manual_review_on_divergence and manual_review_delivery == "pr-comment":
+            status = "would_open_pr_with_manual_review_comment"
+            message = (
+                f"Prepared a preview for {len(candidate_bindings)} managed workflow change(s), and a managed divergence "
+                "comment would be posted on the PR."
+            )
         return ConsumerPreview(
             repo=repo_slug,
             resolved_base_branch=base_branch,
-            status="would_open_pr",
-            message=f"Prepared a preview for {len(candidate_bindings)} managed workflow change(s).",
+            status=status,
+            message=message,
             bindings=previews,
             local_repo_path=str(local_repo),
             updater_branch=updater_branch,
+            manual_review_delivery=manual_review_delivery,
         )
 
     try:
@@ -1241,6 +1560,7 @@ def evaluate_consumer(
                 bindings=previews,
                 local_repo_path=str(local_repo),
                 updater_branch=updater_branch,
+                manual_review_delivery=manual_review_delivery,
             )
 
         valid, validation_messages = validate_staged_targets(local_repo, changed_paths)
@@ -1254,6 +1574,7 @@ def evaluate_consumer(
                 bindings=previews,
                 local_repo_path=str(local_repo),
                 updater_branch=updater_branch,
+                manual_review_delivery=manual_review_delivery,
             )
 
         if not run_command(["git", "diff", "--cached", "--name-only"], cwd=local_repo, check=False).strip():
@@ -1265,6 +1586,7 @@ def evaluate_consumer(
                 bindings=previews,
                 local_repo_path=str(local_repo),
                 updater_branch=updater_branch,
+                manual_review_delivery=manual_review_delivery,
             )
 
         commit_message = build_commit_message(shared_repository, source_commit)
@@ -1281,6 +1603,7 @@ def evaluate_consumer(
                 local_repo_path=str(local_repo),
                 updater_branch=updater_branch,
                 commit_sha=commit_sha,
+                manual_review_delivery=manual_review_delivery,
             )
 
         pr_title = build_pr_title(shared_repository, source_commit)
@@ -1296,11 +1619,12 @@ def evaluate_consumer(
                 local_repo_path=str(local_repo),
                 updater_branch=updater_branch,
                 commit_sha=commit_sha,
+                manual_review_delivery=manual_review_delivery,
             ),
             validation_messages=validation_messages,
         )
         pr_url, pr_provider = create_pull_request(local_repo, base_branch, updater_branch, pr_title, pr_body)
-        return ConsumerPreview(
+        preview = ConsumerPreview(
             repo=repo_slug,
             resolved_base_branch=base_branch,
             status="pr_opened",
@@ -1311,7 +1635,40 @@ def evaluate_consumer(
             pull_request_url=pr_url,
             pull_request_provider=pr_provider,
             commit_sha=commit_sha,
+            manual_review_delivery=manual_review_delivery,
         )
+        if diverged_bindings and manual_review_on_divergence and manual_review_delivery == "pr-comment":
+            comment_body = build_manual_review_comment_body(
+                repo_root=repo_root,
+                local_repo=local_repo,
+                shared_repository=shared_repository,
+                source_commit=source_commit,
+                consumer=preview,
+                diverged_bindings=diverged_bindings,
+                marker=manual_review_comment_marker,
+                include_normalization_patch=include_normalization_patch,
+                max_patch_lines=manual_review_max_patch_lines,
+            )
+            try:
+                comment_url, comment_provider = upsert_pr_comment(
+                    local_repo=local_repo,
+                    pr_url=pr_url,
+                    body=comment_body,
+                    marker=manual_review_comment_marker,
+                )
+                preview.status = "pr_opened_with_manual_review_comment"
+                preview.message = (
+                    f"Opened PR for {len(candidate_bindings)} managed workflow change(s) and posted a divergence review comment."
+                )
+                preview.manual_review_comment_url = comment_url
+                preview.manual_review_comment_provider = comment_provider
+            except RuntimeError as exc:
+                preview.status = "manual_review_comment_failed"
+                preview.message = (
+                    f"Opened PR for {len(candidate_bindings)} managed workflow change(s), but failed to post the divergence review comment: {exc}"
+                )
+            return preview
+        return preview
     except RuntimeError as exc:
         return ConsumerPreview(
             repo=repo_slug,
@@ -1321,6 +1678,7 @@ def evaluate_consumer(
             bindings=previews,
             local_repo_path=str(local_repo),
             updater_branch=updater_branch,
+            manual_review_delivery=manual_review_delivery,
         )
 
 
@@ -1337,6 +1695,9 @@ def preview_to_dict(preview: ConsumerPreview) -> dict[str, Any]:
         "commitSha": preview.commit_sha,
         "reviewReportPath": preview.review_report_path,
         "normalizationPatchPath": preview.normalization_patch_path,
+        "manualReviewDelivery": preview.manual_review_delivery,
+        "manualReviewCommentUrl": preview.manual_review_comment_url,
+        "manualReviewCommentProvider": preview.manual_review_comment_provider,
         "bindings": [
             {
                 "starterTemplate": binding.starter_template,
@@ -1395,6 +1756,9 @@ def main() -> int:
                 execute=bool(args.execute),
                 create_pr=bool(args.create_pr),
                 manual_review_on_divergence=bool(args.manual_review_on_divergence),
+                manual_review_delivery=str(args.manual_review_delivery),
+                manual_review_comment_marker=str(args.manual_review_comment_marker),
+                manual_review_max_patch_lines=int(args.manual_review_max_patch_lines),
                 manual_review_artifact_dir=str(args.manual_review_artifact_dir),
                 include_normalization_patch=bool(args.include_normalization_patch),
                 branch_prefix=str(args.branch_prefix),
@@ -1410,6 +1774,7 @@ def main() -> int:
         "execute": bool(args.execute),
         "createPr": bool(args.create_pr),
         "manualReviewOnDivergence": bool(args.manual_review_on_divergence),
+        "manualReviewDelivery": str(args.manual_review_delivery),
         "includeNormalizationPatch": bool(args.include_normalization_patch),
         "changedStarterTemplates": changed_templates,
         "consumers": [preview_to_dict(item) for item in previews],
@@ -1421,10 +1786,14 @@ def main() -> int:
     write_summary(out_summary, summary)
 
     impacted = sum(1 for item in previews if item.status not in {"not_impacted"})
-    would_open = sum(1 for item in previews if item.status == "would_open_pr")
+    would_open = sum(1 for item in previews if item.status in {"would_open_pr", "would_open_pr_with_manual_review_comment"})
     would_open_manual = sum(1 for item in previews if item.status == "would_open_manual_review_pr")
-    opened = sum(1 for item in previews if item.status in {"pr_opened", "manual_review_pr_opened"})
-    manual_review = sum(1 for item in previews if item.status == "manual_review_required")
+    opened = sum(
+        1
+        for item in previews
+        if item.status in {"pr_opened", "manual_review_pr_opened", "pr_opened_with_manual_review_comment"}
+    )
+    manual_review = sum(1 for item in previews if item.status in {"manual_review_required", "manual_review_required_no_pr"})
     print(
         "Prepared cross-repo workflow update run. "
         f"changed_templates={len(changed_templates)} impacted_consumers={impacted} would_open_pr={would_open} "

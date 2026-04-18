@@ -18,6 +18,7 @@ Repo-local instructions for humans and agents working in `shared-agent-skills`.
   - callable reusable workflows -> `templates/reusable-workflows/`
   - copy/adapt entrypoints and starter templates -> `templates/starter-workflows/`
 - Treat `.github/workflows/` as live rendered runtime copies.
+- Prefer built-in `GITHUB_TOKEN` for default GitHub auth, and reserve `ELEVATED_GITHUB_TOKEN` for cases where extra GitHub rights are required.
 - Every live workflow in `.github/workflows/` should have a canonical template source.
 - `templates/repo-workflow-materialization-manifest.json` binds canonical template sources to their live `.github/workflows/` copies.
 - `templates/workflow-ref-sync-manifest.json` binds reusable workflow sources to the starter and linked live workflow targets whose pinned `uses: ...@<sha>` refs should be diffused automatically.
@@ -33,6 +34,14 @@ When a workflow asset changes:
 5. re-materialize `.github/workflows/` copies
 6. verify pinned `uses: ...@<sha>` refs still match the intended reusable workflow commit, and update `shared_repository_ref` too when that field exists
 7. update docs if the architecture or rule changed
+
+## Current automation policy
+
+- Workflow-maintenance branches must be created from `dev`, not `main` or `master`.
+- Repo-local workflow maintenance should land through a dedicated PR branch, not by pushing workflow-sync commits directly onto the triggering branch.
+- Cross-repo divergence review should be delivered on the update PR as a managed PR comment by default.
+- Cross-repo updater runs that need to clone, branch, or open PRs in consumer repositories should be configured with `ELEVATED_GITHUB_TOKEN`; the built-in `GITHUB_TOKEN` is only sufficient for same-repo or public read-only cases.
+- Legacy committed review artifacts under `docs/shared-workflow-reviews/` are transitional only and should not be the long-term review mechanism.
 
 ## Intent
 
