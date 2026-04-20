@@ -9,8 +9,9 @@ on:
     branches:
       - dev
     paths:
-      - templates/reusable-workflows/*.yml
-      - templates/reusable-workflows/*.yaml
+      - templates/reusable-workflows/coderabbit-pr-automation.yml
+      - templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml
+      - templates/workflow-ref-sync-manifest.json
   workflow_dispatch:
     inputs:
       before_sha:
