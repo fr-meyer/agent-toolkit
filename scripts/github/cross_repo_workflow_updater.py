@@ -1364,8 +1364,10 @@ def open_manual_review_pr(
         )
         return base_preview
 
+    failure_phase = "prepare"
     try:
         prepare_updater_branch(local_repo, base_branch, updater_branch)
+        failure_phase = "artifacts"
         changed_paths, report_rel, patch_rel = write_manual_review_artifacts(
             repo_root=repo_root,
             local_repo=local_repo,
@@ -1383,6 +1385,7 @@ def open_manual_review_pr(
             base_preview.normalization_patch_path = patch_rel
             return base_preview
 
+        failure_phase = "commit"
         commit_message = build_manual_review_title(shared_repository, source_commit)
         run_command(["git", "commit", "-m", commit_message], cwd=local_repo)
         commit_sha = run_command(["git", "rev-parse", "HEAD"], cwd=local_repo)
@@ -1406,6 +1409,7 @@ def open_manual_review_pr(
 
         pr_title = build_manual_review_title(shared_repository, source_commit)
         pr_body = build_manual_review_body(shared_repository, source_commit, preview_for_pr)
+        failure_phase = "pr"
         pr_url, pr_provider = create_pull_request(local_repo, base_branch, updater_branch, pr_title, pr_body)
         preview_for_pr.status = "manual_review_pr_opened"
         preview_for_pr.message = "Opened a manual-review PR for shared-workflow divergence."
@@ -1413,10 +1417,16 @@ def open_manual_review_pr(
         preview_for_pr.pull_request_provider = pr_provider
         return preview_for_pr
     except RuntimeError as exc:
+        if failure_phase == "prepare":
+            err_status = "checkout_failed"
+        elif failure_phase == "pr":
+            err_status = "pr_creation_failed"
+        else:
+            err_status = "artifact_commit_failed"
         return ConsumerPreview(
             repo=repo_slug,
             resolved_base_branch=base_branch,
-            status="pr_creation_failed" if create_pr else "checkout_failed",
+            status=err_status,
             message=str(exc),
             bindings=previews,
             local_repo_path=str(local_repo),

@@ -232,6 +232,7 @@ jobs:
           critical = {
               "branch_resolution_failed",
               "checkout_failed",
+              "artifact_commit_failed",
               "preview_incomplete",
               "render_failed",
               "validation_failed",
