@@ -229,6 +229,8 @@ Do not open a normal update PR when:
 
 Preferred follow-up behavior:
 - optionally open an **AI-assisted manual-review PR** instead of a normal sync PR
+- if `manual_review_delivery=pr-comment` and an updater-owned PR for the same updater branch already exists, post or update the managed divergence comment there
+- otherwise, fall back to opening a standalone manual-review PR rather than stopping at a dead-end `manual_review_required_no_pr` result
 - that PR should present a review artifact, not a silent overwrite
 - when confidence is high enough, it may include an explicitly labeled proposed normalization patch, but it must keep uncertainty visible rather than disguising adjudication as deterministic sync
 
@@ -301,6 +303,8 @@ Contract rules for manual-review PR mode:
 - separate deterministic evidence from inference
 - make any proposed patch explicitly optional/reviewable
 - make clear whether the PR is for discussion only or intended for merge
+- do not hijack arbitrary human PRs for comment delivery; `pr-comment` mode may only reuse an updater-owned PR for the same updater branch
+- when no updater-owned PR exists, fall back to a standalone manual-review PR
 
 ### 9.1.1 Manual-review artifact lifecycle
 
