@@ -1326,6 +1326,105 @@ def create_pull_request(local_repo: Path, base_branch: str, updater_branch: str,
     raise RuntimeError("Failed to open pull request automatically. Tried providers: " + " | ".join(errors))
 
 
+def open_manual_review_pr(
+    repo_root: Path,
+    local_repo: Path,
+    repo_slug: str,
+    base_branch: str,
+    updater_branch: str,
+    shared_repository: str,
+    source_commit: str,
+    previews: list[BindingPreview],
+    diverged_bindings: list[BindingPreview],
+    manual_review_delivery: str,
+    manual_review_artifact_dir: str,
+    include_normalization_patch: bool,
+    dry_run: bool,
+    execute: bool,
+    create_pr: bool,
+) -> ConsumerPreview:
+    base_preview = ConsumerPreview(
+        repo=repo_slug,
+        resolved_base_branch=base_branch,
+        status="manual_review_required",
+        message=(
+            f"Found {len(diverged_bindings)} diverged exact-managed binding(s). "
+            "No normal update PR will be created until the divergence is reviewed."
+        ),
+        bindings=previews,
+        local_repo_path=str(local_repo),
+        updater_branch=updater_branch,
+        manual_review_delivery=manual_review_delivery,
+    )
+    if dry_run or not execute:
+        base_preview.status = "would_open_manual_review_pr"
+        base_preview.message = (
+            f"Found {len(diverged_bindings)} diverged exact-managed binding(s). "
+            "A manual-review PR would be opened instead of a normal sync PR."
+        )
+        return base_preview
+
+    try:
+        prepare_updater_branch(local_repo, base_branch, updater_branch)
+        changed_paths, report_rel, patch_rel = write_manual_review_artifacts(
+            repo_root=repo_root,
+            local_repo=local_repo,
+            consumer=base_preview,
+            diverged_bindings=diverged_bindings,
+            shared_repository=shared_repository,
+            source_commit=source_commit,
+            artifact_dir=manual_review_artifact_dir,
+            include_normalization_patch=include_normalization_patch,
+        )
+        if not changed_paths or not run_command(["git", "diff", "--cached", "--name-only"], cwd=local_repo, check=False).strip():
+            base_preview.status = "manual_review_required"
+            base_preview.message = "Manual-review artifacts produced no staged diff."
+            base_preview.review_report_path = report_rel
+            base_preview.normalization_patch_path = patch_rel
+            return base_preview
+
+        commit_message = build_manual_review_title(shared_repository, source_commit)
+        run_command(["git", "commit", "-m", commit_message], cwd=local_repo)
+        commit_sha = run_command(["git", "rev-parse", "HEAD"], cwd=local_repo)
+        preview_for_pr = ConsumerPreview(
+            repo=repo_slug,
+            resolved_base_branch=base_branch,
+            status="would_open_manual_review_pr",
+            message="",
+            bindings=previews,
+            local_repo_path=str(local_repo),
+            updater_branch=updater_branch,
+            commit_sha=commit_sha,
+            review_report_path=report_rel,
+            normalization_patch_path=patch_rel,
+            manual_review_delivery=manual_review_delivery,
+        )
+        if not create_pr:
+            preview_for_pr.status = "committed_manual_review_no_pr"
+            preview_for_pr.message = "Created a local manual-review commit but PR creation was not requested."
+            return preview_for_pr
+
+        pr_title = build_manual_review_title(shared_repository, source_commit)
+        pr_body = build_manual_review_body(shared_repository, source_commit, preview_for_pr)
+        pr_url, pr_provider = create_pull_request(local_repo, base_branch, updater_branch, pr_title, pr_body)
+        preview_for_pr.status = "manual_review_pr_opened"
+        preview_for_pr.message = "Opened a manual-review PR for shared-workflow divergence."
+        preview_for_pr.pull_request_url = pr_url
+        preview_for_pr.pull_request_provider = pr_provider
+        return preview_for_pr
+    except RuntimeError as exc:
+        return ConsumerPreview(
+            repo=repo_slug,
+            resolved_base_branch=base_branch,
+            status="pr_creation_failed" if create_pr else "checkout_failed",
+            message=str(exc),
+            bindings=previews,
+            local_repo_path=str(local_repo),
+            updater_branch=updater_branch,
+            manual_review_delivery=manual_review_delivery,
+        )
+
+
 def evaluate_consumer(
     repo_root: Path,
     consumer: dict[str, Any],
@@ -1421,87 +1520,117 @@ def evaluate_consumer(
         )
 
     if diverged_bindings and manual_review_delivery == "commit-artifacts":
-        base_preview = ConsumerPreview(
-            repo=repo_slug,
-            resolved_base_branch=base_branch,
-            status="manual_review_required",
-            message=(
-                f"Found {len(diverged_bindings)} diverged exact-managed binding(s). "
-                "No normal update PR will be created until the divergence is reviewed."
-            ),
-            bindings=previews,
-            local_repo_path=str(local_repo),
+        return open_manual_review_pr(
+            repo_root=repo_root,
+            local_repo=local_repo,
+            repo_slug=repo_slug,
+            base_branch=base_branch,
             updater_branch=updater_branch,
+            shared_repository=shared_repository,
+            source_commit=source_commit,
+            previews=previews,
+            diverged_bindings=diverged_bindings,
             manual_review_delivery=manual_review_delivery,
+            manual_review_artifact_dir=manual_review_artifact_dir,
+            include_normalization_patch=include_normalization_patch,
+            dry_run=dry_run,
+            execute=execute,
+            create_pr=create_pr,
         )
-        if dry_run or not execute:
-            base_preview.status = "would_open_manual_review_pr"
-            base_preview.message = (
-                f"Found {len(diverged_bindings)} diverged exact-managed binding(s). "
-                "A manual-review PR would be opened instead of a normal sync PR."
-            )
-            return base_preview
-        try:
-            prepare_updater_branch(local_repo, base_branch, updater_branch)
-            changed_paths, report_rel, patch_rel = write_manual_review_artifacts(
-                repo_root=repo_root,
-                local_repo=local_repo,
-                consumer=base_preview,
-                diverged_bindings=diverged_bindings,
-                shared_repository=shared_repository,
-                source_commit=source_commit,
-                artifact_dir=manual_review_artifact_dir,
-                include_normalization_patch=include_normalization_patch,
-            )
-            if not changed_paths or not run_command(["git", "diff", "--cached", "--name-only"], cwd=local_repo, check=False).strip():
-                base_preview.status = "manual_review_required"
-                base_preview.message = "Manual-review artifacts produced no staged diff."
-                base_preview.review_report_path = report_rel
-                base_preview.normalization_patch_path = patch_rel
-                return base_preview
-
-            commit_message = build_manual_review_title(shared_repository, source_commit)
-            run_command(["git", "commit", "-m", commit_message], cwd=local_repo)
-            commit_sha = run_command(["git", "rev-parse", "HEAD"], cwd=local_repo)
-            preview_for_pr = ConsumerPreview(
-                repo=repo_slug,
-                resolved_base_branch=base_branch,
-                status="would_open_manual_review_pr",
-                message="",
-                bindings=previews,
-                local_repo_path=str(local_repo),
-                updater_branch=updater_branch,
-                commit_sha=commit_sha,
-                review_report_path=report_rel,
-                normalization_patch_path=patch_rel,
-                manual_review_delivery=manual_review_delivery,
-            )
-            if not create_pr:
-                preview_for_pr.status = "committed_manual_review_no_pr"
-                preview_for_pr.message = "Created a local manual-review commit but PR creation was not requested."
-                return preview_for_pr
-
-            pr_title = build_manual_review_title(shared_repository, source_commit)
-            pr_body = build_manual_review_body(shared_repository, source_commit, preview_for_pr)
-            pr_url, pr_provider = create_pull_request(local_repo, base_branch, updater_branch, pr_title, pr_body)
-            preview_for_pr.status = "manual_review_pr_opened"
-            preview_for_pr.message = "Opened a manual-review PR for shared-workflow divergence."
-            preview_for_pr.pull_request_url = pr_url
-            preview_for_pr.pull_request_provider = pr_provider
-            return preview_for_pr
-        except RuntimeError as exc:
-            return ConsumerPreview(
-                repo=repo_slug,
-                resolved_base_branch=base_branch,
-                status="pr_creation_failed" if create_pr else "checkout_failed",
-                message=str(exc),
-                bindings=previews,
-                local_repo_path=str(local_repo),
-                updater_branch=updater_branch,
-                manual_review_delivery=manual_review_delivery,
-            )
 
     if diverged_bindings and not candidate_bindings:
+        if manual_review_delivery == "pr-comment":
+            if dry_run or not execute:
+                return ConsumerPreview(
+                    repo=repo_slug,
+                    resolved_base_branch=base_branch,
+                    status="would_open_manual_review_pr",
+                    message=(
+                        f"Found {len(diverged_bindings)} diverged exact-managed binding(s). "
+                        "A divergence review comment would be posted on the existing updater PR if present, "
+                        "otherwise a standalone manual-review PR would be opened."
+                    ),
+                    bindings=previews,
+                    local_repo_path=str(local_repo),
+                    updater_branch=updater_branch,
+                    manual_review_delivery=manual_review_delivery,
+                )
+
+            remote = resolve_github_remote(local_repo)
+            token, token_source = discover_github_token(remote, local_repo)
+            existing_pr_url, existing_pr_provider, _detect_errors = detect_existing_pr(local_repo, updater_branch, remote, token)
+            if existing_pr_url:
+                provider_label = existing_pr_provider
+                if provider_label in {"rest", "graphql"} and token_source:
+                    provider_label = f"{provider_label}+{token_source}"
+                preview = ConsumerPreview(
+                    repo=repo_slug,
+                    resolved_base_branch=base_branch,
+                    status="manual_review_comment_posted",
+                    message="Posted a divergence review comment on the existing updater PR.",
+                    bindings=previews,
+                    local_repo_path=str(local_repo),
+                    updater_branch=updater_branch,
+                    pull_request_url=existing_pr_url,
+                    pull_request_provider=provider_label,
+                    manual_review_delivery=manual_review_delivery,
+                )
+                comment_body = build_manual_review_comment_body(
+                    repo_root=repo_root,
+                    local_repo=local_repo,
+                    shared_repository=shared_repository,
+                    source_commit=source_commit,
+                    consumer=preview,
+                    diverged_bindings=diverged_bindings,
+                    marker=manual_review_comment_marker,
+                    include_normalization_patch=include_normalization_patch,
+                    max_patch_lines=manual_review_max_patch_lines,
+                )
+                try:
+                    comment_url, comment_provider = upsert_pr_comment(
+                        local_repo=local_repo,
+                        pr_url=existing_pr_url,
+                        body=comment_body,
+                        marker=manual_review_comment_marker,
+                    )
+                    preview.manual_review_comment_url = comment_url
+                    preview.manual_review_comment_provider = comment_provider
+                    return preview
+                except RuntimeError as exc:
+                    return ConsumerPreview(
+                        repo=repo_slug,
+                        resolved_base_branch=base_branch,
+                        status="manual_review_comment_failed",
+                        message=(
+                            "Detected an existing updater PR for divergence review, but failed to post the managed "
+                            f"comment: {exc}"
+                        ),
+                        bindings=previews,
+                        local_repo_path=str(local_repo),
+                        updater_branch=updater_branch,
+                        pull_request_url=existing_pr_url,
+                        pull_request_provider=provider_label,
+                        manual_review_delivery=manual_review_delivery,
+                    )
+
+            return open_manual_review_pr(
+                repo_root=repo_root,
+                local_repo=local_repo,
+                repo_slug=repo_slug,
+                base_branch=base_branch,
+                updater_branch=updater_branch,
+                shared_repository=shared_repository,
+                source_commit=source_commit,
+                previews=previews,
+                diverged_bindings=diverged_bindings,
+                manual_review_delivery=manual_review_delivery,
+                manual_review_artifact_dir=manual_review_artifact_dir,
+                include_normalization_patch=include_normalization_patch,
+                dry_run=dry_run,
+                execute=execute,
+                create_pr=create_pr,
+            )
+
         return ConsumerPreview(
             repo=repo_slug,
             resolved_base_branch=base_branch,
@@ -1791,7 +1920,7 @@ def main() -> int:
     opened = sum(
         1
         for item in previews
-        if item.status in {"pr_opened", "manual_review_pr_opened", "pr_opened_with_manual_review_comment"}
+        if item.status in {"pr_opened", "manual_review_pr_opened", "pr_opened_with_manual_review_comment", "manual_review_comment_posted"}
     )
     manual_review = sum(1 for item in previews if item.status in {"manual_review_required", "manual_review_required_no_pr"})
     print(
