@@ -192,6 +192,7 @@ When divergence is detected:
 
 Preferred next-step improvement:
 - open an **AI-assisted manual-review PR** that does not silently normalize the workflow, but instead presents a bounded divergence report and, when confidence is high enough, may include an explicit proposed normalization patch for human review
+- if `manual_review_delivery=pr-comment`, reuse only an updater-owned PR for the same updater branch; otherwise fall back to a standalone manual-review PR instead of commenting on an unrelated human PR
 
 That manual-review PR should clearly separate:
 - verified diff facts
@@ -247,6 +248,7 @@ V1 implementation note:
 
 Recommended follow-up mode:
 - when divergence blocks a normal sync PR, the updater may optionally switch to an AI-assisted manual-review PR path that creates a review artifact instead of a silent overwrite
+- in `pr-comment` mode, the updater should first look for an updater-owned PR on the same updater branch; if none exists, it should open a standalone manual-review PR rather than stopping without a review vehicle
 - those review artifacts should normally be treated as temporary adjudication scaffolding, not as permanent repo assets; if normalization is later approved, prefer a clean workflow-change PR rather than merging artifact-only files by accident
 
 Branch naming:
