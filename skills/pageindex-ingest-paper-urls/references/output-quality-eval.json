@@ -1,0 +1,10 @@
+[
+  {
+    "query": "Ingest this public PDF URL into Page Index after checking for duplicates: https://example.com/paper.pdf",
+    "expected": "The answer should clearly state whether duplicate checking happened, whether ingestion succeeded, and what Page Index result was returned."
+  },
+  {
+    "query": "I only have a local PDF path, can you use this skill to upload it?",
+    "expected": "The answer should refuse or redirect because the skill is URL-only."
+  }
+]
