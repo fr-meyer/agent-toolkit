@@ -41,10 +41,9 @@ Do not use it for:
 
 ## Gotchas
 
-- This skill does not invent Zotero URLs. It expects exported or otherwise supplied Zotero attachment URLs.
-- A Zotero attachment URL is not automatically guaranteed to be publicly reachable. If Page Index cannot fetch it, stop and report that the URL must be made reachable.
-- If the input is already just a direct public PDF URL with no Zotero context, use `pageindex-ingest-paper-urls` directly instead of this wrapper.
-- If the user wants to download from Zotero to disk or to another OCR provider, that belongs to `zotero-docai-pipeline`, not this skill.
+- This skill does not invent Zotero URLs; it expects exported or otherwise supplied Zotero attachment URLs, which are not automatically publicly reachable—when Page Index cannot fetch one, stop and report that the URL must be made reachable.
+- Direct public PDF URLs with no Zotero context should use `pageindex-ingest-paper-urls` directly rather than this wrapper.
+- Downloading from Zotero to disk or sending PDFs to another OCR provider belongs to `zotero-docai-pipeline`, not this skill.
 
 ## Output expectations
 
