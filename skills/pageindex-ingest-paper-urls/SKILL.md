@@ -1,6 +1,6 @@
 ---
 name: pageindex-ingest-paper-urls
-description: Use this skill when the user needs to ingest one or more public PDF URLs into Page Index, especially when they ask to submit papers, add PDFs to Page Index, or process URLs after checking for duplicates. Apply it when requests involve public PDF URLs, Page Index submission, or URL-based ingestion workflows. Do not use it for paper finding alone, reading existing Page Index papers, summarization, local file paths, or non-Page-Index upload workflows.
+description: Use this skill when the user needs to ingest one or more direct public PDF URLs into Page Index, especially when they ask to submit papers, add PDFs to Page Index, or process URLs after checking for duplicates. Apply it when requests involve public PDF URLs, Page Index submission, or URL-based ingestion workflows with no Zotero context. Do not use it for paper finding alone, reading existing Page Index papers, summarization, Zotero attachment exports or manifests, local file paths, or non-Page-Index upload workflows.
 ---
 
 # Page Index Ingest Paper URLs
@@ -11,7 +11,7 @@ Ingest public PDF URLs into Page Index with a conservative duplicate check first
 
 ## When to use
 
-Use this skill when the user already has one or more **public PDF URLs** and wants them added to Page Index.
+Use this skill when the user already has one or more **direct public PDF URLs** and wants them added to Page Index.
 
 Use it for:
 - URL-based Page Index ingestion
@@ -21,6 +21,7 @@ Use it for:
 Do not use it for:
 - finding papers already in Page Index
 - reading or summarizing papers already in Page Index
+- Zotero attachment exports, Zotero manifests, or zotero_file_url sources
 - local PDF paths
 - attachment bytes or filesystem uploads
 - non-Page-Index upload targets
@@ -38,7 +39,7 @@ Do not use it for:
 - This skill is URL-only. Do not accept local file paths here.
 - Do not assume a URL is public just because it looks like a PDF link.
 - If the user only has a filename, citation, or title, resolve that first with `pageindex-find-papers` before ingesting anything.
-- If the user needs Zotero attachments or local files, use a separate Zotero-focused skill instead.
+- If the user needs Zotero attachments, Zotero attachment manifests, or `zotero_file_url` sources, use `zotero-docai-ingest-to-pageindex` instead.
 
 ## Output expectations
 
