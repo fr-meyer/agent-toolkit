@@ -1,6 +1,6 @@
 ---
 name: zotero-docai-ingest-to-pageindex
-description: Use this skill when the user needs to turn Zotero-discovered PDF attachments, Zotero attachment URL exports, or zotero-docai-pipeline manifests into Page Index ingests. Apply it when requests involve zotero_file_url values, Zotero attachment manifests, zotero-docai-pipeline discovery exports, or batches of Zotero PDFs that should end up in Page Index. Do not use it for direct Zotero PDF download, Page Index reading or summarization, local PDF paths without exported URLs, or Page Index ingestion that is already URL-only and does not involve Zotero.
+description: Use this skill when the user needs to turn Zotero-derived PDF sources into Page Index ingests, especially from zotero_file_url exports, Zotero attachment manifests, or zotero-docai-pipeline discovery outputs. Apply it when requests involve Zotero-backed batches of PDFs that should end up in Page Index, even if the user does not mention Page Index skill names. Do not use it for direct public PDF URLs with no Zotero context, direct Zotero PDF download, Page Index reading or summarization, local PDF paths without exported URLs, or Page Index ingestion that is already URL-only and does not involve Zotero.
 ---
 
 # Zotero DocAI Ingest to Page Index
@@ -14,10 +14,10 @@ Use `pageindex-ingest-paper-urls` for the actual Page Index submission step.
 
 ## When to use
 
-Use this skill when the user already has, or can produce, Zotero-derived attachment URLs such as:
+Use this skill when the user already has, or can produce, Zotero-derived attachment URLs or manifests such as:
 - `zotero_file_url` values exported from `zotero-docai-pipeline`
 - a Zotero attachment manifest containing file URLs
-- a batch of public Zotero attachment URLs intended for Page Index
+- a batch of Zotero attachment URLs intended for Page Index
 
 Use it for:
 - Zotero attachment export workflows
