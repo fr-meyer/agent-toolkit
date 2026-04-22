@@ -18,6 +18,7 @@ Before starting any create, update, review, or audit work with this skill, confi
 - at least one current Agent Skills reference source is accessible: prefer **Agent Skills MCP**, but otherwise use the Agent Skills website (`https://agentskills.io/home` and its relevant documentation pages) or the GitHub repository (`https://github.com/agentskills/agentskills`)
 - an Agent Skills validation CLI is executable in the current environment: prefer `agentskills`, but accept `skills-ref` when that is the exposed command name in the current environment
 - the current skill library can be inspected so similar or overlapping skills can be checked before creating or updating anything
+- if the skill is intended for the shared/reusable skill repo, the target repo root must be known from trusted context and the work must start from that repo's `dev` branch on a fresh branch created for the specific skill
 
 If any of these requirements are not satisfied:
 - do not start or continue the work
@@ -44,6 +45,14 @@ Default decision order:
 2. update or extend an existing skill if that is cleaner than creating a parallel one
 3. split the proposal into multiple reusable skills if the requested scope contains multiple coherent sub-workflows
 4. create a brand-new standalone skill only when the above options are clearly worse
+
+### 1.25 Shared-repo branch rule
+
+When creating a shared/reusable skill in the shared skills repository:
+- start from the repo's `dev` branch
+- create a dedicated branch per skill before editing files
+- do not create shared skills directly on `main`
+- keep the branch name specific to the skill being created
 
 ### 1.5 Check whether the scope should be split
 
