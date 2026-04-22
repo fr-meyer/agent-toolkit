@@ -1,0 +1,26 @@
+[
+  {
+    "query": "Please ingest this public PDF URL into Page Index after checking whether it already exists: https://example.com/paper.pdf",
+    "why": "URL-based ingestion with duplicate check should trigger this skill."
+  },
+  {
+    "query": "Add these two public PDF URLs to Page Index, but don't duplicate anything already there.",
+    "why": "Batch URL ingestion with conservative duplicate handling should trigger this skill."
+  },
+  {
+    "query": "I already have a direct PDF URL, can you submit it to Page Index?",
+    "why": "A direct public PDF URL submission request should trigger this skill."
+  },
+  {
+    "query": "Find this paper in Page Index and tell me whether it exists.",
+    "why": "Paper finding only should trigger pageindex-find-papers instead."
+  },
+  {
+    "query": "Read this verified Page Index paper fully and summarize it.",
+    "why": "Reading/summarization belongs to the read or summarize Page Index skills."
+  },
+  {
+    "query": "Here is a local PDF path, can you upload it to Page Index?",
+    "why": "Local file paths are out of scope for this URL-only ingestion skill."
+  }
+]
