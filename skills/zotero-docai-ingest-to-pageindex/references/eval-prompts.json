@@ -1,0 +1,26 @@
+[
+  {
+    "query": "I have a zotero-docai-pipeline export with zotero_file_url values, can you ingest these into Page Index?",
+    "why": "Zotero-derived URL ingestion should trigger this wrapper skill."
+  },
+  {
+    "query": "Use my Zotero attachment manifest to add these PDFs to Page Index, but check for duplicates first.",
+    "why": "Manifest-driven Zotero ingestion with duplicate checking should trigger this skill."
+  },
+  {
+    "query": "I have these Zotero attachment URLs and want them in Page Index.",
+    "why": "Zotero attachment URL ingestion should trigger this skill."
+  },
+  {
+    "query": "Please ingest this public PDF URL into Page Index after checking whether it already exists.",
+    "why": "Pure URL ingest without Zotero context should go to pageindex-ingest-paper-urls instead."
+  },
+  {
+    "query": "Find this paper in Page Index and tell me whether it exists.",
+    "why": "Paper finding only should trigger pageindex-find-papers."
+  },
+  {
+    "query": "I want to download this Zotero PDF to disk.",
+    "why": "Downloading from Zotero is out of scope for this skill and belongs to zotero-docai-pipeline."
+  }
+]
