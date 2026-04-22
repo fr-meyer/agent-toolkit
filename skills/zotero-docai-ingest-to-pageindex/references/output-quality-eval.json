@@ -1,0 +1,10 @@
+[
+  {
+    "query": "I have a zotero-docai-pipeline export with zotero_file_url values, can you ingest these into Page Index?",
+    "expected": "The answer should use the Zotero context, mention the resolved URLs, note duplicate checking if done, and report the Page Index ingest result."
+  },
+  {
+    "query": "I only have a local PDF path from Zotero and no export or URL, can you do this here?",
+    "expected": "The answer should refuse or request an exported Zotero attachment URL or manifest instead of pretending to ingest a local file path."
+  }
+]
