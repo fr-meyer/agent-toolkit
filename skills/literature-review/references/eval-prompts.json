@@ -1,0 +1,66 @@
+[
+  {
+    "query": "Help me turn these 14 papers into a themed literature review section on multimodal clinical time-series forecasting.",
+    "should_trigger": true
+  },
+  {
+    "query": "I have reading notes from 9 papers. Build a literature review outline with themes, tensions, and gaps before I start writing.",
+    "should_trigger": true
+  },
+  {
+    "query": "Draft the literature review chapter for my thesis from this source matrix and search log.",
+    "should_trigger": true
+  },
+  {
+    "query": "Can you help scope a narrative review on LLM controllability and propose inclusion/exclusion boundaries?",
+    "should_trigger": true
+  },
+  {
+    "query": "Write a synthesis memo comparing how these papers frame uncertainty in clinical decision-support systems.",
+    "should_trigger": true
+  },
+  {
+    "query": "Turn these article notes and prior summaries into a literature review introduction for my paper.",
+    "should_trigger": true
+  },
+  {
+    "query": "I need a thematic review of these sources, organized by debates and methodological differences rather than one source at a time.",
+    "should_trigger": true
+  },
+  {
+    "query": "Create a review plan with scope, theme candidates, and gaps for a dissertation chapter on rPPG foundation models.",
+    "should_trigger": true
+  },
+  {
+    "query": "Summarize this one paper into structured notes.",
+    "should_trigger": false
+  },
+  {
+    "query": "Find this paper in Page Index and tell me whether it exists.",
+    "should_trigger": false
+  },
+  {
+    "query": "Classify these papers into my taxonomy and flag the borderline ones.",
+    "should_trigger": false
+  },
+  {
+    "query": "I need a PRISMA-compliant screening workflow and flow diagram for a systematic review protocol.",
+    "should_trigger": false
+  },
+  {
+    "query": "Please calculate a pooled effect size across these studies.",
+    "should_trigger": false
+  },
+  {
+    "query": "Upload these PDFs to Page Index and check for duplicates first.",
+    "should_trigger": false
+  },
+  {
+    "query": "Read this one PDF and produce a detailed paper summary report.",
+    "should_trigger": false
+  },
+  {
+    "query": "Design a standalone ontology for this research area before we classify anything.",
+    "should_trigger": false
+  }
+]
