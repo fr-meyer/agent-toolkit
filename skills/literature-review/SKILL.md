@@ -199,6 +199,11 @@ Template rules:
 - keep the template as a support scaffold, not as filler text
 - if the user wants a shorter article-introduction review, compress the same logic into fewer sections rather than copying the full template mechanically
 
+## Evaluation Support
+
+For trigger testing and publication-quality review, read:
+- `references/eval-prompts.json` — use when checking should-trigger and should-not-trigger boundary behavior for this skill
+
 ## Output / File Behavior
 
 If the user wants the review saved to files:

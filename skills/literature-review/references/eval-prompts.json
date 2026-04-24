@@ -16,6 +16,22 @@
     "should_trigger": true
   },
   {
+    "query": "Write a synthesis memo comparing how these papers frame uncertainty in clinical decision-support systems.",
+    "should_trigger": true
+  },
+  {
+    "query": "Turn these article notes and prior summaries into a literature review introduction for my paper.",
+    "should_trigger": true
+  },
+  {
+    "query": "I need a thematic review of these sources, organized by debates and methodological differences rather than one source at a time.",
+    "should_trigger": true
+  },
+  {
+    "query": "Create a review plan with scope, theme candidates, and gaps for a dissertation chapter on rPPG foundation models.",
+    "should_trigger": true
+  },
+  {
     "query": "Summarize this one paper into structured notes.",
     "should_trigger": false
   },
@@ -29,6 +45,22 @@
   },
   {
     "query": "I need a PRISMA-compliant screening workflow and flow diagram for a systematic review protocol.",
+    "should_trigger": false
+  },
+  {
+    "query": "Please calculate a pooled effect size across these studies.",
+    "should_trigger": false
+  },
+  {
+    "query": "Upload these PDFs to Page Index and check for duplicates first.",
+    "should_trigger": false
+  },
+  {
+    "query": "Read this one PDF and produce a detailed paper summary report.",
+    "should_trigger": false
+  },
+  {
+    "query": "Design a standalone ontology for this research area before we classify anything.",
     "should_trigger": false
   }
 ]
