@@ -1,0 +1,34 @@
+[
+  {
+    "query": "Help me turn these 14 papers into a themed literature review section on multimodal clinical time-series forecasting.",
+    "should_trigger": true
+  },
+  {
+    "query": "I have reading notes from 9 papers. Build a literature review outline with themes, tensions, and gaps before I start writing.",
+    "should_trigger": true
+  },
+  {
+    "query": "Draft the literature review chapter for my thesis from this source matrix and search log.",
+    "should_trigger": true
+  },
+  {
+    "query": "Can you help scope a narrative review on LLM controllability and propose inclusion/exclusion boundaries?",
+    "should_trigger": true
+  },
+  {
+    "query": "Summarize this one paper into structured notes.",
+    "should_trigger": false
+  },
+  {
+    "query": "Find this paper in Page Index and tell me whether it exists.",
+    "should_trigger": false
+  },
+  {
+    "query": "Classify these papers into my taxonomy and flag the borderline ones.",
+    "should_trigger": false
+  },
+  {
+    "query": "I need a PRISMA-compliant screening workflow and flow diagram for a systematic review protocol.",
+    "should_trigger": false
+  }
+]
