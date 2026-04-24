@@ -1,0 +1,67 @@
+[
+  {
+    "query": "Take the Zotero items tagged review-queue but not literature-reviewed, make sure the papers exist in Page Index, read them, write one final literature review to the path I give you, and retag the Zotero items when you're done.",
+    "should_trigger": true,
+    "why": "This is the exact end-to-end Zotero tag queue to aggregate literature review workflow."
+  },
+  {
+    "query": "From my Zotero queue tags, generate per-paper evidence notes and summary files, then synthesize a single review chapter and save it as Markdown.",
+    "should_trigger": true,
+    "why": "Starts from Zotero tags and asks for both per-paper artifacts and one final review."
+  },
+  {
+    "query": "Process Zotero items with include/exclude tag rules, use Page Index as the reading source, and create one aggregate literature review with final success/error tagging.",
+    "should_trigger": true,
+    "why": "Combines tag-based selection, Page Index reading, synthesis, and retagging."
+  },
+  {
+    "query": "Use my Zotero review queue to build reusable paper evidence cards and summaries, then write the final literature review file and remove the queue tag from successful items.",
+    "should_trigger": true,
+    "why": "Queue-driven orchestration with saved intermediate artifacts and outcome tagging is core scope."
+  },
+  {
+    "query": "Work through the papers in my Zotero review queue, use Page Index as the ground-truth reading source, and produce one final review chapter plus reusable paper artifacts.",
+    "should_trigger": true,
+    "why": "Uses queue language and review deliverables without needing to say the skill name explicitly."
+  },
+  {
+    "query": "I need a pipeline from Zotero tags to one saved dissertation literature review chapter, with per-paper evidence cards and summaries along the way.",
+    "should_trigger": true,
+    "why": "Strong end-to-end orchestration prompt with saved artifacts and one final chapter output."
+  },
+  {
+    "query": "Draft a literature review from these ten already-prepared reading notes.",
+    "should_trigger": false,
+    "why": "Pure synthesis from prepared notes belongs to literature-review, not the Zotero queue orchestrator."
+  },
+  {
+    "query": "Find these papers in Page Index and tell me the verified filenames.",
+    "should_trigger": false,
+    "why": "Pure Page Index resolution belongs to pageindex-find-papers."
+  },
+  {
+    "query": "Summarize these Page Index papers into one Markdown file each.",
+    "should_trigger": false,
+    "why": "Per-paper summary generation by itself belongs to pageindex-summarize-papers or summarize-research-papers."
+  },
+  {
+    "query": "Upload these Zotero attachment URLs to Page Index and preserve the filenames.",
+    "should_trigger": false,
+    "why": "Pure Zotero-to-Page-Index ingest belongs to zotero-docai-ingest-to-pageindex."
+  },
+  {
+    "query": "Add the tag reviewed to all Zotero items with queue-tag and remove queue-tag from them.",
+    "should_trigger": false,
+    "why": "Standalone retagging without the literature-review workflow is too narrow for this orchestrator."
+  },
+  {
+    "query": "Read and summarize the Zotero papers selected by these tags, but do not write any final aggregate review.",
+    "should_trigger": false,
+    "why": "This is paper-level reading and summarization only, not the full aggregate review orchestration."
+  },
+  {
+    "query": "Classify these research papers into my taxonomy after reading them.",
+    "should_trigger": false,
+    "why": "Classification belongs to classify-research-papers, not this review orchestration skill."
+  }
+]
