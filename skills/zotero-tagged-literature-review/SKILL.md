@@ -82,6 +82,29 @@ Optional saved support artifacts:
 - one per-paper summary report per paper when the user asked for saved summaries or the workflow materially benefits from them
 - a saved manifest when the user asked for support artifacts
 
+### Default artifact layout and naming
+
+When the user requests saved support artifacts, prefer a stable subfolder layout under the chosen artifact directory:
+
+- `evidence-cards/`
+- `paper-summaries/`
+- `cluster-syntheses/`
+- `super-cluster-syntheses/`
+- `manifests/`
+
+Default filename guidance:
+- evidence card: `<citation-key-or-short-title>--evidence-card.md`
+- per-paper summary: `<citation-key-or-short-title>--summary.md`
+- cluster synthesis: `cluster-<nn>--<short-theme-or-method-label>.md`
+- super-cluster synthesis: `super-cluster-<nn>--<short-theme-or-domain-label>.md`
+- manifest: `review-run-manifest.md`
+
+Rules:
+- prefer stable, human-readable filenames
+- update an existing artifact in place when it is clearly the same paper or synthesis unit
+- create a versioned copy only when the user explicitly wants versioning or when overwriting would destroy meaningful prior work
+- keep naming consistent across all hierarchy levels so provenance stays easy to follow
+
 For the detailed manifest shape, evidence-card content, saved-summary policy, paper-level success boundary, and partial-outcome reporting rules, read:
 - `references/artifact-and-outcome-policy.md`
 
@@ -131,6 +154,27 @@ Rules:
 
 If the papers are unusually long, methodologically dense, or require rich evidence extraction, prefer the lower end of the batch range.
 
+### Context reset and execution boundary policy
+
+For medium and large workflows, do not assume the whole job should run in one uninterrupted live context.
+
+Default execution guidance:
+- 1-5 papers:
+  - one live run is usually acceptable
+- 6-20 papers:
+  - prefer a clean context boundary between paper-reading and final synthesis
+- 21-60 papers:
+  - prefer isolated sub-runs for reading batches or cluster syntheses when available
+  - prefer a fresh parent synthesis context for the final review
+- 61+ papers:
+  - default to file-backed handoffs between major stages
+  - prefer isolated sub-runs for batch reading and intermediate syntheses when available
+
+Rules:
+- if durable artifacts have already been written, reload compact artifact outputs instead of carrying forward long in-chat state
+- if context pressure is visible, stop expanding the current live context and switch to a fresh context boundary
+- when unsure, prefer the smaller and cleaner execution boundary
+
 ### Hierarchical synthesis policy
 
 When the workflow uses hierarchical synthesis, do not treat the whole run as one ever-growing conversational draft.
@@ -155,6 +199,25 @@ When cluster-level synthesis is required, build clusters using the most meaningf
 5. chronological grouping only when analytically justified
 6. stable size-balanced fallback grouping if no stronger grouping is available
 
+Examples of good clustering:
+- method-family clusters:
+  - self-supervised representation learning papers together
+  - benchmark or evaluation papers together
+  - clinical deployment or monitoring papers together
+- domain or dataset clusters:
+  - ICU monitoring papers together
+  - wearable-device papers together
+  - PPG benchmark dataset papers together
+- topic/theme clusters:
+  - signal quality estimation papers together
+  - cuffless blood pressure estimation papers together
+  - multimodal physiological fusion papers together
+
+If no meaningful analytical grouping is available, use a stable size-balanced fallback:
+- create roughly even clusters
+- preserve a reproducible ordering rule
+- avoid reshuffling papers arbitrarily between runs unless the evidence base changed
+
 Do not create arbitrary clusters if a meaningful analytical grouping is available.
 
 ### Context budget discipline
@@ -167,6 +230,16 @@ For medium and large workflows:
 - do not treat earlier chat turns as the authoritative store of paper-level detail once artifacts have been written
 
 If context pressure becomes visible, prefer writing and reloading compact artifacts over continuing to accumulate detailed in-chat state.
+
+Allowed live-context content for medium and large workflows should usually be limited to:
+- Zotero item identifiers
+- verified Page Index filenames
+- batch or cluster membership
+- status flags
+- short evidence pointers
+- short synthesis claims that point back to saved artifacts
+
+Do not paste long saved evidence cards, long paper summaries, or long cluster syntheses back into the main live context unless a specific ambiguity requires a targeted re-check.
 
 ## Required Workflow
 
@@ -270,6 +343,25 @@ Default policy:
 - 61+ papers: add higher-level synthesis layers when needed before the final review
 
 Do not keep escalating one flat conversation when the artifact set is already large enough to justify a file-backed handoff.
+
+### 9.5 Handle failures at the correct hierarchy level
+
+Failures should be contained at the smallest honest unit rather than collapsing the entire workflow by default.
+
+Rules:
+- if one paper fails inside a reading batch:
+  - mark that paper as failed
+  - continue the batch if the remaining papers are still usable
+  - exclude the failed paper from downstream synthesis eligibility
+- if one cluster-level synthesis fails:
+  - do not pretend that cluster was synthesized successfully
+  - continue with other completed clusters when the user allows partial outcomes
+  - label the final review as partial if it excludes that failed cluster
+- if one higher-level synthesis layer fails:
+  - fall back to the highest completed lower layer when that still supports an honest partial result
+  - otherwise stop and report the exact failed layer
+
+Do not silently blur paper-level failures, cluster-level failures, and whole-run failures into one vague status.
 
 ### 10. Generate the aggregate literature review
 

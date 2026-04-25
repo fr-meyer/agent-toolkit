@@ -92,6 +92,28 @@ When the paper set is too large for a safe flat synthesis pass:
 
 Cluster-level and higher-level synthesis artifacts are intermediate review supports, not replacements for paper-level provenance.
 
+### Provenance requirements for synthesis artifacts
+
+Each cluster-level synthesis artifact should record at least:
+- cluster identifier
+- grouping rationale
+- included papers
+- excluded or failed papers relevant to that cluster
+- upstream artifact paths used as inputs
+
+Each higher-level synthesis artifact should record at least:
+- synthesis-layer identifier
+- included child synthesis artifacts
+- excluded child synthesis artifacts, if any
+- aggregation rationale
+- upstream artifact paths used as inputs
+
+The final review should record its synthesis path explicitly:
+- direct synthesis from papers and evidence cards
+- synthesis from paper-level artifacts
+- synthesis from cluster-level artifacts
+- synthesis from multi-level hierarchical artifacts
+
 ## Paper-Level Success Boundary
 
 Define success at the paper level as:
@@ -123,6 +145,18 @@ If some papers fail:
 
 Do not overclaim that the final literature review covers all matched Zotero items unless it truly does.
 
+## Hierarchical Partial-Failure Policy
+
+When hierarchical synthesis is used, partial success must be reported at the correct level.
+
+Rules:
+- a failed paper should be excluded from cluster synthesis unless later recovered
+- a failed cluster synthesis should be excluded from higher-level synthesis unless later recovered
+- a failed higher-level synthesis should not be described as completed merely because lower-level artifacts exist
+- if the final review is produced from only a subset of papers or clusters, label it as partial and state the omitted scope explicitly
+
+Do not present a hierarchy with missing internal layers as if it were a complete end-to-end synthesis.
+
 ## Final Reporting
 
 Always report:
@@ -141,3 +175,30 @@ When hierarchical synthesis was used, also report:
 - the synthesis layers that were used
 - the grouping basis used for cluster formation when that materially affects interpretation
 - whether the final review was produced from paper-level artifacts directly or from higher-level aggregation artifacts
+- whether any cluster or higher-level synthesis stage failed or was omitted
+- whether the final review is complete or partial with respect to the originally selected Zotero set
+
+## Worked Scale Examples
+
+### Example A: small direct run
+- 4 papers selected
+- 4 papers verified and fully read
+- 4 evidence cards created
+- no cluster layer needed
+- final review written directly from paper-level evidence
+
+### Example B: medium batched run
+- 12 papers selected
+- papers processed in 3-paper or 4-paper reading batches
+- evidence cards written for fully read papers
+- optional per-paper summaries saved
+- final review written from saved paper-level artifacts in a fresh synthesis context
+
+### Example C: large hierarchical run
+- 80 papers selected
+- papers processed in small reading batches
+- paper-level artifacts saved
+- papers grouped into bounded thematic or methodological clusters
+- cluster-level syntheses written
+- cluster outputs grouped again if needed into higher-level syntheses
+- final review written from the highest stable synthesis layer with explicit provenance

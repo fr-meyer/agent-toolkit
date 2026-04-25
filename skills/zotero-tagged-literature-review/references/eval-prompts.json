@@ -63,5 +63,30 @@
     "query": "Classify these research papers into my taxonomy after reading them.",
     "should_trigger": false,
     "why": "Classification belongs to classify-research-papers, not this review orchestration skill."
+  },
+  {
+    "query": "Take the Zotero papers tagged review-queue, there are about 12 of them, use Page Index for reading, save reusable paper artifacts, then write one final literature review and retag success and failure items.",
+    "should_trigger": true,
+    "why": "This is the same orchestrator workflow but explicitly medium-sized, so batching and artifact-backed synthesis should still remain in scope."
+  },
+  {
+    "query": "Process roughly 80 Zotero papers from my review queue, read them through Page Index, save intermediate artifacts, use hierarchical synthesis if needed, and write one final literature review file.",
+    "should_trigger": true,
+    "why": "Large-scale queue-driven review orchestration with hierarchical synthesis still belongs to this skill."
+  },
+  {
+    "query": "Use the Zotero review queue, but cluster the papers by method family before synthesizing the final literature review, and keep failures separate from the successful subset.",
+    "should_trigger": true,
+    "why": "User-directed grouping and partial-failure handling are still within the orchestrator's intended scope."
+  },
+  {
+    "query": "Summarize these 25 Page Index papers into cluster summaries only; do not use Zotero tags and do not write a final literature review.",
+    "should_trigger": false,
+    "why": "This lacks the Zotero queue orchestration and the required final aggregate review deliverable."
+  },
+  {
+    "query": "I already have paper summaries and cluster memos saved on disk; just draft the final literature review from them.",
+    "should_trigger": false,
+    "why": "Pure synthesis from prepared artifacts belongs to literature-review rather than this Zotero queue orchestrator."
   }
 ]
