@@ -85,6 +85,89 @@ Optional saved support artifacts:
 For the detailed manifest shape, evidence-card content, saved-summary policy, paper-level success boundary, and partial-outcome reporting rules, read:
 - `references/artifact-and-outcome-policy.md`
 
+## Dynamic Scale-Aware Execution
+
+This workflow must choose its synthesis strategy based on the size of the successfully readable paper set rather than always attempting one direct end-to-end synthesis in one live context.
+
+### Default scale policy
+
+After Zotero selection, Page Index verification, and paper-level read eligibility are known, determine the size of the synthesis-eligible set and choose the default route:
+
+- 1-5 papers:
+  - direct final synthesis is allowed
+  - per-paper evidence cards are still required
+  - saved per-paper summaries remain optional unless requested
+
+- 6-20 papers:
+  - process papers in small reading batches
+  - save paper-level artifacts to files
+  - perform final synthesis from saved artifacts rather than from a long accumulated live context
+
+- 21-60 papers:
+  - process papers in small reading batches
+  - save paper-level artifacts
+  - create intermediate cluster-level synthesis artifacts before producing the final review
+
+- 61+ papers:
+  - process papers in small reading batches
+  - save paper-level artifacts
+  - use multi-level hierarchical synthesis when needed:
+    - paper-level artifacts
+    - cluster-level syntheses
+    - optional super-cluster syntheses
+    - final aggregate review
+
+These thresholds are defaults. If the environment, model context window, artifact verbosity, or paper complexity makes a smaller threshold safer, prefer the smaller threshold.
+
+### Reading batch policy
+
+For medium and large workflows, default reading batches should usually contain 3-5 papers.
+
+Rules:
+- finish one reading batch before moving to the next
+- save durable artifacts before starting the next batch
+- do not keep raw extracted paper content from earlier batches in active working context when file-backed artifacts already exist
+- after each batch, prefer a clean context boundary before continuing if the conversation has become artifact-heavy
+
+If the papers are unusually long, methodologically dense, or require rich evidence extraction, prefer the lower end of the batch range.
+
+### Hierarchical synthesis policy
+
+When the workflow uses hierarchical synthesis, do not treat the whole run as one ever-growing conversational draft.
+
+Instead:
+1. create paper-level evidence cards for every fully read paper
+2. optionally create saved per-paper summaries when requested or clearly useful
+3. group papers into bounded synthesis clusters
+4. create one cluster-level synthesis artifact per cluster
+5. if the cluster layer is still too large for a safe final synthesis, group cluster outputs into another higher-level synthesis layer
+6. produce the final literature review from the highest stable synthesis layer plus any necessary spot-checking against lower-level artifacts
+
+Use saved artifacts as the handoff boundary between levels. Do not rely on accumulated conversational memory as the primary storage layer for large workflows.
+
+### Cluster formation policy
+
+When cluster-level synthesis is required, build clusters using the most meaningful available grouping signal, in this order when possible:
+1. user-requested grouping
+2. explicit topic/theme similarity
+3. method family
+4. population/domain similarity
+5. chronological grouping only when analytically justified
+6. stable size-balanced fallback grouping if no stronger grouping is available
+
+Do not create arbitrary clusters if a meaningful analytical grouping is available.
+
+### Context budget discipline
+
+For medium and large workflows:
+- keep the active manifest compact
+- keep only identifiers, filenames, statuses, and short evidence pointers in live context
+- store long notes, evidence extracts, and summaries in files
+- do not repeatedly restate previously saved artifact content in full
+- do not treat earlier chat turns as the authoritative store of paper-level detail once artifacts have been written
+
+If context pressure becomes visible, prefer writing and reloading compact artifacts over continuing to accumulate detailed in-chat state.
+
 ## Required Workflow
 
 ### 1. Lock the workflow contract
@@ -176,20 +259,39 @@ If the user did not ask for saved per-paper summaries:
 - keep evidence cards as the minimum reusable intermediate layer
 - do not force extra saved summary files by default unless the workflow explicitly calls for them
 
-### 9. Generate the aggregate literature review
+### 9. Choose the scale-aware synthesis route
 
-Use the successfully read papers, evidence cards, and any saved per-paper summaries to produce:
+Before generating the final review, choose the synthesis route that matches the number and complexity of successfully read papers.
+
+Default policy:
+- 1-5 papers: direct final synthesis is allowed
+- 6-20 papers: synthesize from saved paper-level artifacts rather than from one long live context
+- 21-60 papers: create cluster-level synthesis artifacts before the final review
+- 61+ papers: add higher-level synthesis layers when needed before the final review
+
+Do not keep escalating one flat conversation when the artifact set is already large enough to justify a file-backed handoff.
+
+### 10. Generate the aggregate literature review
+
+Use the successfully read papers plus the highest stable artifact layer available to produce:
 - one aggregate literature review
+
+Possible synthesis bases include:
+- evidence cards and verified full papers for small runs
+- saved per-paper summaries when those were requested or clearly useful
+- cluster-level synthesis artifacts for medium and large runs
+- optional super-cluster synthesis artifacts for very large runs
 
 The final review should:
 - synthesize across papers rather than summarize them one by one
 - stay grounded in the evidence cards and verified full papers
 - reopen the full Page Index paper when a summary is too lossy or ambiguous
 - state clearly if the synthesis excluded failed or unread papers
+- state clearly when hierarchical synthesis layers were used instead of one flat direct drafting pass
 
 Use `literature-review` for the actual synthesis-writing standard.
 
-### 10. Save the final review
+### 11. Save the final review
 
 Write the final review to the user-provided Markdown path.
 
@@ -198,7 +300,7 @@ Rules:
 - use a stable, human-readable filename when the user gives a directory but leaves the final basename open
 - if the user asked for only one final review file, do not split the review into multiple files without asking
 
-### 11. Apply final Zotero tagging carefully
+### 12. Apply final Zotero tagging carefully
 
 Use a paper-level success boundary rather than a vague whole-run success claim.
 
@@ -224,6 +326,8 @@ Read `references/artifact-and-outcome-policy.md` when you need the exact success
 - Do not remove queue tags on failure by default.
 - Do not silently accept degraded Page Index filenames when the workflow depends on stable mapping.
 - Do not guess file paths for the final review or saved support artifacts.
+- Do not keep raw paper details for dozens of papers in one growing live context once durable artifacts already exist.
+- Do not fake a flat direct synthesis path when the workflow actually required cluster-level or multi-level aggregation.
 
 ## Evaluation Support
 
