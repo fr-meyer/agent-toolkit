@@ -175,6 +175,59 @@ Rules:
 - if context pressure is visible, stop expanding the current live context and switch to a fresh context boundary
 - when unsure, prefer the smaller and cleaner execution boundary
 
+### Direct-execution refinement mode
+
+When the user wants a backlog drained quickly, wants active refinement rather than periodic maintenance, or explicitly rejects scheduler-driven execution, prefer a **direct live execution loop** over cron/watchdog-style orchestration.
+
+Default behavior in this mode:
+- use one direct long-lived parent worker or one actively managed small set of live workers rather than periodic scheduler wakeups
+- re-read the live queue/manifest/review state immediately before every dispatch
+- treat the queue's currently assigned lane batch as authoritative over any stale earlier plan
+- after each verified durable completion, continue directly to the next smallest safe batch instead of waiting for a later scheduler cycle
+- keep the concurrency cap explicit and small; more live workers are not a substitute for durable checkpoints
+- when the user prioritizes speed, fill the safe concurrency cap deliberately rather than leaving lanes idle
+- prefer **one live worker per active lane** as the default parallelism model for this workflow
+
+Rules:
+- do not use cron/watchdog as the primary driver when the user asked for rapid direct execution
+- if live queue state advances while a plan is being prepared, abandon the stale plan and switch to the current authoritative batch
+- if one paper in a batch blocks but others can land durably, salvage the largest truthful durable subset instead of replaying the whole batch unchanged
+- if repeated non-durable attempts occur, change the execution unit or containment boundary rather than letting retry churn masquerade as progress
+- keep scheduler-based recovery as an opt-in fallback only, not the default execution path for rapid refinement work
+- when parallelism is increased, respect the verified lane/concurrency cap from the active queue policy rather than inventing extra workers outside the tracked lanes
+- use available lanes promptly when they have an assigned active stage, but do not exceed **one active worker batch per lane** unless the workflow has been explicitly redesigned around stage-owned writer slots
+- if the workflow is already lane-capped, improve throughput by shortening handoff time between durable completions and the next dispatch, not by oversubscribing more workers to the same lane
+
+### Dynamic worker-budget policy
+
+If the user wants to increase or decrease the number of live workers on the fly, do not treat the requested number as a direct instruction to duplicate normal writers on the same review track.
+
+Default reusable rule:
+- compute the safest worker mix from the current backlog shape each time the target changes
+- fill **distinct durable-writer stage owners** first
+- then fill any clearly safe **branch-scoped artifact-writer** opportunities
+- only then use extra capacity for **read-only scout workers**
+
+Definitions:
+- a **durable writer** may write shared artifacts for exactly one stage owner
+- an **artifact-writer** may write only branch-scoped durable artifacts such as per-paper summaries, evidence cards, and cluster syntheses for a non-overlapping paper set
+- a **stage owner** is the pair of shared durable outputs that define the track, typically the aggregate review file plus the manifest file for that track
+- a **scout** may help with source mapping, blocker screening, duplicate checks, and next-batch shaping, but must not write shared review/manifest/queue files
+
+Rules:
+- never run more than one durable writer against the same stage owner at the same time
+- when the user changes the worker target, recompute the writer/scout mix before the next dispatch wave
+- if additional safe distinct writer stages exist, use them before adding artifact-writers or scouts
+- artifact-writers must never update the shared aggregate review, shared manifest, or shared queue state
+- if no additional safe distinct writer stages or non-overlapping artifact-writing branches exist, extra workers must remain read-only scouts or remain unused
+- if a single parent session hits its child-budget ceiling but safe distinct write domains still exist, switch to **multi-parent sharding** instead of duplicating writers on the same stage owner
+- under multi-parent sharding, assign each shard parent a non-overlapping write domain and let that shard parent spawn only the children needed inside its owned domain
+- if the workflow supports explicit runtime queue/control fields, expose the latest target, computed durable-writer slots, computed artifact-writer slots, computed scout slots, and recompute reason so the scaling decision stays auditable
+
+For the detailed reusable dynamic worker-budget pattern, including a tiny operator-facing command convention such as `targetSubagents=<n>` and `targetSubagents=max-safe`, the requested-vs-effective capacity distinction, and the multi-parent sharding fallback, read:
+- `references/dynamic-worker-policy.md`
+- `references/multi-parent-sharding.md`
+
 ### Hierarchical synthesis policy
 
 When the workflow uses hierarchical synthesis, do not treat the whole run as one ever-growing conversational draft.
@@ -279,7 +332,27 @@ The manifest should make the workflow traceable across Zotero selection, Page In
 
 Read `references/artifact-and-outcome-policy.md` when you need the detailed field expectations.
 
-### 4. Ensure Page Index availability
+### 4. Run a pre-dispatch blocker and reuse screen
+
+Before dispatching any normal reading/summarization batch, screen the candidate papers for obvious blockers or obvious reusable wins.
+
+Required checks:
+- whether a verified full-paper summary or other durable paper artifact already exists on disk and is sufficient to advance the manifest honestly
+- whether the local Zotero storage artifact directory or other required local source artifact is missing
+- whether the environment is already known to lack a prerequisite needed for the next claimed action (for example writeback prerequisites)
+- whether the same paper is already represented by a verified duplicate record that should be resolved first instead of reread
+- whether the live queue/lane state still points at this exact batch, or whether a newer authoritative batch already superseded the planned dispatch
+
+Rules:
+- if a durable artifact already exists and is sufficient, reuse it immediately instead of dispatching a fresh normal worker
+- if an obvious source-artifact blocker is already known, record the blocker explicitly at paper level before spending another retry on the same doomed path
+- if a known environment limitation means a step cannot succeed, downgrade the planned action honestly instead of dispatching a worker that will only rediscover the same limit
+- if duplicate resolution can settle the paper honestly, do that before launching a new reading batch
+- if the live queue has already advanced to a newer authoritative batch, discard the stale plan and switch before dispatch
+
+The goal is to prevent avoidable retries before they start.
+
+### 5. Ensure Page Index availability
 
 For each selected paper:
 - check first whether it already exists in Page Index
@@ -291,14 +364,14 @@ For each selected paper:
 Do not silently accept degraded generic filenames such as `file.pdf` when the workflow depends on reliable mapping.
 Do not skip the duplicate-check-first step just because a Zotero attachment URL is already available.
 
-### 5. Resolve the verified Page Index source of record
+### 6. Resolve the verified Page Index source of record
 
 Before reading or summarizing a paper:
 - verify the exact Page Index filename that will act as the source of record
 - store that mapping in the working manifest
 - if multiple verified Page Index files exist, record all of them and identify which one is the primary reading target
 
-### 6. Read the paper fully from Page Index
+### 7. Read the paper fully from Page Index
 
 For each verified paper:
 - use Page Index full-paper reading rules
@@ -309,7 +382,63 @@ If the user still wants a partial workflow outcome after some papers fail:
 - clearly separate successfully read papers from failed ones
 - make the final synthesis scope explicit
 
-### 7. Create per-paper evidence cards
+### 7.25 Durable checkpoint pipeline
+
+For refinement-style or queue-driven runs, prefer a **stepwise durable pipeline** over a single loose “complete the batch” instruction.
+
+Default checkpoint order:
+1. verify the exact source-of-record paper mapping for the current paper or batch
+2. write or explicitly verify reuse of the per-paper summary artifact
+3. update the manifest row(s)
+4. update the aggregate review only after the relevant paper-level artifact and manifest state are durable
+5. only then record queue/lane advancement or batch completion
+
+Rules:
+- do not collapse these checkpoints into one success claim unless the durable artifacts for the earlier checkpoints already exist on disk
+- if the batch stalls after one or more checkpoints, record the truthful partial durable state rather than reverting to an all-or-nothing completion story
+- if only reading or extraction happened but no downstream artifact checkpoint landed, stop the batch at that state and record `no_durable_progress`
+- if a later checkpoint fails, preserve and report the earlier landed artifacts instead of hiding them behind a failed batch label
+- prefer smaller checkpointed progress over broader but weakly verified “done” claims
+
+### 7.35 Retry-exhaustion and reroute policy
+
+When the same batch shape keeps failing file-backed verification, do not keep treating repeated retries as the default path.
+
+Rules:
+- after repeated `no_durable_progress` outcomes, narrow the batch boundary, split the mixed cluster, or reroute the lane to a smaller safer unit
+- do not blindly re-dispatch an exhausted trio just because it was the last attempted batch
+- if one paper appears to be the blocker, isolate that paper and let the salvageable remainder proceed separately when truthful
+- if the cluster mixes materially different paper types (for example survey + benchmark + tooling/interface paper), prefer splitting earlier rather than forcing one shared completion boundary
+- if a batch is paused because automatic retries were exhausted, the next step should usually be explicit reroute, explicit blocker recording, or smallest-safe subset salvage — not silent replay of the same unit
+
+### 7.5 Enforce the false-success guard before claiming progress
+
+A worker or sub-step must not report a meaningful completion unless at least one required durable artifact actually changed on disk.
+
+For any paper-level or batch-level success claim, verify the claimed durable output first:
+- manifest row changed appropriately
+- review file changed appropriately when review inclusion is claimed
+- per-paper summary file was written, updated, or explicitly verified as a reused durable artifact when summary progress is claimed
+- Zotero writeback result file exists when writeback is claimed
+
+Rules:
+- if none of the required durable artifacts changed, return or record `no_durable_progress` rather than a success-like completion
+- do not treat page fetches, partial reads, self-reported worker completions, or broad undifferentiated file dumps as success by themselves
+- do not enqueue the same retry as if the prior attempt succeeded; record it explicitly as a non-durable attempt
+- prefer failing small and honestly over inflating progress signals that the watchdog will later have to unwind
+- after any `no_durable_progress` result, reassess the batch boundary itself before retrying; do not assume the same batch shape is still optimal
+- if a batch can be partially salvaged with truthful durable outputs, record the landed subset first and isolate only the unresolved remainder for follow-up
+- a completion report must identify the exact paper keys or synthesis units that advanced and the exact durable artifacts that changed; otherwise it is not enough to count as a verified batch success
+
+Minimum completion report fields for any claimed durable batch outcome:
+- `status`: `durable_progress`, `partial_durable_progress`, `no_durable_progress`, or `blocked`
+- `advanced_item_keys`: exact paper keys that truly advanced, or an empty list
+- `files_changed`: exact durable file paths changed on disk, or an empty list
+- `count_delta`: exact before/after coverage numbers when review coverage moved, otherwise an explicit `no_change`
+- `blocker`: exact blocker description when not all intended papers landed, otherwise `none`
+- `writeback_claimed`: `true` only when a Zotero writeback result file exists on disk for the claimed items; otherwise `false`
+
+### 8. Create per-paper evidence cards
 
 For every paper that was fully read:
 - create a compact evidence card
@@ -320,7 +449,7 @@ Evidence cards are required even when saved per-paper summaries are also produce
 
 Read `references/artifact-and-outcome-policy.md` when you need the detailed evidence-card expectations.
 
-### 8. Create per-paper summaries when useful
+### 9. Create per-paper summaries when useful
 
 If the user requested reusable per-paper summary files, or if the workflow explicitly benefits from reusable summary artifacts:
 - create one saved summary per paper
@@ -332,7 +461,7 @@ If the user did not ask for saved per-paper summaries:
 - keep evidence cards as the minimum reusable intermediate layer
 - do not force extra saved summary files by default unless the workflow explicitly calls for them
 
-### 9. Choose the scale-aware synthesis route
+### 10. Choose the scale-aware synthesis route
 
 Before generating the final review, choose the synthesis route that matches the number and complexity of successfully read papers.
 
@@ -344,7 +473,7 @@ Default policy:
 
 Do not keep escalating one flat conversation when the artifact set is already large enough to justify a file-backed handoff.
 
-### 9.5 Handle failures at the correct hierarchy level
+### 10.5 Handle failures at the correct hierarchy level
 
 Failures should be contained at the smallest honest unit rather than collapsing the entire workflow by default.
 
@@ -363,7 +492,7 @@ Rules:
 
 Do not silently blur paper-level failures, cluster-level failures, and whole-run failures into one vague status.
 
-### 10. Generate the aggregate literature review
+### 11. Generate the aggregate literature review
 
 Use the successfully read papers plus the highest stable artifact layer available to produce:
 - one aggregate literature review
@@ -383,7 +512,7 @@ The final review should:
 
 Use `literature-review` for the actual synthesis-writing standard.
 
-### 11. Save the final review
+### 12. Save the final review
 
 Write the final review to the user-provided Markdown path.
 
@@ -392,7 +521,7 @@ Rules:
 - use a stable, human-readable filename when the user gives a directory but leaves the final basename open
 - if the user asked for only one final review file, do not split the review into multiple files without asking
 
-### 12. Apply final Zotero tagging carefully
+### 13. Apply final Zotero tagging carefully
 
 Use a paper-level success boundary rather than a vague whole-run success claim.
 
@@ -417,6 +546,13 @@ Read `references/artifact-and-outcome-policy.md` when you need the exact success
 - Do not claim queue exhaustion when the upstream tag-selection system may still be paginated or truncated.
 - Do not remove queue tags on failure by default.
 - Do not silently accept degraded Page Index filenames when the workflow depends on stable mapping.
+- Do not dispatch a normal worker when an obvious blocker or sufficient reusable durable artifact has already been identified.
+- Do not keep executing a stale batch plan after the live queue has already advanced to a newer authoritative batch.
+- Do not treat worker self-reports, page fetches, partial reads, or broad file dumps as success unless the required durable files actually changed on disk.
+- Do not skip the durable checkpoint order just because a worker claims the whole batch is finished.
+- Do not keep a mixed survey/benchmark/tooling batch together once early verification shows the papers do not share a clean durable completion boundary.
+- Do not let retry churn stand in for progress; if repeated retries stay non-durable, change the batch boundary, split the mixed unit, or record the blocker.
+- Do not interpret a higher user-requested worker count as permission to run multiple durable writers against the same review/manifest owner.
 - Do not guess file paths for the final review or saved support artifacts.
 - Do not keep raw paper details for dozens of papers in one growing live context once durable artifacts already exist.
 - Do not fake a flat direct synthesis path when the workflow actually required cluster-level or multi-level aggregation.
@@ -425,6 +561,9 @@ Read `references/artifact-and-outcome-policy.md` when you need the exact success
 
 For trigger-boundary testing, read:
 - `references/eval-prompts.json`
+
+For reusable dynamic worker-budget design guidance, read:
+- `references/dynamic-worker-policy.md`
 
 ## Portability Notes
 
