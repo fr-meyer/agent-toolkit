@@ -36,6 +36,9 @@ Do not use it for:
 
 - Treat the Zotero attachment filename as the canonical ingest filename.
 - Preserve that filename when submitting the document to Page Index whenever the selected ingest method supports it.
+- For this Zotero → Page Index workflow, Page Index submission must use the Page Index MCP path only, via `pageindex-ingest-paper-urls` / Page Index MCP tools.
+- Do not use direct Page Index API, SDK, HTTP multipart upload, custom upload clients, or API-key-based Page Index upload code unless Franck explicitly overrides this rule.
+- If MCP-only ingestion cannot fetch the URL or preserve the canonical Zotero filename, stop and report the blocker; do not implement an API workaround.
 - Do not silently accept degraded naming such as `file.pdf` when the Zotero attachment filename is available.
 - If the current ingest method cannot preserve the filename, stop and report the limitation clearly instead of calling the ingest a full success.
 - Do not assume that a plain `zotero_file_url` is directly fetchable by Page Index.
@@ -63,6 +66,7 @@ Do not use it for:
 
 ## Gotchas
 
+- MCP-only is a hard constraint for this workflow. Do not bypass MCP filename or fetchability limits with direct Page Index API/SDK upload code unless Franck explicitly changes the constraint.
 - This skill does not invent Zotero URLs; it expects exported or otherwise supplied Zotero attachment URLs, which are not automatically publicly reachable—when Page Index cannot fetch one, stop and report that the URL must be made reachable.
 - A plain `zotero_file_url` may fail even when the Zotero attachment exists; if the ingest target cannot fetch it directly, do not call that a valid ingest source.
 - An authenticated Zotero attachment URL may be fetchable even when the plain Zotero file URL is not. Treat those as different URL classes and verify the actual one being used.
