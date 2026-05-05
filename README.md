@@ -1,6 +1,6 @@
 # agent-toolkit
 
-Public shared toolkit for reusable agent skills, GitHub Actions workflow assets, setup scripts, and supporting documentation.
+Public shared toolkit for reusable agent skills, GitHub Actions workflow assets, Cursor assets, and supporting documentation.
 
 ## What this repository contains
 
@@ -8,7 +8,7 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 - **Workflow source assets** under `templates/`
   - reusable workflow sources under `templates/reusable-workflows/`
   - starter workflow sources under `templates/starter-workflows/`
-- **Setup and linking scripts** under `scripts/`
+- **Workflow helper scripts** under `scripts/`
 - **Shared Cursor assets** under `cursor/`
 - **Reference and setup docs** under `docs/`
 
@@ -20,12 +20,15 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 - `pageindex-read-papers`
 - `pageindex-summarize-papers`
 - `summarize-research-papers`
+- `zotero-docai-ingest-to-pageindex`
+- `zotero-tagged-literature-review`
 
 ### Code review and GitHub automation
-- `autofix`
-- `code-review`
 - `coderabbit-pr-autofix`
 - `coderabbit-pr-automation`
+- `github-workflow-asset-library`
+
+> Official CodeRabbit skills such as `autofix` and `code-review` are intentionally sourced from the upstream `coderabbitai/skills` repository, not duplicated here.
 
 ### Repo maintenance and publication safety
 - `git-repo-sync`
@@ -35,8 +38,7 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 - `repo-documentation-audit`
 - `repo-documentation-drift-fix`
 
-### Toolkit integration and skill authoring
-- `connect-openclaw-toolkit`
+### Skill authoring
 - `skill-creator`
 
 ## Repository layout
@@ -45,25 +47,9 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 agent-toolkit/
 ├── .github/
 │   └── workflows/
-│       ├── coderabbit-pr-automation.yml
-│       ├── coderabbit-pr-comment-trigger.yml
-│       ├── sync-starter-workflow-template-refs-reusable.yml
-│       ├── sync-starter-workflow-template-refs-trigger.yml
-│       ├── cross-repo-workflow-updater-reusable.yml
-│       ├── cross-repo-workflow-updater-push-trigger.yml
-│       └── cross-repo-workflow-updater-manual-trigger.yml
 ├── templates/
 │   ├── reusable-workflows/
-│   │   ├── coderabbit-pr-automation.yml
-│   │   ├── sync-starter-workflow-template-refs-reusable.yml
-│   │   └── cross-repo-workflow-updater-reusable.yml
 │   ├── starter-workflows/
-│   │   ├── coderabbit-pr-automation-pr-trigger.yml
-│   │   ├── coderabbit-pr-automation-manual-trigger.yml
-│   │   ├── coderabbit-pr-comment-trigger.yml
-│   │   ├── sync-starter-workflow-template-refs-trigger.yml
-│   │   ├── cross-repo-workflow-updater-push-trigger.yml
-│   │   └── cross-repo-workflow-updater-manual-trigger.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
 ├── skills/
@@ -76,25 +62,22 @@ agent-toolkit/
 
 ## Quick start
 
-By default, local tooling resolves this repository through `~/.agent-toolkit`.
+Clone this repo wherever you keep GitHub repositories, then point OpenClaw at the `skills/` directory with `skills.load.extraDirs`.
+
+Example with this toolkit plus upstream CodeRabbit skills:
 
 ```bash
-ln -s /path/to/your/clone ~/.agent-toolkit
+openclaw config set skills.load.extraDirs '["/path/to/agent-toolkit/skills","/path/to/coderabbitai-skills/skills"]' --strict-json
+openclaw config validate
 ```
 
-Then use the setup helpers:
+Do **not** symlink this repository into `~/.openclaw/skills` or `~/.openclaw/scripts`. OpenClaw skill loading should be explicit through config, and runtime scripts required by a skill should live inside that skill's own `scripts/` directory. Repo-level scripts are reserved for repository, CI, distribution, and integration automation.
 
-```bash
-~/.agent-toolkit/scripts/connect-openclaw.sh
-~/.agent-toolkit/scripts/connect-cursor.sh
-~/.agent-toolkit/scripts/verify-links.sh
-```
-
-If you do not want to use the default alias, the scripts also support explicit path overrides. See `docs/setup.md` for the full flag and environment-variable matrix.
+For shared Cursor rules, see `docs/setup.md`.
 
 ## GitHub Actions workflow assets
 
-This repository now treats GitHub Actions files as **source assets**, not as active GitHub-special paths for this repo.
+This repository treats GitHub Actions files as **source assets**, not as active GitHub-special paths for this repo.
 
 - **Reusable workflow source:** `templates/reusable-workflows/coderabbit-pr-automation.yml`
 - **Reusable maintenance workflow source:** `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
@@ -146,7 +129,7 @@ This repository is for **shared, reusable content only**. It should not contain 
 
 ## Documentation map
 
-- `docs/setup.md` — setup, linking, overrides, verification, and repo-rename migration
+- `docs/setup.md` — OpenClaw `extraDirs` setup, Cursor rules setup, path overrides, and repo-rename notes
 - `docs/repo-scope.md` — what belongs in the repo and what does not
 - `docs/workflow-asset-library-layout.md` — canonical layout for workflow source assets in this repository
 - `docs/github-actions-template-catalog.md` — human-readable catalog of available workflow assets, their purpose, and how they relate

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repo-local instructions for humans and agents working in `shared-agent-skills`.
+Repo-local instructions for humans and agents working in `agent-toolkit`.
 
 ## Read this first when touching workflow assets
 
@@ -9,6 +9,13 @@ Repo-local instructions for humans and agents working in `shared-agent-skills`.
 3. `docs/workflow-asset-library-layout.md`
 4. `docs/workflow-authoring-rules.md`
 5. `docs/repo-scope.md`
+
+## Skill and script rules
+
+- Keep each skill self-contained: runtime scripts required by a skill belong in that skill's own `scripts/` directory.
+- Use repo-level `scripts/` only for repository, CI, workflow-distribution, or integration automation that is intentionally broader than one skill.
+- Do not duplicate official upstream skills in this repo when a maintained upstream repo exists. Load the upstream repo's `skills/` directory via OpenClaw `skills.load.extraDirs` instead.
+- Do not reintroduce OpenClaw symlink installation through `~/.openclaw/skills` or `~/.openclaw/scripts`; OpenClaw should load this repo through explicit config.
 
 ## Workflow rule summary
 
