@@ -33,26 +33,32 @@ Use this canonical layout under `archive_root/<video_id>/`:
 
 ```text
 <video_id>/
-├── report.md
-├── manifest.json
+├── report.md                  # alias for the latest/default language report
+├── manifest.json              # alias for the latest/default language manifest
 ├── metadata.json
 ├── subtitles-list.txt
+├── reports/
+│   └── <lang>.md
+├── manifests/
+│   └── <lang>.json
 ├── raw/
-│   └── <video_id>.<lang>.vtt
+│   └── <lang>/
+│       └── <video_id>.<lang>.vtt
 └── transcript/
-    ├── clean.txt
-    ├── clean-deduped.txt
-    ├── timestamped.txt
-    └── timestamped-deduped.txt
+    └── <lang>/
+        ├── clean.txt
+        ├── clean-deduped.txt
+        ├── timestamped.txt
+        └── timestamped-deduped.txt
 ```
 
-Do not create parallel near-duplicate folders for the same video ID. Language variants belong in the same video folder unless the user explicitly requests a different archive structure.
+Do not create parallel near-duplicate folders for the same video ID. Language variants belong in language-specific subfolders inside the same video folder unless the user explicitly requests a different archive structure.
 
 ## Duplicate policy
 
 Before extracting:
 1. resolve the YouTube video ID
-2. check `archive_root/<video_id>/manifest.json` and `report.md`
+2. check `archive_root/<video_id>/manifests/<lang>.json` and `reports/<lang>.md` when a language is explicit; otherwise check the alias `manifest.json` and `report.md`
 3. classify the existing archive:
    - `complete`: manifest/report and transcript files exist
    - `partial`: folder exists but required files are missing
@@ -61,8 +67,8 @@ Before extracting:
 Default behavior:
 - `complete` + no refresh request: reuse existing archive and report the path
 - `partial`: resume/rebuild missing artifacts
-- `refresh`: re-run extraction in the same folder and update manifest/report; do not create a sibling duplicate
-- different requested language: keep the same folder and produce language-specific raw/transcript artifacts when needed
+- `refresh`: re-run extraction in the same video/language folder and update that language's manifest/report; do not create a sibling duplicate
+- different requested language: keep the same video folder and produce separate language-specific raw/transcript/report artifacts
 
 ## Workflow
 

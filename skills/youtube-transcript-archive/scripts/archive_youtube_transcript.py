@@ -193,8 +193,14 @@ def duration_text(seconds: Any) -> str:
     return f"{m}:{s:02d}"
 
 
+def manifest_path_for(video_dir: Path, lang: str | None) -> Path:
+    if lang and lang != "best":
+        return video_dir / "manifests" / f"{lang}.json"
+    return video_dir / "manifest.json"
+
+
 def resolve_existing_archive(video_dir: Path, requested_lang: str) -> dict[str, Any] | None:
-    manifest_path = video_dir / "manifest.json"
+    manifest_path = manifest_path_for(video_dir, requested_lang)
     if not manifest_path.exists():
         return None
     try:
@@ -275,7 +281,6 @@ def main() -> int:
         raise SystemExit("Could not resolve YouTube video ID")
 
     video_dir = archive_root / video_id
-    manifest_path = video_dir / "manifest.json"
     if not args.refresh:
         existing = resolve_existing_archive(video_dir, args.lang)
         if existing:
@@ -285,11 +290,23 @@ def main() -> int:
             return 0
 
     lang, source, _entries = choose_caption(info, args.lang)
+    if args.lang == "best" and not args.refresh:
+        existing = resolve_existing_archive(video_dir, lang)
+        if existing:
+            existing["status"] = "reused"
+            existing["notes"] = "complete existing archive reused after resolving best language; use --refresh to reprocess"
+            print(json.dumps(existing, indent=2, ensure_ascii=False))
+            return 0
+
     video_dir.mkdir(parents=True, exist_ok=True)
-    raw_dir = video_dir / "raw"
-    transcript_dir = video_dir / "transcript"
-    raw_dir.mkdir(exist_ok=True)
-    transcript_dir.mkdir(exist_ok=True)
+    raw_dir = video_dir / "raw" / lang
+    transcript_dir = video_dir / "transcript" / lang
+    reports_dir = video_dir / "reports"
+    manifests_dir = video_dir / "manifests"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    transcript_dir.mkdir(parents=True, exist_ok=True)
+    reports_dir.mkdir(exist_ok=True)
+    manifests_dir.mkdir(exist_ok=True)
 
     safe_write(video_dir / "metadata.json", json.dumps(info, indent=2, ensure_ascii=False, sort_keys=True))
     safe_write(video_dir / "subtitles-list.txt", list_subs(yt_dlp, args.url))
@@ -324,15 +341,19 @@ def main() -> int:
     safe_write(transcript_dir / "timestamped.txt", "\n".join(f"[{ts}] {text}" for ts, text in timestamped).strip() + "\n")
     safe_write(transcript_dir / "timestamped-deduped.txt", "\n".join(f"[{ts}] {text}" for ts, text in timestamped_deduped).strip() + "\n")
 
+    lang_manifest = manifests_dir / f"{lang}.json"
+    lang_report = reports_dir / f"{lang}.md"
     rel_files = [
         "manifest.json",
         "metadata.json",
         "subtitles-list.txt",
+        str(lang_manifest.relative_to(video_dir)),
         str(raw_vtt.relative_to(video_dir)),
-        "transcript/clean.txt",
-        "transcript/clean-deduped.txt",
-        "transcript/timestamped.txt",
-        "transcript/timestamped-deduped.txt",
+        str((transcript_dir / "clean.txt").relative_to(video_dir)),
+        str((transcript_dir / "clean-deduped.txt").relative_to(video_dir)),
+        str((transcript_dir / "timestamped.txt").relative_to(video_dir)),
+        str((transcript_dir / "timestamped-deduped.txt").relative_to(video_dir)),
+        str(lang_report.relative_to(video_dir)),
         "report.md",
     ]
     manifest = {
@@ -351,8 +372,11 @@ def main() -> int:
     }
     summary = Path(args.summary_file).read_text(encoding="utf-8") if args.summary_file else None
     report = report_markdown(info, manifest, summary, "\n".join(f"[{ts}] {text}" for ts, text in timestamped_deduped))
+    manifest_json = json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True)
+    safe_write(lang_report, report)
     safe_write(video_dir / "report.md", report)
-    safe_write(manifest_path, json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True))
+    safe_write(lang_manifest, manifest_json)
+    safe_write(video_dir / "manifest.json", manifest_json)
 
     print(json.dumps(manifest, indent=2, ensure_ascii=False))
     return 0
