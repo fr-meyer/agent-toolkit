@@ -193,10 +193,32 @@ def duration_text(seconds: Any) -> str:
     return f"{m}:{s:02d}"
 
 
+def resolve_existing_archive(video_dir: Path, requested_lang: str) -> dict[str, Any] | None:
+    manifest_path = video_dir / "manifest.json"
+    if not manifest_path.exists():
+        return None
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+    existing_lang = manifest.get("language")
+    if requested_lang != "best" and existing_lang != requested_lang:
+        return None
+
+    rel_files = manifest.get("files") or []
+    if not rel_files:
+        return None
+    missing = [rel for rel in rel_files if not (video_dir / rel).exists()]
+    if missing:
+        return None
+    return manifest
+
+
 def report_markdown(meta: dict[str, Any], manifest: dict[str, Any], summary: str | None, transcript: str) -> str:
     title = meta.get("title") or meta.get("id") or "Untitled video"
-    summary_block = summary.strip() if summary else "TODO: Read the transcript and write a concise summary."
-    detailed_block = "TODO: Add bullet points or section-level notes after reading the transcript." if not summary else "See summary above; expand with detailed bullets if needed."
+    summary_block = summary.strip() if summary else "Raw transcript archival is complete. Summary not yet written; read the transcript and replace this section when a summarized report is requested."
+    detailed_block = "Detailed summary pending. Add bullet points or section-level notes after reading the transcript." if not summary else "See summary above; expand with detailed bullets if needed."
     files = "\n".join(f"- `{p}`" for p in manifest.get("files", []))
     return f"""# YouTube Transcript Archive — {title}
 
@@ -254,17 +276,13 @@ def main() -> int:
 
     video_dir = archive_root / video_id
     manifest_path = video_dir / "manifest.json"
-    required = [
-        manifest_path,
-        video_dir / "report.md",
-        video_dir / "metadata.json",
-        video_dir / "subtitles-list.txt",
-    ]
-    if manifest_path.exists() and all(p.exists() for p in required) and not args.refresh:
-        existing = json.loads(manifest_path.read_text(encoding="utf-8"))
-        existing["status"] = "reused"
-        print(json.dumps(existing, indent=2, ensure_ascii=False))
-        return 0
+    if not args.refresh:
+        existing = resolve_existing_archive(video_dir, args.lang)
+        if existing:
+            existing["status"] = "reused"
+            existing["notes"] = "complete existing archive reused; use --refresh to reprocess"
+            print(json.dumps(existing, indent=2, ensure_ascii=False))
+            return 0
 
     lang, source, _entries = choose_caption(info, args.lang)
     video_dir.mkdir(parents=True, exist_ok=True)
