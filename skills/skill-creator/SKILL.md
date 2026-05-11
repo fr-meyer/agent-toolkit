@@ -177,6 +177,8 @@ Call out:
 - portability traps
 - adjacent tasks that should not use the skill
 
+For reusable skills, treat environment-specific roots, local paths, credentials, archive destinations, binary paths, and runtime notes as configuration, not skill constants. Resolve them from the first trusted source available: explicit caller input, project/repository configuration, then host-agent local environment notes. Host-specific files may act as local adapters, but they are not part of the portable skill contract. If no trusted destination or required local setting is available, instruct the agent to ask before writing files.
+
 This section often matters more than extra explanation.
 
 ### 9. Evaluate before calling it finished
@@ -331,6 +333,9 @@ Run only when needed:
 
 - Use relative paths from the skill root.
 - Avoid product-specific assumptions unless explicitly required.
+- Resolve local roots and runtime-specific settings from trusted caller input, project/repository configuration, or host-agent local environment notes.
+- Do not hardcode workspace-specific paths, secrets, binary locations, or archive roots in reusable skills; treat host-specific notes as adapters outside the portable contract.
+- If no trusted destination or required local setting is available, ask before writing files.
 - Do not rely on interactive prompts.
 ````
 
@@ -341,6 +346,7 @@ Run only when needed:
 - Do not ignore an existing skill that should be reused, extended, or explicitly referenced instead.
 - Do not keep multiple reusable sub-workflows bundled together when they should be split into smaller interoperable skills.
 - Do not hardcode one host product unless explicitly requested.
+- Do not hardcode local paths, secrets, binary locations, archive roots, or host-specific config files into reusable skills.
 - Do not stuff `SKILL.md` with reference material that is not always needed.
 - Do not invent specification details when Agent Skills docs can be checked quickly.
 - Do not add clutter files that do not help the agent perform the task.
