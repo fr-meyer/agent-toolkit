@@ -11,6 +11,8 @@ The following categories are committed to git:
 
 **Core principle:** this repository is the source of truth for **shared** content only—material that should be the same for every clone and every developer.
 
+Do not commit copies of skills that are already maintained in an official upstream skill repository. Load those upstream repositories separately through the host agent's skill-loading configuration.
+
 ## What does not belong (attachment state and local config)
 
 | Category | Example | Why excluded |

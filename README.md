@@ -22,10 +22,10 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 - `summarize-research-papers`
 
 ### Code review and GitHub automation
-- `autofix`
-- `code-review`
 - `coderabbit-pr-autofix`
 - `coderabbit-pr-automation`
+
+> Official CodeRabbit skills such as `autofix` and `code-review` are sourced from the upstream `coderabbitai/skills` repository instead of being duplicated here.
 
 ### Repo maintenance and publication safety
 - `git-repo-sync`
