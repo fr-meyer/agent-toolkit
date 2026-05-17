@@ -10,7 +10,7 @@ Current status:
 - validation now invokes CodeRabbit CLI when available and normalizes its agent output into `validation-result.json`
 - agent pass now invokes a configurable external agent command and captures structured outputs, prompt files, raw logs, and git-diff evidence
 - paths are designed to be relative to `github.workspace`
-- shared agent context can now be materialized into the target checkout via `.agents/skills` and `.cursor/rules` before agent execution
+- shared agent context from this repository can now be materialized into the target checkout via `.agents/skills` and `.cursor/rules` before agent execution
 - consumer repo checkout is expected under a runtime folder such as `target/`
 - shared repo checkout is expected under a runtime folder such as `_shared/`
 
@@ -36,7 +36,7 @@ Notes:
   - bounded agent execution via `agent_command_json` or `agent_command`
   - validation CLI override via `coderabbit_cli`
   - Cursor CLI override via `cursor_cli`
-  - shared Agent Skills installation via `install_shared_skills`
+  - this repository's shared Agent Skills installation via `install_shared_skills`
   - shared Cursor rules installation via `install_cursor_rules`
   - agent context install mode via `shared_skills_install_mode`
   - post-remediation autocommit via `auto_commit`
@@ -81,9 +81,12 @@ Required secrets by feature:
 - `CODERABBIT_API_KEY` only when `run_validation=true`
 
 Recommended agent-context defaults:
-- install shared skills: `true`
+- install this repository's shared skills: `true`
 - install Cursor rules: `true`
 - install mode: `copy`
+
+Scope note:
+- `install_shared_skills` copies this repository's `skills/` directory only. It does not install the upstream `coderabbitai/skills` repository; provide those official CodeRabbit skills through the selected agent runtime or an additional setup step when `autofix` or `code-review` are required.
 
 Recommended autocommit defaults:
 - auto commit: `false`
