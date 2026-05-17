@@ -21,11 +21,11 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 - `pageindex-summarize-papers`
 - `summarize-research-papers`
 
-### Code review and GitHub automation
-- `coderabbit-pr-autofix`
-- `coderabbit-pr-automation`
+### CodeRabbit and GitHub automation
+- `coderabbit-pr-autofix` — wrapper for unresolved CodeRabbit review threads that depends on an available `autofix` skill.
+- `coderabbit-pr-automation` — bounded GitHub Actions workflow support for unresolved CodeRabbit PR review threads.
 
-> Official CodeRabbit skills such as `autofix` and `code-review` are sourced from the upstream `coderabbitai/skills` repository instead of being duplicated here.
+> Official CodeRabbit default skills such as `autofix` and `code-review` are intentionally **not** vendored in this repository. Install or load the upstream `coderabbitai/skills` repository separately when those skills are needed.
 
 ### Repo maintenance and publication safety
 - `git-repo-sync`
@@ -128,11 +128,12 @@ Important note for the current starter workflow sources:
 - if you publish these assets later, keep the `uses: ...@<sha>` reference aligned with the paired `shared_repository_ref` when that field is present
 
 Current runtime contract for the CodeRabbit workflow source:
+- this repo provides CodeRabbit PR-thread orchestration, wrapper skills, helper scripts, and workflow assets; it does not provide the upstream default CodeRabbit `autofix` or `code-review` skills
 - choose the coding-agent runtime with `CODERABBIT_AGENT_RUNTIME` (for example `cursor`)
 - keep the actual remediation command explicit via `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
 - provide `CURSOR_API_KEY` when using `cursor`
 - for the current free-tier path, default to `run_validation: false`
-- shared Agent Skills can be installed into the target repo via `install_shared_skills`
+- `install_shared_skills` installs this repository's `skills/` directory into the target repo; configure the selected agent runtime separately if it also needs upstream `coderabbitai/skills`
 - shared Cursor rules can be installed into the target repo via `install_cursor_rules`
 - the default install mode for shared agent context is `copy`
 - optional local post-remediation commit creation can be enabled via `auto_commit`
