@@ -18,7 +18,7 @@ Use the most specific limit available from project instructions, config, or the 
 If no limit is provided:
 - hard limit: `12000` bytes
 - target size: `10000` bytes
-- measurement: bytes first, characters as secondary diagnostic
+- measurement: bytes by default; use character mode when a warning or project policy is explicitly character-based
 
 Never assume a token budget is equivalent to a byte or character budget. If only a token budget is known, use the configured tool/token counter when available; otherwise use byte and character checks as conservative proxies and say so.
 
@@ -48,6 +48,12 @@ For multiple files:
 
 ```bash
 python3 <skill-dir>/scripts/check_context_budget.py AGENTS.md MEMORY.md USER.md --limit 12000 --target 10000
+```
+
+If the runtime warning or policy is character-based rather than byte-based:
+
+```bash
+python3 <skill-dir>/scripts/check_context_budget.py MEMORY.md --unit characters --limit 12000 --target 10000
 ```
 
 If the project specifies a different limit, pass that limit explicitly.
@@ -112,4 +118,4 @@ When unsure, prefer preserving the detail in a topic file and keeping a compact 
 
 ## Bundled Script
 
-Use `scripts/check_context_budget.py` to measure files deterministically and fail fast when a file exceeds its hard limit. The script prints bytes, characters, line count, and status for each file, and exits non-zero on over-limit files.
+Use `scripts/check_context_budget.py` to measure files deterministically and fail fast when a file exceeds its hard limit. The script prints bytes, characters, line count, checked unit, and status for each file, and exits non-zero on over-limit files. It supports `--unit bytes` and `--unit characters`; byte mode is the default.

@@ -33,22 +33,36 @@ def status(size: int, limit: int, target: Optional[int]) -> str:
     return "ok"
 
 
+def selected_size(result: Dict[str, Any], unit: str) -> int:
+    if unit == "bytes":
+        return int(result["bytes"])
+    if unit == "characters":
+        return int(result["characters"])
+    raise ValueError(f"unsupported unit: {unit}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Check context/bootstrap file sizes against a hard byte limit."
+        description="Check context/bootstrap file sizes against a hard byte or character limit."
     )
     parser.add_argument("paths", nargs="+", help="Files to check")
     parser.add_argument(
         "--limit",
         type=int,
         default=12000,
-        help="Hard byte limit. Exit non-zero when any file exceeds it. Default: 12000",
+        help="Hard limit in the selected unit. Exit non-zero when any file exceeds it. Default: 12000",
     )
     parser.add_argument(
         "--target",
         type=int,
         default=10000,
-        help="Preferred byte target. Files above target but below limit are warnings. Default: 10000",
+        help="Preferred target in the selected unit. Files above target but below limit are warnings. Default: 10000",
+    )
+    parser.add_argument(
+        "--unit",
+        choices=("bytes", "characters"),
+        default="bytes",
+        help="Unit to enforce for limit and target. Default: bytes",
     )
     parser.add_argument(
         "--json",
@@ -79,7 +93,10 @@ def main() -> int:
             result = measure(path)
             result["limit"] = args.limit
             result["target"] = args.target
-            result["status"] = status(result["bytes"], args.limit, args.target)
+            size = selected_size(result, args.unit)
+            result["unit"] = args.unit
+            result["measured"] = size
+            result["status"] = status(size, args.limit, args.target)
             if result["status"] == "over-limit":
                 exit_code = 1
         results.append(result)
@@ -93,7 +110,8 @@ def main() -> int:
             if "bytes" in result:
                 print(
                     f"{state}: {path} — {result['bytes']} bytes, "
-                    f"{result['characters']} chars, {result['lines']} lines "
+                    f"{result['characters']} chars, {result['lines']} lines; "
+                    f"checked {result.get('measured', '?')} {result.get('unit', args.unit)} "
                     f"(target {args.target}, limit {args.limit})"
                 )
             else:
