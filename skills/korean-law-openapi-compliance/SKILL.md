@@ -19,6 +19,7 @@ Use Korea's 국가법령정보 / 법제처 Open API responsibly and safely, espe
 
 2. **Prefer local stdio MCP**
    - For `korean-law-mcp`, prefer a local stdio server using env secrets.
+   - If the MCP client or config manager cannot safely preserve secret env references, use a local wrapper that loads `LAW_OC` from a chmod-600 env file and point the MCP command at that wrapper.
    - Do not expose HTTP mode unless the user explicitly requests it after a security review.
    - Do not run generic setup helpers that write third-party client config unless the destination files are reviewed first.
 
