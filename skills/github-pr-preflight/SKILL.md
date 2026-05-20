@@ -14,6 +14,8 @@ metadata:
 
 Create or prepare GitHub pull requests only after the branch diff **and** PR title/body are safe to publish. This skill exists because PR prose is often drafted from private chat context even when the committed diff is clean.
 
+Treat the PR title and body as public artifacts from the first draft, not only at `gh pr create` time. A sanitized draft shown to the user must pass the same PR prose red-list gate as a PR that will be published.
+
 ## Use this skill for
 
 - drafting PR titles and bodies;
@@ -61,8 +63,10 @@ Treat unknown visibility as public-intended.
 
 4. **Audit the PR title/body as publishable content**
    - Save the proposed title/body to a temporary file or otherwise inspect it as text.
+   - Run a named **PR prose red-list gate** before showing the draft to the user and again before publishing if the prose changed.
    - Scan the PR prose with the same red-list mindset as the diff.
-   - If prose contains private context, rewrite and re-scan before calling GitHub.
+   - Treat names from chat, private task motivation, local workspace details, phone numbers, account IDs, file paths, incident specifics, and internal operational history as unsafe unless they are intentionally public and necessary for the repository.
+   - If prose contains private context, rewrite and re-scan before showing the draft, calling GitHub, or saving it as a reusable PR body.
 
 5. **Create or update the PR only after both gates pass**
    - If the user asked only for a draft, return the sanitized title/body and stop.
@@ -82,6 +86,35 @@ Block PR creation/editing when the diff or PR prose contains:
 - internal incident narratives that are not needed to understand the public technical change.
 
 If a red-list item is found only in the PR prose, rewrite the prose; do not change the code just to mask a prose issue. If it is in the diff, stop and remediate the branch before creating the PR.
+
+## PR prose red-list gate
+
+This gate is mandatory for every PR draft, creation, or edit in a public, public-intended, or unknown-visibility repository.
+
+Minimum procedure:
+
+1. Write the proposed title/body to a temporary file.
+2. Scan the file for red-list indicators.
+3. Manually inspect the file for private motivation that keyword scans can miss.
+4. Rewrite any private context into public technical language.
+5. Re-run the scan after every rewrite.
+6. Only then show the draft to the user or pass it to `gh pr create` / `gh pr edit`.
+
+Default rewrite rules:
+
+- Replace real user/customer/patient/family names with generic phrases such as `the workflow`, `the repository`, `the operator`, or `a recent validation pass`.
+- Replace private motivation such as `requested by <person>` with public motivation such as `tightens the workflow` or `documents the expected behavior`.
+- Remove chat-derived context that is not needed to understand the technical change.
+- Remove local paths, machine names, account identifiers, cloud project IDs, phone numbers, emails, private URLs, and session IDs.
+- Keep validation commands and changed-file summaries when they are public-safe.
+
+Suggested backstop scan for a PR body file:
+
+```bash
+grep -En '([A-Z][a-z]+ [A-Z][a-z]+|/Users/|/home/|\+?[0-9][0-9 .-]{7,}|@[A-Za-z0-9_.-]+\.[A-Za-z]{2,}|token|secret|password|cookie|oauth|private key|signed url|trycloudflare|ngrok|customer|patient|passport|invoice|tax|medical|legal)' /tmp/pr-body.md || true
+```
+
+The scan is intentionally broad and may false-positive. A false positive is acceptable; a private PR body is not.
 
 ## Dedicated branch gate
 
@@ -112,7 +145,8 @@ Block PR creation when:
 ## Validation
 
 - Command/check that passed
-- Public-safety scan passed: no private names, URLs, tokens, local paths, or case-specific details in the branch diff or PR prose
+- Branch diff red-list gate passed: no private names, URLs, tokens, local paths, or case-specific details found
+- PR prose red-list gate passed: title/body contain only public, technical repository context
 ```
 
 Optional sections:
@@ -142,6 +176,9 @@ git diff --stat origin/<base>...HEAD
 # Conservative red-list scan over diff
 git diff origin/<base>...HEAD | grep -Ei 'token|secret|password|cookie|oauth|private key|signed url|trycloudflare|ngrok|/Users/|/home/|email|phone|tax|medical|patient|passport|invoice|customer' || true
 
+# Mandatory PR prose red-list gate before showing or publishing a draft
+grep -En '([A-Z][a-z]+ [A-Z][a-z]+|/Users/|/home/|\+?[0-9][0-9 .-]{7,}|@[A-Za-z0-9_.-]+\.[A-Za-z]{2,}|token|secret|password|cookie|oauth|private key|signed url|trycloudflare|ngrok|customer|patient|passport|invoice|tax|medical|legal)' /tmp/pr-body.md || true
+
 # Create PR from sanitized body file
 gh pr create --base <base> --head <branch> --title "<title>" --body-file /tmp/pr-body.md
 ```
@@ -157,6 +194,8 @@ When preparing a PR, return:
 - sanitized body;
 - validation performed;
 - branch hygiene gate result;
+- branch diff red-list gate result;
+- PR prose red-list gate result;
 - gate decision: `ready`, `needs-rewrite`, or `blocked`.
 
 When creating or editing a PR, also return:
