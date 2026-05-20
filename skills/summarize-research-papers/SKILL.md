@@ -1,6 +1,6 @@
 ---
 name: summarize-research-papers
-description: Summarize one or more research papers into structured per-paper Markdown reports using a fixed paper-reading template. Use when the user's primary goal is the summary report itself and the paper content is already accessible, already extracted, attached, or has already been prepared by another source-specific workflow. Use this skill for the general report-writing standard, evidence discipline, and summary quality bar. Do not use it for paper finding, source-specific library resolution, coverage-only reading verification, classification, cross-paper synthesis, or Page Index-specific orchestration; if the request is specifically about summarizing papers from Page Index, use `pageindex-summarize-papers` for that wrapper workflow.
+description: Summarize one or more research papers into structured per-paper Markdown reports using a fixed paper-reading template. Use when the user's primary goal is the summary report itself and the paper content is already accessible, already extracted, attached, or has already been prepared by another source-specific workflow. Use this skill for the general report-writing standard, hierarchical evidence compression, page anchoring, paper cards, and summary quality bar. Do not use it for paper finding, source-specific library resolution, coverage-only reading verification, classification, cross-paper synthesis, or Page Index-specific orchestration; if the request is specifically about summarizing papers from Page Index, use `pageindex-summarize-papers` for that wrapper workflow.
 ---
 
 # Summarize Research Papers
@@ -17,6 +17,7 @@ This skill owns the general summary-writing standard: template use, evidence dis
 - Write detailed reading notes for these two papers and save one Markdown file per paper.
 - Turn this full paper into a structured memo with strengths, limitations, and follow-up questions.
 - I already extracted the paper text; use it to create a proper paper summary report.
+- Create a hierarchical reading map and compact paper card for this full paper.
 
 Do not use this skill for requests like:
 - find this paper in Page Index
@@ -39,6 +40,7 @@ Template rules:
 - Keep the section headings and field labels stable unless the user explicitly asks for a different format.
 - When full-paper content is available, treat the report as hierarchical evidence compression: page/page-range notes → subsection summaries → section summaries → paper-level synthesis → compact paper card.
 - Fill the `Paper Card / Inventory Description` and `Hierarchical Reading Map` sections whenever the source text has enough evidence to do so; if content is partial, mark those sections as limited rather than inventing structure.
+- Although the paper card appears near the top of the report for later reuse, draft or finalize it after the hierarchical reading map so it reflects the full evidence path.
 
 ## Scope Boundaries
 

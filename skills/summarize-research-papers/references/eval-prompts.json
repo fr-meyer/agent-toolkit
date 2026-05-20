@@ -25,6 +25,11 @@
     "why": "The request asks for the summary-writing standard and its hierarchical/paper-card sections."
   },
   {
+    "query": "Summarize this Page Index paper with hierarchical reading map and paper card.",
+    "should_trigger": false,
+    "why": "Page Index-specific summarization, even with hierarchy/card wording, should trigger pageindex-summarize-papers instead."
+  },
+  {
     "query": "Summarize this paper from Page Index and save it under memory/pageindex/summary/.",
     "should_trigger": false,
     "why": "Page Index-specific orchestration should trigger pageindex-summarize-papers instead."

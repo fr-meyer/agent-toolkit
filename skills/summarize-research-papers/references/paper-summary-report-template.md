@@ -3,6 +3,7 @@
 > Fill as many fields as are available.
 > Leave fields blank when they do not exist for a given paper.
 > When highlighting a claim, result, limitation, definition, or especially useful passage, include the most precise page number or tight page range you can (for example `p. 4` or `pp. 4-5`).
+> For full-paper summaries, build the hierarchical reading map before finalizing the compact paper card, even though the card appears near the top for reuse.
 
 ---
 
@@ -136,6 +137,7 @@ Build this section from low-level evidence upward. For short papers, keep it com
 
 ### Paper-level synthesis from the hierarchy
 
+Write 1–3 paragraphs synthesizing the paper from the page, subsection, and section notes above, not from the abstract alone.
 
 ### Key passages / figures / tables with anchors
 

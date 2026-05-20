@@ -1,6 +1,6 @@
 ---
 name: pageindex-summarize-papers
-description: Summarize one or more papers stored in a Page Index collection into individual Markdown report files. Use when the request explicitly concerns Page Index papers and the primary deliverable is one saved summary per paper, with paper resolution handled through `pageindex-find-papers`, full-read verification handled through `pageindex-read-papers`, and the final report-writing standard delegated to `summarize-research-papers`. This skill owns the Page Index-specific wrapper workflow only. Do not use it for general paper summarization outside Page Index, Page Index paper finding alone, coverage-only reading verification, classification, cross-paper synthesis, or a single combined summary for multiple papers.
+description: Summarize one or more papers stored in a Page Index collection into individual Markdown report files. Use when the request explicitly concerns Page Index papers and the primary deliverable is one saved summary per paper, with paper resolution handled through `pageindex-find-papers`, full-read verification handled through `pageindex-read-papers`, and the final hierarchical report-writing standard delegated to `summarize-research-papers`. This skill owns the Page Index-specific wrapper workflow only. Do not use it for general paper summarization outside Page Index, Page Index paper finding alone, coverage-only reading verification, classification, cross-paper synthesis, or a single combined summary for multiple papers.
 ---
 
 # Page Index Summarize Papers
@@ -19,6 +19,7 @@ For Page Index papers, the saved report should preserve the hierarchical-summary
 - Find these cited papers in Page Index, read them fully, and create one summary file per paper.
 - Write structured reading notes for this paper from Page Index and save them under `memory/pageindex/summary/`.
 - Make a detailed paper memo from this Page Index file using the standard report workflow.
+- Summarize this Page Index paper with a hierarchical reading map and compact paper card.
 
 Do not use this skill for requests like:
 - summarize this local PDF into paper notes
