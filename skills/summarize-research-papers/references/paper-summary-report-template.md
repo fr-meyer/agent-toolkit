@@ -50,6 +50,22 @@
 
 ---
 
+## 1A. Paper Card / Inventory Description
+
+Use this compact card to make the paper reusable in inventories, literature maps, and future triage. Keep it brief and page/source-anchored when possible.
+
+**One-sentence description:**
+**Topic / domain:**
+**Method / paper type:**
+**Core contribution:**
+**Why it matters:**
+**Best-use tag:**
+(e.g. background, method reference, benchmark, dataset, clinical evidence, implementation caution, theoretical framing, survey map, negative result)
+**Most relevant source anchors:**
+(pages, figures, tables, sections, or appendix locations that justify the card)
+
+---
+
 ## 2. Before Reading
 
 **Why am I reading this?** 
@@ -95,6 +111,35 @@
 **What is still unclear to me:** 
 **Questions, objections, or cautions:** 
 **Passage / figure / table / equation / section to revisit:** 
+
+---
+
+## 4A. Hierarchical Reading Map
+
+Build this section from low-level evidence upward. For short papers, keep it compact. For long or structured papers, use the paper's own section/subsection structure when available.
+
+### Page / page-range evidence notes
+
+- `p. X` or `pp. X-Y`:
+
+### Subsection-level summaries
+
+- **Subsection / local heading:**
+  - Source anchors:
+  - Summary:
+
+### Section-level summaries
+
+- **Section:**
+  - Source anchors:
+  - Summary:
+
+### Paper-level synthesis from the hierarchy
+
+
+### Key passages / figures / tables with anchors
+
+-
 
 ---
 

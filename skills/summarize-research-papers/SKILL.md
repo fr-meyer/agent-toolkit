@@ -37,6 +37,8 @@ Template rules:
 - Leave fields blank when the information is genuinely unavailable.
 - Do **not** invent missing bibliographic facts, identifiers, datasets, code links, or venue details.
 - Keep the section headings and field labels stable unless the user explicitly asks for a different format.
+- When full-paper content is available, treat the report as hierarchical evidence compression: page/page-range notes → subsection summaries → section summaries → paper-level synthesis → compact paper card.
+- Fill the `Paper Card / Inventory Description` and `Hierarchical Reading Map` sections whenever the source text has enough evidence to do so; if content is partial, mark those sections as limited rather than inventing structure.
 
 ## Scope Boundaries
 
@@ -108,6 +110,7 @@ Once the paper content is available:
 - read `references/paper-summary-report-template.md`
 - use the paper itself as the source of record
 - capture the paper's argument, method, evidence, results, limitations, and follow-up questions in the template
+- build the report from lower-level reading evidence upward when full content is available: page/page-range notes first, then subsection summaries, section summaries, paper-level synthesis, and finally the compact paper card
 - keep claims anchored to what the paper actually says
 - separate what the paper claims from what you think about it
 
@@ -169,6 +172,38 @@ When highlighting a claim, contribution, result, limitation, definition, or espe
 - keep the page anchor close to the statement it supports so later searching is easier
 - do not invent page numbers when the source location is uncertain
 
+### Paper Card / Inventory Description section
+
+Use this section as a reusable paper card, not as another long summary.
+
+It should capture:
+- a one-sentence description of the paper
+- topic or domain
+- method or paper type
+- core contribution
+- why the paper matters
+- a best-use tag such as `background`, `method reference`, `benchmark`, `dataset`, `clinical evidence`, `implementation caution`, `theoretical framing`, `survey map`, or `negative result`
+- source anchors that justify the card
+
+### Hierarchical Reading Map section
+
+Use this section to show how the final summary was built.
+
+When full paper content is available:
+- start with page or page-range evidence notes for the important parts of the paper
+- group those notes into subsection-level summaries when local headings are available
+- group subsection summaries into section-level summaries
+- write the paper-level synthesis from that hierarchy rather than only from the abstract or introduction
+- record key passages, figures, tables, or equations with tight anchors
+
+If the paper has no clear headings or the text extraction loses structure:
+- use page ranges or logical topical chunks instead of inventing headings
+- state that the hierarchy is reconstructed from page ranges
+
+If only partial content is available:
+- do not fill the hierarchy as if it were complete
+- clearly label the map and final summary as partial
+
 ### Summary From Memory section
 
 Write this section from working memory after finishing the main read notes.
@@ -200,7 +235,9 @@ A good report should make it possible for the user to:
 - understand what the paper actually contributes
 - see how convincing the paper was
 - identify limitations and next reads
-- reuse the report later without reopening the paper immediately
+- trace the final summary back to lower-level page, subsection, and section evidence when full content was available
+- reuse the compact paper card in inventories or future triage without reopening the paper immediately
+- reuse the full report later without reopening the paper immediately
 
 ## Never Do This
 

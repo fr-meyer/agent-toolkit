@@ -20,6 +20,11 @@
     "why": "General paper summarization outside Page Index should trigger summarize-research-papers instead."
   },
   {
+    "query": "Summarize this Page Index paper with the hierarchical reading map and paper card, then save the report.",
+    "should_trigger": true,
+    "why": "Page Index source plus saved per-paper summary report should trigger the Page Index wrapper."
+  },
+  {
     "query": "Find this paper in Page Index and tell me whether it exists.",
     "should_trigger": false,
     "why": "Paper-finding only should trigger pageindex-find-papers, not the summary wrapper."

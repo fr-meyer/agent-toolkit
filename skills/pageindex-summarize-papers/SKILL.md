@@ -11,6 +11,8 @@ Create one structured Markdown summary report per paper for papers stored in Pag
 
 This skill owns only the Page Index-specific orchestration: resolution, full-read verification, and Page Index summary-folder rules. It does **not** own the general summary-writing standard. After a paper is resolved and fully read, use `summarize-research-papers` to produce the actual report content.
 
+For Page Index papers, the saved report should preserve the hierarchical-summary standard from `summarize-research-papers`: Page Index page/page-range evidence notes, subsection and section summaries when structure is available, a paper-level synthesis grounded in those lower-level notes, and a compact paper card/inventory description.
+
 ## Example Prompts
 
 - Summarize this Page Index paper into the standard Markdown report format.
@@ -108,8 +110,9 @@ If the paper was not fully read:
 ### 5. Hand off the report-writing step to `summarize-research-papers`
 
 Once a paper has been resolved and fully read:
-- use `summarize-research-papers` for the actual summary structure, evidence discipline, page anchoring, and quality bar
+- use `summarize-research-papers` for the actual summary structure, evidence discipline, page anchoring, hierarchical reading map, paper card, and quality bar
 - treat the verified Page Index file as the paper source of record
+- preserve Page Index page anchors in the report's page/page-range notes, subsection summaries, section summaries, paper-level synthesis, and key passage/figure/table entries whenever recoverable
 - preserve any useful note about alternate verified Page Index versions when relevant
 - keep one report per paper
 
@@ -118,6 +121,7 @@ Once a paper has been resolved and fully read:
 When the summary content is ready:
 - write it under the chosen Page Index summary folder
 - use a stable, human-legible filename
+- ensure the saved file includes the template's `Paper Card / Inventory Description` and `Hierarchical Reading Map` sections when the paper was fully read and the source provides enough evidence
 - update an existing file for the same paper instead of creating a near-duplicate unless the user explicitly wants versioned copies
 
 ### 7. Final user-facing response
@@ -138,6 +142,7 @@ For each requested paper, include:
 - Never skip `pageindex-find-papers` when the paper is unresolved.
 - Never skip `pageindex-read-papers` when the user wants a real Page Index paper summary.
 - Never write a full summary file for a paper that was not fully read.
+- Never write a Page Index paper summary whose paper-level synthesis is detached from the verified page/source evidence when that evidence is available.
 - Never duplicate the general summary-writing instructions that belong in `summarize-research-papers`.
 - Never collapse multiple papers into one report.
 - Never invent missing bibliographic metadata.

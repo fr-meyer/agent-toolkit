@@ -20,6 +20,11 @@
     "why": "Explicit request for the summary-writing standard this skill owns."
   },
   {
+    "query": "Create a paper summary report with a hierarchical reading map and a compact paper card.",
+    "should_trigger": true,
+    "why": "The request asks for the summary-writing standard and its hierarchical/paper-card sections."
+  },
+  {
     "query": "Summarize this paper from Page Index and save it under memory/pageindex/summary/.",
     "should_trigger": false,
     "why": "Page Index-specific orchestration should trigger pageindex-summarize-papers instead."
