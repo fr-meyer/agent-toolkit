@@ -84,6 +84,21 @@ Required safeguards:
 - Shut down the bridge immediately after successful submissions; verification can happen after shutdown.
 - Remove temporary manifests/logs/scripts that contain tokens or URLs.
 
+### Remote-node local PDFs: prefer runtime-side bridge
+
+When the PDFs are on a paired remote node (for example a Windows node), do not default to exposing that node directly to PageIndex. Prefer this two-hop pattern:
+
+1. Keep duplicate checks and `folder_id` resolution first.
+2. Copy the PDFs into a short-lived OpenClaw/Linux runtime temp directory, preferably outside any git working tree for sensitive documents, using a first-class node file-transfer mechanism when available. If no first-class transfer exists, use a short-lived inbound bridge with unguessable upload tokens only long enough to receive the files.
+3. Verify copied files before PageIndex submission when possible (at least size; hash if already known from the source node).
+4. Open one short-lived Linux/runtime-side HTTPS bridge for PageIndex fetches, with filename-preserving `Content-Disposition` and the safeguards above. Run it in a supervised/background process that will outlive the PageIndex submissions; do not tie bridge lifetime to a short command timeout.
+5. Before calling PageIndex, run a canary fetch from the runtime or another reliable network path. Prefer `GET` or a range request over `HEAD` because simple bridge servers may not implement `HEAD`. Confirm HTTP 200, `Content-Type: application/pdf`, filename-preserving `Content-Disposition`, and expected size for at least one file.
+6. Submit each document with `pageindex__process_document(url=..., folder_id=...)`.
+7. Shut down the bridge immediately after successful submissions, then verify exact names and folder placement through PageIndex MCP.
+8. Clean up runtime copies, tunnel binaries, manifests, and any logs/scripts containing transient tokens.
+
+Avoid Windows-side Cloudflare quick tunnels for PageIndex ingestion when a runtime-side bridge is feasible. They can be brittle under console encoding, process lifetime, DNS, and Cloudflare 530 failure modes. If a Windows-side bridge is the only option, keep the process supervised, verify the URL from the runtime before calling PageIndex, and stop/report after the first reachability failure rather than repeatedly retrying with exposed PDFs.
+
 If the user has not approved temporary exposure, stop and explain the privacy tradeoff instead of creating a bridge.
 
 ## Gotchas
