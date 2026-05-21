@@ -84,6 +84,20 @@ Required safeguards:
 - Shut down the bridge immediately after successful submissions; verification can happen after shutdown.
 - Remove temporary manifests/logs/scripts that contain tokens or URLs.
 
+### Remote-node local PDFs: prefer runtime-side bridge
+
+When the PDFs are on a paired remote node (for example a Windows node), do not default to exposing that node directly to PageIndex. Prefer this two-hop pattern:
+
+1. Keep duplicate checks and `folder_id` resolution first.
+2. Copy the PDFs into the OpenClaw/Linux runtime or current workspace using a first-class node file-transfer mechanism when available. If no first-class transfer exists, use a short-lived inbound bridge with unguessable upload tokens only long enough to receive the files.
+3. Verify copied files before PageIndex submission when possible (at least size; hash if already known from the source node).
+4. Open one short-lived Linux/runtime-side HTTPS bridge for PageIndex fetches, with filename-preserving `Content-Disposition` and the safeguards above.
+5. Submit each document with `pageindex__process_document(url=..., folder_id=...)`.
+6. Shut down the bridge immediately after successful submissions, then verify exact names and folder placement through PageIndex MCP.
+7. Clean up runtime copies, tunnel binaries, manifests, and any logs/scripts containing transient tokens.
+
+Avoid Windows-side Cloudflare quick tunnels for PageIndex ingestion when a runtime-side bridge is feasible. They can be brittle under console encoding, process lifetime, DNS, and Cloudflare 530 failure modes. If a Windows-side bridge is the only option, keep the process supervised, verify the URL from the runtime before calling PageIndex, and stop/report after the first reachability failure rather than repeatedly retrying with exposed PDFs.
+
 If the user has not approved temporary exposure, stop and explain the privacy tradeoff instead of creating a bridge.
 
 ## Gotchas
