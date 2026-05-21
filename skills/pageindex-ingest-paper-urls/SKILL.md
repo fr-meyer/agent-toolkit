@@ -89,7 +89,7 @@ Required safeguards:
 When the PDFs are on a paired remote node (for example a Windows node), do not default to exposing that node directly to PageIndex. Prefer this two-hop pattern:
 
 1. Keep duplicate checks and `folder_id` resolution first.
-2. Copy the PDFs into the OpenClaw/Linux runtime or current workspace using a first-class node file-transfer mechanism when available. If no first-class transfer exists, use a short-lived inbound bridge with unguessable upload tokens only long enough to receive the files.
+2. Copy the PDFs into a short-lived OpenClaw/Linux runtime temp directory, preferably outside any git working tree for sensitive documents, using a first-class node file-transfer mechanism when available. If no first-class transfer exists, use a short-lived inbound bridge with unguessable upload tokens only long enough to receive the files.
 3. Verify copied files before PageIndex submission when possible (at least size; hash if already known from the source node).
 4. Open one short-lived Linux/runtime-side HTTPS bridge for PageIndex fetches, with filename-preserving `Content-Disposition` and the safeguards above. Run it in a supervised/background process that will outlive the PageIndex submissions; do not tie bridge lifetime to a short command timeout.
 5. Before calling PageIndex, run a canary fetch from the runtime or another reliable network path. Prefer `GET` or a range request over `HEAD` because simple bridge servers may not implement `HEAD`. Confirm HTTP 200, `Content-Type: application/pdf`, filename-preserving `Content-Disposition`, and expected size for at least one file.
