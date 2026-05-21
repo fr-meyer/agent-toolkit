@@ -15,6 +15,11 @@
     "why": "Page Index source is explicit even though resolution may already be done."
   },
   {
+    "query": "Summarize this Page Index paper with the hierarchical reading map and paper card, then save the report.",
+    "should_trigger": true,
+    "why": "Page Index source plus saved per-paper summary report should trigger the Page Index wrapper."
+  },
+  {
     "query": "Summarize this local PDF into structured reading notes.",
     "should_trigger": false,
     "why": "General paper summarization outside Page Index should trigger summarize-research-papers instead."

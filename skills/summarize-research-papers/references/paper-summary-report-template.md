@@ -3,6 +3,7 @@
 > Fill as many fields as are available.
 > Leave fields blank when they do not exist for a given paper.
 > When highlighting a claim, result, limitation, definition, or especially useful passage, include the most precise page number or tight page range you can (for example `p. 4` or `pp. 4-5`).
+> For full-paper summaries, build the hierarchical reading map before finalizing the compact paper card, even though the card appears near the top for reuse.
 
 ---
 
@@ -47,6 +48,22 @@
 
 **Date accessed:** 
 **Date read:** 
+
+---
+
+## 1A. Paper Card / Inventory Description
+
+Use this compact card to make the paper reusable in inventories, literature maps, and future triage. Keep it brief and page/source-anchored when possible.
+
+**One-sentence description:**
+**Topic / domain:**
+**Method / paper type:**
+**Core contribution:**
+**Why it matters:**
+**Best-use tag:**
+(e.g. background, method reference, benchmark, dataset, clinical evidence, implementation caution, theoretical framing, survey map, negative result)
+**Most relevant source anchors:**
+(pages, figures, tables, sections, or appendix locations that justify the card)
 
 ---
 
@@ -95,6 +112,36 @@
 **What is still unclear to me:** 
 **Questions, objections, or cautions:** 
 **Passage / figure / table / equation / section to revisit:** 
+
+---
+
+## 4A. Hierarchical Reading Map
+
+Build this section from low-level evidence upward. For short papers, keep it compact. For long or structured papers, use the paper's own section/subsection structure when available.
+
+### Page / page-range evidence notes
+
+- `p. X` or `pp. X-Y`:
+
+### Subsection-level summaries
+
+- **Subsection / local heading:**
+  - Source anchors:
+  - Summary:
+
+### Section-level summaries
+
+- **Section:**
+  - Source anchors:
+  - Summary:
+
+### Paper-level synthesis from the hierarchy
+
+Write 1–3 paragraphs synthesizing the paper from the page, subsection, and section notes above, not from the abstract alone.
+
+### Key passages / figures / tables with anchors
+
+-
 
 ---
 
