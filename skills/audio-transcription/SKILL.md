@@ -172,6 +172,16 @@ For `archive` and `seminar`, create:
 
 For the full schema, read `references/archive-schema.md`.
 
+## Regression tests
+
+For helper maintenance, run the stdlib regression fixture before committing archive/repair changes:
+
+```bash
+python3 -m unittest discover -s skills/audio-transcription/tests
+```
+
+The fixture covers repaired transcript alignment and raw provider JSON byte preservation without calling external STT services.
+
 ## Speaker policy
 
 - Treat diarization labels as provisional speaker labels.
