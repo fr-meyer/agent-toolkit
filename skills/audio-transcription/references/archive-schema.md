@@ -2,7 +2,7 @@
 
 ## Destination policy and example layouts
 
-Archive destinations are workspace policy, not shared-skill policy. Prefer an explicit `--output-dir`, or pass a destination resolved from local routing with `--archive-root` and collection/subpath options.
+Archive destinations are workspace policy, not shared-skill policy. Pass an explicit `--output-dir`, or pass a destination resolved from local routing with `--archive-root` and collection/subpath options. The helper refuses durable archive modes without an explicit destination unless `--allow-default-destination` is passed intentionally.
 
 Example layouts only:
 
@@ -92,7 +92,7 @@ Diarization labels are not real identities by themselves.
 
 ## Indexing
 
-For `seminar` mode, update both under the configured collection root:
+For `seminar` mode, update both under the explicitly configured collection root. When `--output-dir` is used, the archive folder's parent is the collection root:
 
 - `<archive-root>/<seminar-collection>/index.md`
 - `<archive-root>/<seminar-collection>/index.jsonl`

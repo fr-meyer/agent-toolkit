@@ -14,7 +14,7 @@ Example archive layouts (not canonical defaults):
 - `memory/audio-transcripts/<year>/<YYYY-MM-DD>-<slug>/` for ordinary archives.
 - `memory/seminars/<year>/<YYYY-MM-DD>-<slug>/` for seminar/meeting archives.
 
-For durable archives, prefer an explicit `--output-dir` or a destination resolved from the current workspace's routing policy. Keep workspace-specific routing rules outside this shared skill, then pass the resolved destination into the helper with `--output-dir`, `--archive-root`, or `--seminar-collection`.
+For durable archives, pass an explicit `--output-dir` or a destination resolved from the current workspace's routing policy. Keep workspace-specific routing rules outside this shared skill, then pass the resolved destination into the helper with `--output-dir`, `--archive-root`, or `--seminar-collection`. The helper refuses durable archive modes without an explicit destination unless `--allow-default-destination` is passed intentionally.
 
 ## Privacy gate
 
@@ -33,7 +33,7 @@ Implemented by `scripts/transcribe_audio.py`:
 
 - `quick`: return transcript in chat/stdout; no durable archive.
 - `archive`: create a full archive at an explicit or workspace-routed destination.
-- `seminar`: create a full archive and update the selected collection's `index.md` and `index.jsonl`.
+- `seminar`: create a full archive and update the selected collection's `index.md` and `index.jsonl`; with `--output-dir`, the archive folder's parent is treated as the collection root.
 
 Planned, not yet implemented in the helper:
 
@@ -54,7 +54,7 @@ Planned, not yet implemented in the helper:
 5. Normalize audio with `ffmpeg` unless there is a reason to send the original supported file directly.
 6. Call the backend. First backend: Mistral/Voxtral.
 7. Preserve raw provider JSON separately from cleaned Markdown.
-8. For durable archives, resolve the destination explicitly or through the current workspace's local routing policy; do not silently rely on personal or workspace-specific defaults.
+8. For durable archives, resolve the destination explicitly or through the current workspace's local routing policy; do not silently rely on personal, workspace-specific, or helper example defaults.
 9. Write complete timecoded transcript and metadata archive.
 10. For `seminar`, update the selected collection index.
 11. Report paths and quality warnings.
@@ -78,8 +78,8 @@ Collection-routed seminar folder:
 ```bash
 python3 scripts/transcribe_audio.py recording.wav \
   --mode seminar \
+  --archive-root path/to/archive-root \
   --seminar-collection lab_seminars \
-  --require-destination \
   --title "Seminar title" \
   --cloud-ok
 ```
@@ -93,20 +93,20 @@ For sensitive/private audio sent to Mistral, the command must also include:
 Dry-run without upload:
 
 ```bash
-python3 scripts/transcribe_audio.py recording.wav --mode seminar --title "Title" --dry-run
+python3 scripts/transcribe_audio.py recording.wav --mode seminar --title "Title" --output-dir path/to/archive-folder --dry-run
 ```
 
 Test/archive from a saved provider JSON without calling the API:
 
 ```bash
-python3 scripts/transcribe_audio.py sample.wav --mode seminar --title "Test" --mock-response response.json
+python3 scripts/transcribe_audio.py sample.wav --mode seminar --title "Test" --output-dir path/to/archive-folder --mock-response response.json
 ```
 
 ### Useful script options
 
 - `--mode quick|archive|seminar`
 - `--title`, `--date`, `--slug`, `--recorded-at`, `--main-speaker`
-- `--archive-root`, `--seminar-collection`, `--output-dir`, `--require-destination`
+- `--archive-root`, `--seminar-collection`, `--output-dir`, `--allow-default-destination`
 - `--speaker "Speaker 1=Name"` or repeat `--speaker "Name"`
 - `--keyword term` and `--related path-or-url`
 - `--context-bias term` or `--context-file terms.txt`

@@ -553,7 +553,8 @@ def save_archive(args: argparse.Namespace, response: dict[str, Any], source_info
             "backend": args.backend,
             "model": args.model,
         }
-        update_indices(archive_dir, idx_card, Path(args.archive_root) / args.seminar_collection)
+        seminar_root = archive_dir.parent if args.output_dir else Path(args.archive_root) / args.seminar_collection
+        update_indices(archive_dir, idx_card, seminar_root)
     return archive_dir
 
 
@@ -604,10 +605,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--multipart-array-style", choices=["repeated", "brackets", "json"], default="repeated", help="Multipart encoding for provider array fields.")
     parser.add_argument("--no-diarize", dest="diarize", action="store_false", default=True)
     parser.add_argument("--temperature", type=float, default=None)
-    parser.add_argument("--archive-root", default=None, help="Base archive folder. Defaults to memory for backward compatibility; pass explicitly from workspace routing for durable archives.")
+    parser.add_argument("--archive-root", default=None, help="Base archive folder. Pass explicitly from workspace routing for durable archives; example default is used only with --allow-default-destination.")
     parser.add_argument("--seminar-collection", default=None, help="Folder under archive-root for seminar mode, e.g. seminars or research_seminars.")
     parser.add_argument("--output-dir", default=None)
-    parser.add_argument("--require-destination", action="store_true", help="Refuse durable archive modes unless a non-default destination was provided by the caller/routing policy.")
+    parser.add_argument("--allow-default-destination", action="store_true", help="Allow durable archive modes to use the helper's example default destination when no routed destination was provided.")
     parser.add_argument("--slug", default=None)
     parser.add_argument("--normalize-format", choices=["mp3", "m4a", "wav"], default="mp3")
     parser.add_argument("--sample-rate", type=int, default=16000)
@@ -639,12 +640,20 @@ def main() -> int:
         eprint(f"Invalid timezone: {args.timezone}")
         return 2
 
-    if args.require_destination and args.mode != "quick" and not args.output_dir:
-        using_default_archive_route = args.archive_root_defaulted and (args.mode != "seminar" or args.seminar_collection_defaulted)
-        if using_default_archive_route:
+    if args.mode != "quick" and not args.allow_default_destination:
+        has_explicit_destination = bool(args.output_dir)
+        if args.mode == "archive":
+            has_explicit_destination = has_explicit_destination or not args.archive_root_defaulted
+        elif args.mode == "seminar":
+            has_explicit_destination = has_explicit_destination or (
+                not args.archive_root_defaulted and not args.seminar_collection_defaulted
+            )
+        if not has_explicit_destination:
             eprint(
-                "Refusing durable archive without explicit destination because --require-destination is set. "
-                "Pass --output-dir, or pass --archive-root/--seminar-collection from the workspace routing policy."
+                "Refusing durable archive without explicit destination. "
+                "Pass --output-dir, or pass --archive-root for archive mode; "
+                "for seminar mode pass both --archive-root and --seminar-collection. "
+                "Use --allow-default-destination only for intentional use of the helper's example default layout."
             )
             return 2
 
