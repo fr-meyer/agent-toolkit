@@ -31,7 +31,7 @@ If the user needs private/local transcription, treat it as a future/private-loca
 
 Implemented by `scripts/transcribe_audio.py`:
 
-- `quick`: return transcript in chat/stdout; no durable archive.
+- `quick`: return transcript in chat/stdout; no durable archive. Quick wrappers may return plain text only and should not be treated as archive-grade when timestamps, diarization, provider provenance, or searchable archive files are required.
 - `archive`: create a full archive at an explicit or workspace-routed destination.
 - `seminar`: create a full archive and update the selected collection's `index.md` and `index.jsonl`; with `--output-dir`, the archive folder's parent is treated as the collection root.
 
@@ -41,10 +41,23 @@ Planned, not yet implemented in the helper:
 - `resume`, `refresh`, `correct`: revision workflows that preserve original provider output/provenance.
 - full semantic summary generation: `summary.md` is currently a placeholder/excerpt for an agent to improve after review.
 
+## Source staging workflow
+
+If the source recording is on another machine, paired node, phone export folder, remote workstation, or otherwise not directly accessible from the processing workspace, prefer staging the audio/video file into a temporary processing folder first. Then run the full helper/backend locally in the processing workspace, verify the durable archive, and delete the staged media copy unless the user explicitly asked to preserve raw audio.
+
+Keep staging commands and host-specific paths outside this shared skill. The shared rule is generic:
+
+1. copy or mount the source media into a temporary processing path;
+2. run `archive` or `seminar` mode against that staged path;
+3. preserve transcripts, metadata, provider response, and indexes in the archive;
+4. remove the staged media copy after successful verification when it is only a duplicate.
+
+Use `--staged-input --delete-staged-input-after-archive` only for temporary duplicate inputs; never use it on an original user file.
+
 ## Workflow
 
-1. Identify source audio/video path or staged media path.
-2. Decide mode: use `seminar` for seminar/meeting recordings; `quick` for short throwaway voice notes.
+1. Identify source audio/video path or staged media path. If the source is remote/node-local, stage it into the processing workspace before archive-grade transcription.
+2. Decide mode: use `seminar` for seminar/meeting recordings; `quick` for short throwaway voice notes. Do not use quick wrappers as the final path for timecoded/diarized archives.
 3. Gather optional metadata before transcription when available:
    - title, date, location/platform;
    - known speaker names;
@@ -56,8 +69,9 @@ Planned, not yet implemented in the helper:
 7. Preserve raw provider JSON separately from cleaned Markdown.
 8. For durable archives, resolve the destination explicitly or through the current workspace's local routing policy; do not silently rely on personal, workspace-specific, or helper example defaults.
 9. Write complete timecoded transcript and metadata archive.
-10. For `seminar`, update the selected collection index.
-11. Report paths and quality warnings.
+10. If the timed provider transcript contains replacement characters/mojibake but a cleaner untimed transcript exists, create `transcript.repaired.md` by aligning the clean text onto timed segments and record the method in metadata.
+11. For `seminar`, update the selected collection index.
+12. Report paths and quality warnings.
 
 ## Helper script
 
@@ -116,6 +130,8 @@ python3 scripts/transcribe_audio.py sample.wav --mode seminar --title "Test" --o
 - `--max-direct-duration-seconds` and `--allow-long-audio` for long-recording guardrails
 - `--no-diarize` to disable speaker diarization
 - `--access-level public|internal|sensitive|private`
+- `--staged-input` and `--delete-staged-input-after-archive` for temporary duplicate media staged into the processing workspace
+- `--repair-from-clean-transcript path/to/clean.txt` and `--repair-alignment-threshold 0.85` to create `transcript.repaired.md` from clean untimed text plus timed noisy segments
 - `--save-audio` only when the user explicitly wants raw audio preserved
 
 ## Mistral/Voxtral backend
@@ -125,11 +141,12 @@ Default model:
 - `voxtral-mini-latest` for freshness during prototyping.
 - Pin `voxtral-mini-2602` for reproducible runs.
 
-Use diarization and segment timestamps by default for archives. Request word timestamps when alignment/search requires it.
+Use diarization and segment timestamps by default for archives. Request word timestamps when alignment/search requires it. Use the underlying provider model id (for example `voxtral-mini-latest`) when calling Mistral directly; provider/model routing strings used by a wrapper are not necessarily the API model id.
 
 Important quirks:
 
 - Current docs say `timestamp_granularities` is not compatible with `language`; prefer timestamps and omit the language hint when both are requested.
+- Quick transcription wrappers can be useful smoke tests but may not expose `segments`, `words`, diarization, or raw provider provenance; use the full helper/API path for archive-grade output.
 - Diarization gives labels like `Speaker 1`; it does not reliably identify real names.
 - Context bias can improve names/technical terms; provide speaker names, project names, paper titles, and acronyms when known.
 - Long recordings should not be blindly uploaded as one request; the helper refuses cloud upload above the direct-duration guard unless `--allow-long-audio` is passed.
@@ -148,8 +165,10 @@ For `archive` and `seminar`, create:
 - `speakers.json` — diarization labels, real-name mappings, confidence/notes.
 - `keywords.txt` — one searchable keyword per line.
 - `source-info.json` — ffprobe/source metadata, no raw audio by default.
-- `provider-response.json` — raw returned provider JSON.
+- `provider-response.json` — normalized returned provider JSON.
+- `provider-response.raw.json` — exact captured provider/mock JSON bytes when available, with checksum/size in metadata.
 - optional `segments.json`, `words.json`, `diarization.json` when returned.
+- optional `transcript.repaired.md` and `segments.repaired.json` when cleaner untimed text is aligned to timed provider segments.
 
 For the full schema, read `references/archive-schema.md`.
 
