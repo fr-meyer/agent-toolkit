@@ -37,7 +37,7 @@ Mistral's current Speech to Text docs describe Voxtral Mini Transcribe V2 as sup
 - `diarize`: boolean; default enabled for archives.
 - `timestamp_granularities`: values from `segment`, `word`; default `segment`.
 - `language`: optional language hint, omitted by the helper when timestamps are requested because current docs indicate incompatibility.
-- `context_bias`: domain terms/names/acronyms; use sparingly and dedupe.
+- `context_bias`: domain terms/names/acronyms; use sparingly and dedupe. Mistral currently accepts token-like entries only (`^[^,\s]+$`), so the helper splits human-friendly phrases/names before sending.
 - `temperature`: optional.
 - `multipart_array_style`: `repeated` by default; use `brackets` or `json` only if a live API smoke test shows Mistral expects a different multipart array encoding.
 

@@ -430,6 +430,25 @@ def parse_speaker_mappings(items: list[str]) -> dict[str, str]:
     return out
 
 
+CONTEXT_BIAS_PATTERN = re.compile(r"^[^,\s]+$")
+
+
+def expand_context_bias_term(term: str) -> list[str]:
+    """Return provider-valid context_bias terms.
+
+    Mistral currently rejects context_bias entries containing commas or
+    whitespace. Accept human-friendly phrases in CLI metadata, but send only
+    token-like terms that satisfy the provider schema.
+    """
+    raw = term.strip()
+    if not raw:
+        return []
+    if CONTEXT_BIAS_PATTERN.match(raw):
+        return [raw]
+    pieces = [piece.strip(" \t\r\n,.;:()[]{}<>\"'") for piece in re.split(r"[,\s]+", raw)]
+    return [piece for piece in pieces if piece and CONTEXT_BIAS_PATTERN.match(piece)]
+
+
 def collect_context_bias(args: argparse.Namespace, speaker_names: dict[str, str]) -> list[str]:
     terms: list[str] = []
     terms.extend(args.context_bias or [])
@@ -445,10 +464,11 @@ def collect_context_bias(args: argparse.Namespace, speaker_names: dict[str, str]
     deduped = []
     seen = set()
     for term in terms:
-        key = term.casefold().strip()
-        if key and key not in seen:
-            deduped.append(term.strip())
-            seen.add(key)
+        for expanded in expand_context_bias_term(term):
+            key = expanded.casefold().strip()
+            if key and key not in seen:
+                deduped.append(expanded.strip())
+                seen.add(key)
     return deduped[:100]
 
 

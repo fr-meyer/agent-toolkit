@@ -123,7 +123,7 @@ python3 scripts/transcribe_audio.py sample.wav --mode seminar --title "Test" --o
 - `--archive-root`, `--seminar-collection`, `--output-dir`, `--allow-default-destination`
 - `--speaker "Speaker 1=Name"` or repeat `--speaker "Name"`
 - `--keyword term` and `--related path-or-url`
-- `--context-bias term` or `--context-file terms.txt`
+- `--context-bias term` or `--context-file terms.txt`; human-friendly phrases are split into provider-valid token-like terms before sending
 - `--timestamp-granularities segment word` for segment/word timestamps
 - `--multipart-array-style repeated|brackets|json` if provider multipart array encoding needs adjustment after a live smoke test
 - `--quality-flag flag` to add manual quality/provenance flags
