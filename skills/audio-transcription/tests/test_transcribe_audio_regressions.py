@@ -29,19 +29,22 @@ spec.loader.exec_module(transcribe_audio)
 class AudioTranscriptionRegressionTests(unittest.TestCase):
     def test_context_bias_terms_are_provider_valid(self) -> None:
         args = argparse.Namespace(
-            context_bias=["Korean AI agent", "KAIST", "comma,separated"],
+            context_bias=["multi word term", "TokenOnly", "comma,separated"],
             context_file=[],
-            keyword=["real demographics", "synthetic personas"],
-            title="How to Ground a Korean AI Agent",
+            keyword=["domain phrase", "example glossary"],
+            title="Example Archive Title",
         )
-        terms = transcribe_audio.collect_context_bias(args, {"Speaker 1": "Jaehee Kim"})
+        terms = transcribe_audio.collect_context_bias(args, {"Speaker 1": "Domain Expert"})
 
-        self.assertIn("Korean", terms)
-        self.assertIn("AI", terms)
-        self.assertIn("agent", terms)
-        self.assertIn("Jaehee", terms)
-        self.assertIn("Kim", terms)
-        self.assertNotIn("Korean AI agent", terms)
+        self.assertIn("multi", terms)
+        self.assertIn("word", terms)
+        self.assertIn("term", terms)
+        self.assertIn("TokenOnly", terms)
+        self.assertIn("comma", terms)
+        self.assertIn("separated", terms)
+        self.assertIn("Domain", terms)
+        self.assertIn("Expert", terms)
+        self.assertNotIn("multi word term", terms)
         self.assertTrue(all(transcribe_audio.CONTEXT_BIAS_PATTERN.match(term) for term in terms))
 
     def test_repair_alignment_removes_replacement_characters(self) -> None:
