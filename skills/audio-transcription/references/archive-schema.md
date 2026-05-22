@@ -9,7 +9,7 @@ Example layouts only:
 - Seminar/meeting recordings: `<archive-root>/<collection>/<year>/<YYYY-MM-DD>-<slug>/`
 - Generic archives: `<archive-root>/audio-transcripts/<category>/<year>/<YYYY-MM-DD>-<slug>/`
 
-The collection folder is configurable with `--seminar-collection`, so workspaces can use neutral names such as `lab_seminars`, `team_meetings`, or `research_seminars`.
+The collection folder is configurable with `--seminar-collection`, so workspaces can use neutral names such as `event_transcripts`, `meeting_notes`, or `audio_archives`.
 
 ## Required files
 
@@ -81,8 +81,8 @@ Each speaker entry should contain:
 ```json
 {
   "label": "Speaker 1",
-  "name": "Dr Kim",
-  "display_name": "Dr Kim",
+  "name": "Speaker Name",
+  "display_name": "Speaker Name",
   "confidence": "user-provided | self-introduction | manual-review | diarization-label-only",
   "notes": "..."
 }

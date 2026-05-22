@@ -48,7 +48,7 @@ Planned, not yet implemented in the helper:
 3. Gather optional metadata before transcription when available:
    - title, date, location/platform;
    - known speaker names;
-   - keywords, lab/project names, paper titles, acronyms;
+   - keywords, project/context names, document titles, acronyms;
    - related slides, source documents, notes, abstracts.
 4. Inspect media with `ffprobe`.
 5. Normalize audio with `ffmpeg` unless there is a reason to send the original supported file directly.
@@ -66,7 +66,7 @@ Use the bundled script for deterministic inspect/normalize/transcribe/archive wo
 ```bash
 python3 scripts/transcribe_audio.py recording.wav \
   --mode seminar \
-  --title "Seminar title" \
+  --title "Recording title" \
   --date YYYY-MM-DD \
   --output-dir path/to/archive-folder \
   --cloud-ok \
@@ -79,8 +79,8 @@ Collection-routed seminar folder:
 python3 scripts/transcribe_audio.py recording.wav \
   --mode seminar \
   --archive-root path/to/archive-root \
-  --seminar-collection lab_seminars \
-  --title "Seminar title" \
+  --seminar-collection event_transcripts \
+  --title "Recording title" \
   --cloud-ok
 ```
 
