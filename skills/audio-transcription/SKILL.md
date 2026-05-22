@@ -9,12 +9,12 @@ description: Reusable audio and video speech-to-text workflow. Use when the user
 
 Transcribe audio/video into readable text and, when requested, archive complete timecoded transcripts with metadata, speaker labels, summaries, and searchable cards.
 
-Default generic archive roots:
+Example archive layouts (not canonical defaults):
 
 - `memory/audio-transcripts/<year>/<YYYY-MM-DD>-<slug>/` for ordinary archives.
 - `memory/seminars/<year>/<YYYY-MM-DD>-<slug>/` for seminar/meeting archives.
 
-Override the seminar collection per workspace with `--seminar-collection`, e.g. `--seminar-collection lab_seminars`.
+For durable archives, prefer an explicit `--output-dir` or a destination resolved from the current workspace's routing policy. Keep workspace-specific routing rules outside this shared skill, then pass the resolved destination into the helper with `--output-dir`, `--archive-root`, or `--seminar-collection`.
 
 ## Privacy gate
 
@@ -32,8 +32,8 @@ If the user needs private/local transcription, treat it as a future/private-loca
 Implemented by `scripts/transcribe_audio.py`:
 
 - `quick`: return transcript in chat/stdout; no durable archive.
-- `archive`: create a full archive under `memory/audio-transcripts/...`.
-- `seminar`: create an archive under `memory/<seminar-collection>/...` and update that collection's `index.md` and `index.jsonl`.
+- `archive`: create a full archive at an explicit or workspace-routed destination.
+- `seminar`: create a full archive and update the selected collection's `index.md` and `index.jsonl`.
 
 Planned, not yet implemented in the helper:
 
@@ -44,7 +44,7 @@ Planned, not yet implemented in the helper:
 ## Workflow
 
 1. Identify source audio/video path or staged media path.
-2. Decide mode: use `seminar` for lab/seminar/meeting recordings; `quick` for short throwaway voice notes.
+2. Decide mode: use `seminar` for seminar/meeting recordings; `quick` for short throwaway voice notes.
 3. Gather optional metadata before transcription when available:
    - title, date, location/platform;
    - known speaker names;
@@ -54,9 +54,10 @@ Planned, not yet implemented in the helper:
 5. Normalize audio with `ffmpeg` unless there is a reason to send the original supported file directly.
 6. Call the backend. First backend: Mistral/Voxtral.
 7. Preserve raw provider JSON separately from cleaned Markdown.
-8. Write complete timecoded transcript and metadata archive.
-9. For `seminar`, update the selected seminar collection index.
-10. Report paths and quality warnings.
+8. For durable archives, resolve the destination explicitly or through the current workspace's local routing policy; do not silently rely on personal or workspace-specific defaults.
+9. Write complete timecoded transcript and metadata archive.
+10. For `seminar`, update the selected collection index.
+11. Report paths and quality warnings.
 
 ## Helper script
 
@@ -67,16 +68,18 @@ python3 scripts/transcribe_audio.py recording.wav \
   --mode seminar \
   --title "Seminar title" \
   --date YYYY-MM-DD \
+  --output-dir path/to/archive-folder \
   --cloud-ok \
   --model voxtral-mini-latest
 ```
 
-Workspace-specific seminar folder:
+Collection-routed seminar folder:
 
 ```bash
 python3 scripts/transcribe_audio.py recording.wav \
   --mode seminar \
   --seminar-collection lab_seminars \
+  --require-destination \
   --title "Seminar title" \
   --cloud-ok
 ```
@@ -103,7 +106,7 @@ python3 scripts/transcribe_audio.py sample.wav --mode seminar --title "Test" --m
 
 - `--mode quick|archive|seminar`
 - `--title`, `--date`, `--slug`, `--recorded-at`, `--main-speaker`
-- `--archive-root`, `--seminar-collection`, `--output-dir`
+- `--archive-root`, `--seminar-collection`, `--output-dir`, `--require-destination`
 - `--speaker "Speaker 1=Name"` or repeat `--speaker "Name"`
 - `--keyword term` and `--related path-or-url`
 - `--context-bias term` or `--context-file terms.txt`

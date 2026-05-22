@@ -28,6 +28,9 @@ MISTRAL_ENDPOINT = "https://api.mistral.ai/v1/audio/transcriptions"
 DEFAULT_MODEL = "voxtral-mini-latest"
 PINNED_MODEL = "voxtral-mini-2602"
 DEFAULT_MAX_DIRECT_DURATION_SECONDS = 3 * 60 * 60
+DEFAULT_TIMEZONE = "UTC"
+DEFAULT_ARCHIVE_ROOT = "memory"
+DEFAULT_SEMINAR_COLLECTION = "seminars"
 SUPPORTED_DIRECT_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus"}
 
 
@@ -588,7 +591,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--privacy-note", default=None)
     parser.add_argument("--title", default=None)
     parser.add_argument("--date", default=None, help="Recording date YYYY-MM-DD")
-    parser.add_argument("--timezone", default="Asia/Seoul")
+    parser.add_argument("--timezone", default=DEFAULT_TIMEZONE)
     parser.add_argument("--recorded-at", default=None)
     parser.add_argument("--main-speaker", default=None)
     parser.add_argument("--speaker", action="append", default=[], help="Speaker mapping, e.g. 'Speaker 1=Dr Kim' or just 'Dr Kim'. Repeatable.")
@@ -601,9 +604,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--multipart-array-style", choices=["repeated", "brackets", "json"], default="repeated", help="Multipart encoding for provider array fields.")
     parser.add_argument("--no-diarize", dest="diarize", action="store_false", default=True)
     parser.add_argument("--temperature", type=float, default=None)
-    parser.add_argument("--archive-root", default="memory")
-    parser.add_argument("--seminar-collection", default="seminars", help="Folder under archive-root for seminar mode, e.g. seminars or research_seminars.")
+    parser.add_argument("--archive-root", default=None, help="Base archive folder. Defaults to memory for backward compatibility; pass explicitly from workspace routing for durable archives.")
+    parser.add_argument("--seminar-collection", default=None, help="Folder under archive-root for seminar mode, e.g. seminars or research_seminars.")
     parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--require-destination", action="store_true", help="Refuse durable archive modes unless a non-default destination was provided by the caller/routing policy.")
     parser.add_argument("--slug", default=None)
     parser.add_argument("--normalize-format", choices=["mp3", "m4a", "wav"], default="mp3")
     parser.add_argument("--sample-rate", type=int, default=16000)
@@ -616,7 +620,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="Inspect and show planned request without uploading/transcribing.")
     parser.add_argument("--mock-response", default=None, help="Use a local JSON response instead of calling the API; useful for tests.")
     parser.add_argument("--timeout", type=int, default=600)
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.archive_root_defaulted = args.archive_root is None
+    args.seminar_collection_defaulted = args.seminar_collection is None
+    if args.archive_root is None:
+        args.archive_root = DEFAULT_ARCHIVE_ROOT
+    if args.seminar_collection is None:
+        args.seminar_collection = DEFAULT_SEMINAR_COLLECTION
+    return args
 
 
 def main() -> int:
@@ -627,6 +638,15 @@ def main() -> int:
     except Exception as exc:
         eprint(f"Invalid timezone: {args.timezone}")
         return 2
+
+    if args.require_destination and args.mode != "quick" and not args.output_dir:
+        using_default_archive_route = args.archive_root_defaulted and (args.mode != "seminar" or args.seminar_collection_defaulted)
+        if using_default_archive_route:
+            eprint(
+                "Refusing durable archive without explicit destination because --require-destination is set. "
+                "Pass --output-dir, or pass --archive-root/--seminar-collection from the workspace routing policy."
+            )
+            return 2
 
     try:
         source_info = inspect_media(input_path, args.record_source_path)

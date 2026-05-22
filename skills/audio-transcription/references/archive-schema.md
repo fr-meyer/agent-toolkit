@@ -1,11 +1,15 @@
 # Audio transcription archive schema
 
-## Default roots
+## Destination policy and example layouts
 
-- Seminar/meeting recordings: `memory/seminars/<year>/<YYYY-MM-DD>-<slug>/`
-- Generic archives: `memory/audio-transcripts/<year>/<YYYY-MM-DD>-<slug>/`
+Archive destinations are workspace policy, not shared-skill policy. Prefer an explicit `--output-dir`, or pass a destination resolved from local routing with `--archive-root` and collection/subpath options.
 
-The seminar collection folder is configurable with `--seminar-collection`, so workspaces can use names such as `lab_seminars`, `team_meetings`, or `research_seminars`.
+Example layouts only:
+
+- Seminar/meeting recordings: `<archive-root>/<collection>/<year>/<YYYY-MM-DD>-<slug>/`
+- Generic archives: `<archive-root>/audio-transcripts/<category>/<year>/<YYYY-MM-DD>-<slug>/`
+
+The collection folder is configurable with `--seminar-collection`, so workspaces can use neutral names such as `lab_seminars`, `team_meetings`, or `research_seminars`.
 
 ## Required files
 
@@ -88,10 +92,10 @@ Diarization labels are not real identities by themselves.
 
 ## Indexing
 
-For `seminar` mode, update both under the configured seminar collection root:
+For `seminar` mode, update both under the configured collection root:
 
-- `memory/<seminar-collection>/index.md`
-- `memory/<seminar-collection>/index.jsonl`
+- `<archive-root>/<seminar-collection>/index.md`
+- `<archive-root>/<seminar-collection>/index.jsonl`
 
 Index entries should include date, title, duration, speakers, keywords, archive path, access level, backend/model.
 
