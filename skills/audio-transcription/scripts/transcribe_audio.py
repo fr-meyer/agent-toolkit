@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import difflib
+import hashlib
 import json
 import mimetypes
 import os
@@ -28,6 +30,9 @@ MISTRAL_ENDPOINT = "https://api.mistral.ai/v1/audio/transcriptions"
 DEFAULT_MODEL = "voxtral-mini-latest"
 PINNED_MODEL = "voxtral-mini-2602"
 DEFAULT_MAX_DIRECT_DURATION_SECONDS = 3 * 60 * 60
+DEFAULT_TIMEZONE = "UTC"
+DEFAULT_ARCHIVE_ROOT = "memory"
+DEFAULT_SEMINAR_COLLECTION = "seminars"
 SUPPORTED_DIRECT_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus"}
 
 
@@ -143,7 +148,7 @@ def call_mistral(
     temperature: float | None,
     timeout: int,
     multipart_array_style: str,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], bytes]:
     fields: list[tuple[str, str]] = [("model", model), ("diarize", "true" if diarize else "false")]
     # Mistral docs note timestamp_granularities is not compatible with language. Prefer timestamps.
     add_array_fields(fields, "timestamp_granularities", timestamp_granularities, multipart_array_style)
@@ -165,8 +170,12 @@ def call_mistral(
     req.add_header("Content-Length", str(len(body)))
     try:
         with request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-            return json.loads(raw)
+            # Decode provider JSON strictly. Replacement-character artifacts in
+            # transcript text should be treated as provider/output quality data,
+            # not silently introduced by the capture layer.
+            raw_bytes = resp.read()
+            raw = raw_bytes.decode("utf-8")
+            return json.loads(raw), raw_bytes
     except error.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Mistral API HTTP {exc.code}: {raw[:2000]}") from exc
@@ -287,6 +296,127 @@ def clean_transcript(markdown: str) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def normalize_alignment_text(text: str) -> str:
+    """Normalize transcript text for segment-level alignment.
+
+    Accepts plain text or Markdown. Heading/commentary/code-fence lines are
+    removed; timestamp-only lines are dropped so a clean untimed transcript can
+    be aligned against timed provider segments.
+    """
+    lines: list[str] = []
+    in_fence = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence and (line.startswith("#") or line.startswith(">")):
+            continue
+        if re.match(r"^\[[0-9?:.\-–—\s]+\].*$", line):
+            # Helper transcript timestamp lines also contain speaker labels;
+            # drop the whole line instead of aligning labels as spoken text.
+            continue
+        if line:
+            lines.append(line)
+    return re.sub(r"\s+", " ", " ".join(lines)).strip()
+
+
+def count_replacement_chars(value: Any) -> int:
+    if isinstance(value, str):
+        return value.count("\ufffd")
+    if isinstance(value, dict):
+        return sum(count_replacement_chars(v) for v in value.values())
+    if isinstance(value, list):
+        return sum(count_replacement_chars(v) for v in value)
+    return 0
+
+
+def repair_segments_from_clean_text(
+    segments: list[dict[str, Any]],
+    clean_text: str,
+) -> tuple[list[dict[str, Any]], float]:
+    """Align cleaner untimed text to timed provider segments.
+
+    This fallback is useful when a provider returns usable timestamps/speaker
+    labels but transcript text contains mojibake or replacement characters, and
+    a second transcription pass produced cleaner plain text without timings.
+    """
+    clean_body = normalize_alignment_text(clean_text)
+    if not segments or not clean_body:
+        return [], 0.0
+
+    parts: list[str] = []
+    spans: list[tuple[int, int]] = []
+    pos = 0
+    for seg in segments:
+        txt = re.sub(r"\s+", " ", segment_text(seg)).strip()
+        if parts:
+            parts.append(" ")
+            pos += 1
+        start = pos
+        parts.append(txt)
+        pos += len(txt)
+        spans.append((start, pos))
+    direct_body = "".join(parts)
+    if not direct_body:
+        return [], 0.0
+
+    matcher = difflib.SequenceMatcher(None, direct_body, clean_body, autojunk=False)
+    blocks = matcher.get_matching_blocks()
+    ratio = matcher.ratio()
+
+    def map_index(idx: int) -> int:
+        prev: difflib.Match | None = None
+        nxt: difflib.Match | None = None
+        for block in blocks:
+            if block.size and block.a <= idx < block.a + block.size:
+                return block.b + (idx - block.a)
+            if block.a + block.size <= idx:
+                prev = block
+            elif block.a > idx:
+                nxt = block
+                break
+        if prev and nxt:
+            a0 = prev.a + prev.size
+            b0 = prev.b + prev.size
+            a1 = nxt.a
+            b1 = nxt.b
+            if a1 == a0:
+                return b0
+            frac = (idx - a0) / (a1 - a0)
+            return round(b0 + frac * (b1 - b0))
+        if prev:
+            return prev.b + prev.size + (idx - (prev.a + prev.size))
+        if nxt:
+            return max(0, nxt.b - (nxt.a - idx))
+        return min(idx, len(clean_body))
+
+    repaired: list[dict[str, Any]] = []
+    for seg, (start, end) in zip(segments, spans):
+        clean_start = max(0, min(len(clean_body), map_index(start)))
+        clean_end = max(clean_start, min(len(clean_body), map_index(end)))
+        text = clean_body[clean_start:clean_end].strip()
+        if not text:
+            text = segment_text(seg)
+        item = dict(seg)
+        item["text"] = text
+        repaired.append(item)
+    return repaired, ratio
+
+
+def render_repaired_transcript(title: str, segments: list[dict[str, Any]], speaker_names: dict[str, str], ratio: float) -> str:
+    transcript = render_transcript(title, segments, speaker_names)
+    note = (
+        f"# Transcript — {title} (repaired text)\n\n"
+        "> Timestamps and provisional speaker labels are preserved from the timed provider response. "
+        "Segment text was aligned from a cleaner untimed transcript. "
+        f"Automatic alignment ratio: {ratio:.3f}. Verify against audio before quoting.\n\n"
+    )
+    # Drop the default H1 from render_transcript and keep the body.
+    body = "\n".join(transcript.splitlines()[2:]).lstrip()
+    return note + body
+
+
 def parse_speaker_mappings(items: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     unnamed = 1
@@ -298,6 +428,25 @@ def parse_speaker_mappings(items: list[str]) -> dict[str, str]:
             out[f"Speaker {unnamed}"] = item.strip()
             unnamed += 1
     return out
+
+
+CONTEXT_BIAS_PATTERN = re.compile(r"^[^,\s]+$")
+
+
+def expand_context_bias_term(term: str) -> list[str]:
+    """Return provider-valid context_bias terms.
+
+    Mistral currently rejects context_bias entries containing commas or
+    whitespace. Accept human-friendly phrases in CLI metadata, but send only
+    token-like terms that satisfy the provider schema.
+    """
+    raw = term.strip()
+    if not raw:
+        return []
+    if CONTEXT_BIAS_PATTERN.match(raw):
+        return [raw]
+    pieces = [piece.strip(" \t\r\n,.;:()[]{}<>\"'") for piece in re.split(r"[,\s]+", raw)]
+    return [piece for piece in pieces if piece and CONTEXT_BIAS_PATTERN.match(piece)]
 
 
 def collect_context_bias(args: argparse.Namespace, speaker_names: dict[str, str]) -> list[str]:
@@ -315,10 +464,11 @@ def collect_context_bias(args: argparse.Namespace, speaker_names: dict[str, str]
     deduped = []
     seen = set()
     for term in terms:
-        key = term.casefold().strip()
-        if key and key not in seen:
-            deduped.append(term.strip())
-            seen.add(key)
+        for expanded in expand_context_bias_term(term):
+            key = expanded.casefold().strip()
+            if key and key not in seen:
+                deduped.append(expanded.strip())
+                seen.add(key)
     return deduped[:100]
 
 
@@ -366,6 +516,7 @@ def card_markdown(args: argparse.Namespace, title: str, archive_dir: Path, metad
         f"  - {s['label']}: {s.get('name') or s['display_name']} ({s.get('confidence', 'unknown')})" for s in speakers
     ) or "  - Unknown"
     related_lines = "\n".join(f"  - {r}" for r in (args.related or [])) or "  - none recorded"
+    repaired_line = "  - Repaired timecoded transcript: `transcript.repaired.md`\n" if (metadata.get("repair") or {}).get("created") else ""
     return f"""# {title}
 
 - Date: {metadata.get('date') or 'unknown'}
@@ -390,7 +541,7 @@ def card_markdown(args: argparse.Namespace, title: str, archive_dir: Path, metad
 - Related files:
   - Full transcript: `transcript.md`
   - Clean transcript: `transcript.clean.md`
-  - Summary: `summary.md`
+{repaired_line}  - Summary: `summary.md`
   - Metadata: `metadata.json`
   - Speakers: `speakers.json`
 """
@@ -466,7 +617,13 @@ def update_indices(archive_dir: Path, card: dict[str, Any], seminar_root: Path) 
     index_md.write_text("".join(lines), encoding="utf-8")
 
 
-def save_archive(args: argparse.Namespace, response: dict[str, Any], source_info: dict[str, Any], normalize_info: dict[str, Any]) -> Path:
+def save_archive(
+    args: argparse.Namespace,
+    response: dict[str, Any],
+    source_info: dict[str, Any],
+    normalize_info: dict[str, Any],
+    provider_raw_bytes: bytes | None = None,
+) -> Path:
     tz = ZoneInfo(args.timezone)
     now = dt.datetime.now(tz)
     title = args.title or Path(args.input).stem
@@ -484,6 +641,28 @@ def save_archive(args: argparse.Namespace, response: dict[str, Any], source_info
     words = response.get("words") or response.get("word_timestamps")
     usage = response.get("usage")
     quality_flags = infer_quality_flags(args, segments, duration)
+    provider_replacement_count = count_replacement_chars(response)
+    segment_replacement_count = count_replacement_chars(segments)
+    if provider_replacement_count:
+        quality_flags.append("unicode_replacement_characters_in_provider_response")
+    repair_info: dict[str, Any] | None = None
+    repaired_segments: list[dict[str, Any]] = []
+    repaired_transcript = ""
+    if args.repair_from_clean_transcript:
+        clean_source_path = Path(args.repair_from_clean_transcript)
+        clean_source_text = clean_source_path.read_text(encoding="utf-8")
+        repaired_segments, alignment_ratio = repair_segments_from_clean_text(segments, clean_source_text)
+        repair_info = {
+            "source": clean_source_path.as_posix(),
+            "alignment_ratio": alignment_ratio,
+            "threshold": args.repair_alignment_threshold,
+            "created": bool(repaired_segments and alignment_ratio >= args.repair_alignment_threshold),
+            "method": "aligned cleaner untimed transcript text to timed provider segments",
+        }
+        if repaired_segments and alignment_ratio >= args.repair_alignment_threshold:
+            repaired_transcript = render_repaired_transcript(title, repaired_segments, speaker_names, alignment_ratio)
+        else:
+            quality_flags.append("repaired_transcript_alignment_below_threshold")
     metadata = {
         "title": title,
         "date": args.date or now.date().isoformat(),
@@ -504,7 +683,19 @@ def save_archive(args: argparse.Namespace, response: dict[str, Any], source_info
         "privacy_note": args.privacy_note or ("cloud Mistral API" if args.backend == "mistral" else args.backend),
         "source_audio": source_info.get("source_name"),
         "source_path_recorded": source_info.get("source_path_recorded", False),
+        "input_was_staged_copy": bool(args.staged_input),
         "usage": usage,
+        "provider_text_quality": {
+            "unicode_replacement_characters_in_response": provider_replacement_count,
+            "unicode_replacement_characters_in_segments": segment_replacement_count,
+        },
+        "provider_raw_response": {
+            "preserved": bool(provider_raw_bytes is not None),
+            "path": "provider-response.raw.json" if provider_raw_bytes is not None else None,
+            "sha256": hashlib.sha256(provider_raw_bytes).hexdigest() if provider_raw_bytes is not None else None,
+            "size_bytes": len(provider_raw_bytes) if provider_raw_bytes is not None else None,
+        },
+        "repair": repair_info,
         "quality_flags": quality_flags,
         "related": args.related or [],
         "notes": [
@@ -519,11 +710,16 @@ def save_archive(args: argparse.Namespace, response: dict[str, Any], source_info
     (archive_dir / "card.md").write_text(card, encoding="utf-8")
     (archive_dir / "transcript.md").write_text(transcript, encoding="utf-8")
     (archive_dir / "transcript.clean.md").write_text(clean, encoding="utf-8")
+    if repaired_transcript and repaired_segments:
+        (archive_dir / "transcript.repaired.md").write_text(repaired_transcript, encoding="utf-8")
+        write_json(archive_dir / "segments.repaired.json", repaired_segments)
     (archive_dir / "summary.md").write_text(summary, encoding="utf-8")
     write_json(archive_dir / "metadata.json", metadata)
     write_json(archive_dir / "speakers.json", speakers)
     (archive_dir / "keywords.txt").write_text("\n".join(kws) + ("\n" if kws else ""), encoding="utf-8")
     write_json(archive_dir / "source-info.json", {"source": source_info, "normalization": normalize_info})
+    if provider_raw_bytes is not None:
+        (archive_dir / "provider-response.raw.json").write_bytes(provider_raw_bytes)
     write_json(archive_dir / "provider-response.json", response)
     if segments:
         write_json(archive_dir / "segments.json", segments)
@@ -550,7 +746,8 @@ def save_archive(args: argparse.Namespace, response: dict[str, Any], source_info
             "backend": args.backend,
             "model": args.model,
         }
-        update_indices(archive_dir, idx_card, Path(args.archive_root) / args.seminar_collection)
+        seminar_root = archive_dir.parent if args.output_dir else Path(args.archive_root) / args.seminar_collection
+        update_indices(archive_dir, idx_card, seminar_root)
     return archive_dir
 
 
@@ -588,10 +785,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--privacy-note", default=None)
     parser.add_argument("--title", default=None)
     parser.add_argument("--date", default=None, help="Recording date YYYY-MM-DD")
-    parser.add_argument("--timezone", default="Asia/Seoul")
+    parser.add_argument("--timezone", default=DEFAULT_TIMEZONE)
     parser.add_argument("--recorded-at", default=None)
     parser.add_argument("--main-speaker", default=None)
-    parser.add_argument("--speaker", action="append", default=[], help="Speaker mapping, e.g. 'Speaker 1=Dr Kim' or just 'Dr Kim'. Repeatable.")
+    parser.add_argument("--speaker", action="append", default=[], help="Speaker mapping, e.g. 'Speaker 1=Speaker Name' or just 'Speaker Name'. Repeatable.")
     parser.add_argument("--keyword", action="append", default=[], help="Keyword to include in card/index. Repeatable.")
     parser.add_argument("--related", action="append", default=[], help="Related material path/URL/note. Repeatable.")
     parser.add_argument("--context-bias", action="append", default=[], help="Mistral context-bias term. Repeatable, max 100 sent.")
@@ -601,9 +798,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--multipart-array-style", choices=["repeated", "brackets", "json"], default="repeated", help="Multipart encoding for provider array fields.")
     parser.add_argument("--no-diarize", dest="diarize", action="store_false", default=True)
     parser.add_argument("--temperature", type=float, default=None)
-    parser.add_argument("--archive-root", default="memory")
-    parser.add_argument("--seminar-collection", default="seminars", help="Folder under archive-root for seminar mode, e.g. seminars or research_seminars.")
+    parser.add_argument("--archive-root", default=None, help="Base archive folder. Pass explicitly from workspace routing for durable archives; example default is used only with --allow-default-destination.")
+    parser.add_argument("--seminar-collection", default=None, help="Folder under archive-root for seminar mode, e.g. event_transcripts or meeting_notes.")
     parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--allow-default-destination", action="store_true", help="Allow durable archive modes to use the helper's example default destination when no routed destination was provided.")
     parser.add_argument("--slug", default=None)
     parser.add_argument("--normalize-format", choices=["mp3", "m4a", "wav"], default="mp3")
     parser.add_argument("--sample-rate", type=int, default=16000)
@@ -615,8 +813,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--allow-long-audio", action="store_true", help="Allow cloud upload even if duration exceeds max-direct-duration-seconds.")
     parser.add_argument("--dry-run", action="store_true", help="Inspect and show planned request without uploading/transcribing.")
     parser.add_argument("--mock-response", default=None, help="Use a local JSON response instead of calling the API; useful for tests.")
+    parser.add_argument("--staged-input", action="store_true", help="Mark the input as a temporary staged copy of source media, not the durable original.")
+    parser.add_argument("--delete-staged-input-after-archive", action="store_true", help="After a successful durable archive, delete the staged input file. Requires --staged-input and is ignored for quick mode.")
+    parser.add_argument("--repair-from-clean-transcript", default=None, help="Path to a cleaner untimed transcript to align onto timed provider segments; writes transcript.repaired.md and segments.repaired.json when alignment is good enough.")
+    parser.add_argument("--repair-alignment-threshold", type=float, default=0.85, help="Minimum alignment ratio required to write transcript.repaired.md.")
     parser.add_argument("--timeout", type=int, default=600)
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.archive_root_defaulted = args.archive_root is None
+    args.seminar_collection_defaulted = args.seminar_collection is None
+    if args.archive_root is None:
+        args.archive_root = DEFAULT_ARCHIVE_ROOT
+    if args.seminar_collection is None:
+        args.seminar_collection = DEFAULT_SEMINAR_COLLECTION
+    return args
 
 
 def main() -> int:
@@ -627,6 +836,27 @@ def main() -> int:
     except Exception as exc:
         eprint(f"Invalid timezone: {args.timezone}")
         return 2
+
+    if args.delete_staged_input_after_archive and not args.staged_input:
+        eprint("Refusing to delete input unless --staged-input is also set.")
+        return 2
+
+    if args.mode != "quick" and not args.allow_default_destination:
+        has_explicit_destination = bool(args.output_dir)
+        if args.mode == "archive":
+            has_explicit_destination = has_explicit_destination or not args.archive_root_defaulted
+        elif args.mode == "seminar":
+            has_explicit_destination = has_explicit_destination or (
+                not args.archive_root_defaulted and not args.seminar_collection_defaulted
+            )
+        if not has_explicit_destination:
+            eprint(
+                "Refusing durable archive without explicit destination. "
+                "Pass --output-dir, or pass --archive-root for archive mode; "
+                "for seminar mode pass both --archive-root and --seminar-collection. "
+                "Use --allow-default-destination only for intentional use of the helper's example default layout."
+            )
+            return 2
 
     try:
         source_info = inspect_media(input_path, args.record_source_path)
@@ -674,6 +904,7 @@ def main() -> int:
                 return 2
 
         normalize_info: dict[str, Any] = {"normalized": False}
+        provider_raw_bytes: bytes | None = None
         with tempfile.TemporaryDirectory(prefix="agent-stt-") as td:
             request_audio = input_path
             if not args.no_normalize:
@@ -688,11 +919,12 @@ def main() -> int:
                 eprint(f"Warning: sending unsupported-looking suffix directly: {input_path.suffix}")
 
             if args.mock_response:
-                response = json.loads(Path(args.mock_response).read_text(encoding="utf-8"))
+                provider_raw_bytes = Path(args.mock_response).read_bytes()
+                response = json.loads(provider_raw_bytes.decode("utf-8"))
             else:
                 if args.language and args.timestamp_granularities:
                     eprint("Note: Mistral docs say timestamp_granularities is not compatible with language; omitting language hint.")
-                response = call_mistral(
+                response, provider_raw_bytes = call_mistral(
                     request_audio,
                     os.environ[args.api_key_env],
                     args.model,
@@ -709,8 +941,19 @@ def main() -> int:
             print(response.get("text") or render_transcript(args.title or input_path.stem, get_segments(response, source_info.get("duration_seconds")), parse_speaker_mappings(args.speaker or [])))
             return 0
 
-        archive_dir = save_archive(args, response, source_info, normalize_info)
-        print(json.dumps({"status": "archived", "archive_dir": str(archive_dir), "card": str(archive_dir / "card.md"), "transcript": str(archive_dir / "transcript.md")}, ensure_ascii=False, indent=2))
+        archive_dir = save_archive(args, response, source_info, normalize_info, provider_raw_bytes)
+        staged_input_deleted = False
+        if args.delete_staged_input_after_archive:
+            input_path.unlink()
+            staged_input_deleted = True
+        print(json.dumps({
+            "status": "archived",
+            "archive_dir": str(archive_dir),
+            "card": str(archive_dir / "card.md"),
+            "transcript": str(archive_dir / "transcript.md"),
+            "repaired_transcript": str(archive_dir / "transcript.repaired.md") if (archive_dir / "transcript.repaired.md").exists() else None,
+            "staged_input_deleted": staged_input_deleted,
+        }, ensure_ascii=False, indent=2))
         return 0
     except Exception as exc:
         eprint(f"ERROR: {exc}")
