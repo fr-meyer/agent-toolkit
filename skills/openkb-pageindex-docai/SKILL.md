@@ -1,6 +1,6 @@
 ---
 name: openkb-pageindex-docai
-description: Use when ingesting, rebuilding, inspecting, querying, comparing, or exporting documents through a private OpenKB/PageIndex DocAI workflow that needs native OpenKB/PageIndex commands, source-pack provenance, mandatory native+OCR dual extraction, image-retention policy, document versioning, rebuild checks, or public-output/export guardrails.
+description: "OpenKB/PageIndex DocAI orchestration for document ingest, rebuild, query, comparison, source-pack provenance, dual extraction, image policy, versioning, and guarded export."
 ---
 
 # OpenKB PageIndex DocAI
@@ -21,18 +21,19 @@ Use this skill as the source-neutral orchestration layer around native OpenKB an
 
 1. Identify the source type and durable recovery path: local file, upload, URL, Zotero, GCS, migration, or manual.
 2. Create or update a source pack with source hash, source version, sensitivity, recovery metadata, and intended image policy.
-3. Run both extraction routes:
+3. Run both extraction routes when both apply:
    - native extraction using OpenKB/PageIndex-compatible parsing;
    - OCR extraction using the configured OCR adapter.
-4. Normalize both outputs into page-aware blocks before comparison.
-5. Compare evidence and choose `native`, `ocr`, or `merged`.
-6. Write selected content to the native OpenKB/PageIndex input path:
+4. When one route does not apply, record the reason instead of forcing a fake comparison.
+5. Normalize available outputs into page-aware blocks before comparison.
+6. If both routes succeeded, compare evidence and choose `native`, `ocr`, or `merged`; if only one route applies or succeeds, select it with the recorded reason.
+7. Write selected content to the native OpenKB/PageIndex input path:
    - PDF when native PDF/PageIndex is best;
    - page-preserving Markdown when OCR or merged reconstruction is best.
-7. Run native OpenKB/PageIndex indexing or compilation.
-8. Record document family, source version/hash, extraction version, selected reconstruction, conflicts, and active OpenKB document identity.
+8. Run native OpenKB/PageIndex indexing or compilation.
+9. Record document family, source version/hash, extraction version, selected reconstruction, conflicts, and active OpenKB document identity.
 
-Never skip dual extraction for cost or speed. Quality is the default priority.
+Never skip an applicable dual extraction for cost or speed. Quality is the default priority.
 
 ## Comparator
 
