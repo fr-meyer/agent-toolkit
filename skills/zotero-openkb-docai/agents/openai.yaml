@@ -1,0 +1,4 @@
+interface:
+  display_name: "Zotero OpenKB DocAI"
+  short_description: "Zotero attachments into OpenKB"
+  default_prompt: "Use Zotero OpenKB DocAI to ingest or reconcile Zotero attachments into OpenKB/PageIndex with provenance."
