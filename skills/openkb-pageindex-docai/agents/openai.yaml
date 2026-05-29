@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenKB PageIndex DocAI"
+  short_description: "Dual extraction with safe exports"
+  default_prompt: "Use OpenKB/PageIndex DocAI to ingest or inspect a document with provenance, dual extraction, and safe export handling."
