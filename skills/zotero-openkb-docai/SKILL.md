@@ -1,6 +1,6 @@
 ---
 name: zotero-openkb-docai
-description: Use when ingesting, reconciling, rebuilding, or auditing Zotero attachments through the OpenKB/PageIndex DocAI workflow, especially for Zotero docai-tagged items, Zotero Cloud PDF recovery, attachment identity verification, source-pack provenance, or Zotero-to-OpenKB/PageIndex batch orchestration.
+description: "Zotero attachment orchestration for OpenKB/PageIndex DocAI ingest, recovery, reconciliation, source-pack provenance, backfill, and batch audit."
 ---
 
 # Zotero OpenKB DocAI
@@ -45,6 +45,21 @@ Keep enough metadata to recover later:
 - selected OpenKB/PageIndex document identity.
 
 If a later recovery produces different bytes, treat it as a new source version unless the difference is explicitly expected and documented.
+
+## Handoff Manifest
+
+Use JSONL handoff manifests for read-only Zotero-to-OpenKB coordination when the Zotero pipeline exposes attachments for later OpenKB recovery.
+
+The manifest should contain recovery metadata only:
+
+- library, item, and attachment identifiers;
+- canonical filename;
+- safe unauthenticated file endpoint or local path when available;
+- paper metadata and OpenKB policy hints.
+
+Do not include PDF bytes, authenticated URLs, query-string tokens, API keys, or signed download links.
+
+Prefer dry-run/export-only manifest generation and validation before PDF recovery or indexing. Verify row count, canonical filenames, absence of secrets and PDF bytes, and enough Zotero identity to redownload the attachment later.
 
 ## Batch Rules
 
