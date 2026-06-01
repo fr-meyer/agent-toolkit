@@ -65,6 +65,52 @@ class CaptionSelectionTests(unittest.TestCase):
 
         self.assertEqual([("en", "automatic")], [choice[:2] for choice in choices])
 
+    def test_best_retries_next_candidate_after_download_failure(self) -> None:
+        choices = [
+            ("en", "automatic", [{"url": "https://example.invalid/en"}]),
+            ("fr-orig", "automatic", [{"url": "https://example.invalid/fr"}]),
+        ]
+        calls = []
+
+        def download(lang: str, source: str) -> Path:
+            calls.append((lang, source))
+            if lang == "en":
+                raise RuntimeError("simulated download failure")
+            return Path("/tmp/fr.vtt")
+
+        lang, source, path, errors = self.module.select_caption_vtt(
+            choices,
+            "best",
+            False,
+            download,
+        )
+
+        self.assertEqual(("fr-orig", "automatic", Path("/tmp/fr.vtt")), (lang, source, path))
+        self.assertEqual([("en", "automatic"), ("fr-orig", "automatic")], calls)
+        self.assertEqual(1, len(errors))
+        self.assertIn("simulated download failure", errors[0])
+
+    def test_explicit_language_does_not_retry_after_download_failure(self) -> None:
+        choices = [
+            ("en", "automatic", [{"url": "https://example.invalid/en"}]),
+            ("fr-orig", "automatic", [{"url": "https://example.invalid/fr"}]),
+        ]
+        calls = []
+
+        def download(lang: str, source: str) -> Path:
+            calls.append((lang, source))
+            raise RuntimeError("simulated download failure")
+
+        with self.assertRaisesRegex(RuntimeError, "Caption download failed for en"):
+            self.module.select_caption_vtt(
+                choices,
+                "en",
+                False,
+                download,
+            )
+
+        self.assertEqual([("en", "automatic")], calls)
+
 
 if __name__ == "__main__":
     unittest.main()

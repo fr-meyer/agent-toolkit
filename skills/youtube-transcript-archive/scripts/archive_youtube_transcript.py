@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -50,6 +51,7 @@ def yt_dlp_version(yt_dlp: str) -> str:
 
 
 CaptionChoice = tuple[str, str, list[dict[str, Any]]]
+CaptionDownloader = Callable[[str, str], Path]
 
 
 def add_caption_choice(
@@ -173,6 +175,27 @@ def download_caption_vtt(yt_dlp: str, url: str, video_id: str, lang: str, source
         raw_vtt.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(candidates[0], raw_vtt)
         return raw_vtt
+
+
+def select_caption_vtt(
+    choices: list[CaptionChoice],
+    requested: str,
+    no_caption_fallback: bool,
+    download: CaptionDownloader,
+) -> tuple[str, str, Path, list[str]]:
+    attempt_errors: list[str] = []
+    for lang, source, _entries in choices:
+        try:
+            raw_vtt = download(lang, source)
+            return lang, source, raw_vtt, attempt_errors
+        except (subprocess.CalledProcessError, RuntimeError) as exc:
+            summary = caption_error_summary(exc)
+            attempt_errors.append(f"{lang} ({source}): {summary}")
+            if requested != "best" or no_caption_fallback:
+                raise RuntimeError(f"Caption download failed for {lang} ({source}): {summary}") from exc
+
+    details = "\n".join(f"- {error}" for error in attempt_errors)
+    raise RuntimeError(f"Caption download failed for all selected caption candidates:\n{details}")
 
 
 def clean_text(text: str) -> str:
@@ -397,24 +420,19 @@ def main() -> int:
     safe_write(video_dir / "metadata.json", json.dumps(info, indent=2, ensure_ascii=False, sort_keys=True))
     safe_write(video_dir / "subtitles-list.txt", list_subs(yt_dlp, args.url))
 
-    attempt_errors: list[str] = []
-    selected: tuple[str, str, Path] | None = None
-    for lang, source, _entries in choices:
-        try:
-            raw_vtt = download_caption_vtt(yt_dlp, args.url, video_id, lang, source, video_dir)
-            selected = (lang, source, raw_vtt)
-            break
-        except (subprocess.CalledProcessError, RuntimeError) as exc:
-            summary = caption_error_summary(exc)
-            attempt_errors.append(f"{lang} ({source}): {summary}")
-            if args.lang != "best" or args.no_caption_fallback:
-                raise SystemExit(f"Caption download failed for {lang} ({source}): {summary}") from exc
+    def download_selected(candidate_lang: str, candidate_source: str) -> Path:
+        return download_caption_vtt(yt_dlp, args.url, video_id, candidate_lang, candidate_source, video_dir)
 
-    if selected is None:
-        details = "\n".join(f"- {error}" for error in attempt_errors)
-        raise SystemExit(f"Caption download failed for all selected caption candidates:\n{details}")
+    try:
+        lang, source, raw_vtt, attempt_errors = select_caption_vtt(
+            choices,
+            args.lang,
+            args.no_caption_fallback,
+            download_selected,
+        )
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
 
-    lang, source, raw_vtt = selected
     transcript_dir = video_dir / "transcript" / lang
     reports_dir = video_dir / "reports"
     manifests_dir = video_dir / "manifests"
