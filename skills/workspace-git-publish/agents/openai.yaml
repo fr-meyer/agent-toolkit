@@ -1,0 +1,4 @@
+interface:
+  display_name: "Workspace Git Publish"
+  short_description: "Safely sync, partition, commit, and push dirty workspaces."
+  default_prompt: "Safely sync and publish this workspace by partitioning dirty changes into thematic commits, preserving unrelated work, and reporting any blockers."
