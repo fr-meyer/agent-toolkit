@@ -1,0 +1,33 @@
+#!/usr/bin/env sh
+set -eu
+
+blocked=""
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/dev|refs/heads/main|refs/heads/master)
+      blocked="${blocked}${remote_ref#refs/heads/} "
+      ;;
+  esac
+done
+
+if [ -z "$blocked" ] || [ "${ALLOW_PROTECTED_BRANCH_PUSH:-}" = "1" ]; then
+  exit 0
+fi
+
+cat >&2 <<EOF
+Blocked direct push to protected integration branch(es): $blocked
+
+Push a dedicated feature branch and open a PR to dev instead:
+
+  git push -u origin feat/<purpose>
+  gh pr create --base dev --head feat/<purpose>
+
+Use a second PR from dev to main/master when promoting integrated work.
+
+Emergency bypass, only with explicit approval:
+
+  ALLOW_PROTECTED_BRANCH_PUSH=1 git push ...
+EOF
+
+exit 1

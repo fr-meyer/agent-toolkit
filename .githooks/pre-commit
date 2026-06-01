@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+set -eu
+
+branch="$(git symbolic-ref --quiet --short HEAD || true)"
+
+case "$branch" in
+  dev|main|master)
+    if [ "${ALLOW_PROTECTED_BRANCH_COMMIT:-}" = "1" ]; then
+      exit 0
+    fi
+    cat >&2 <<EOF
+Blocked local commit on protected integration branch: $branch
+
+Create a feature branch from the current upstream base instead:
+
+  git fetch origin
+  git switch -c feat/<purpose> origin/dev
+
+Then commit there and open a PR to dev. Use a second PR from dev to main/master
+when promoting integrated work.
+
+Emergency bypass, only with explicit approval:
+
+  ALLOW_PROTECTED_BRANCH_COMMIT=1 git commit ...
+EOF
+    exit 1
+    ;;
+esac
