@@ -54,6 +54,12 @@ CaptionChoice = tuple[str, str, list[dict[str, Any]]]
 CaptionDownloader = Callable[[str, str], Path]
 
 
+def has_any_captions(info: dict[str, Any]) -> bool:
+    subtitles = info.get("subtitles") or {}
+    autos = info.get("automatic_captions") or {}
+    return any(subtitles.values()) or any(autos.values())
+
+
 def add_caption_choice(
     out: list[CaptionChoice],
     seen: set[tuple[str, str]],
@@ -360,6 +366,82 @@ def report_markdown(meta: dict[str, Any], manifest: dict[str, Any], summary: str
 """
 
 
+def metadata_only_report_markdown(meta: dict[str, Any], manifest: dict[str, Any]) -> str:
+    title = meta.get("title") or meta.get("id") or "Untitled video"
+    files = "\n".join(f"- `{p}`" for p in manifest.get("files", []))
+    return f"""# YouTube Transcript Archive — {title}
+
+## Metadata
+- URL: {manifest.get('url') or meta.get('webpage_url') or meta.get('original_url') or ''}
+- Video ID: {meta.get('id') or ''}
+- Title: {title}
+- Channel: {meta.get('channel') or meta.get('uploader') or 'unknown'}
+- Upload date: {meta.get('upload_date') or 'unknown'}
+- Duration: {duration_text(meta.get('duration'))}
+- Language: {manifest.get('language') or 'unknown'}
+- Transcript source: none
+- Archived at: {manifest.get('archived_at') or ''}
+- yt-dlp version: {manifest.get('yt_dlp_version') or 'unknown'}
+
+## Processing status
+- Status: {manifest.get('status') or 'metadata-only-no-captions'}
+- Duplicate policy: {manifest.get('duplicate_policy') or 'unknown'}
+- Files generated or reused:
+{files}
+- Notes: no subtitles or automatic captions exposed by YouTube; video/audio media not downloaded
+
+## Summary
+Metadata-only archive. YouTube exposed no manual subtitles or automatic captions for this video, so no transcript-based summary is available.
+
+## Detailed summary
+- Title: {title}
+- Channel: {meta.get('channel') or meta.get('uploader') or 'unknown'}
+- This entry is retained as provenance for the shared link, but it should not be treated as a transcript archive.
+
+## Full transcript
+No transcript available.
+"""
+
+
+def write_base_artifacts(video_dir: Path, info: dict[str, Any], subtitles_list: str) -> None:
+    video_dir.mkdir(parents=True, exist_ok=True)
+    safe_write(video_dir / "metadata.json", json.dumps(info, indent=2, ensure_ascii=False, sort_keys=True))
+    safe_write(video_dir / "subtitles-list.txt", subtitles_list)
+
+
+def write_metadata_only_archive(
+    video_dir: Path,
+    info: dict[str, Any],
+    *,
+    yt_dlp_version_text: str,
+    duplicate_policy: str,
+) -> dict[str, Any]:
+    video_id = info.get("id") or video_dir.name
+    manifest = {
+        "status": "metadata-only-no-captions",
+        "duplicate_policy": duplicate_policy,
+        "video_id": video_id,
+        "url": info.get("webpage_url") or info.get("original_url") or "",
+        "title": info.get("title"),
+        "channel": info.get("channel") or info.get("uploader"),
+        "language": info.get("language") or "unknown",
+        "transcript_source": "none",
+        "archived_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "yt_dlp_version": yt_dlp_version_text,
+        "files": [
+            "manifest.json",
+            "metadata.json",
+            "subtitles-list.txt",
+            "report.md",
+        ],
+        "notes": "metadata-only archive; no subtitles or automatic captions exposed by YouTube; video/audio media not downloaded",
+    }
+    manifest_json = json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True)
+    safe_write(video_dir / "report.md", metadata_only_report_markdown(info, manifest))
+    safe_write(video_dir / "manifest.json", manifest_json)
+    return manifest
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("url", help="YouTube URL or video ID")
@@ -378,6 +460,11 @@ def main() -> int:
         type=int,
         default=12,
         help="Maximum best-mode caption tracks to try before failing; ignored for explicit --lang values",
+    )
+    parser.add_argument(
+        "--metadata-only-on-no-captions",
+        action="store_true",
+        help="Create a metadata-only archive instead of failing when YouTube exposes no captions",
     )
     args = parser.parse_args()
 
@@ -402,7 +489,29 @@ def main() -> int:
             print(json.dumps(existing, indent=2, ensure_ascii=False))
             return 0
 
-    choices = caption_candidates(info, args.lang)
+    subtitles_text: str | None = None
+
+    def ensure_base_artifacts() -> None:
+        nonlocal subtitles_text
+        if subtitles_text is None:
+            subtitles_text = list_subs(yt_dlp, args.url)
+        if args.refresh or not (video_dir / "metadata.json").exists() or not (video_dir / "subtitles-list.txt").exists():
+            write_base_artifacts(video_dir, info, subtitles_text)
+
+    try:
+        choices = caption_candidates(info, args.lang)
+    except SystemExit:
+        if args.metadata_only_on_no_captions and not has_any_captions(info):
+            ensure_base_artifacts()
+            manifest = write_metadata_only_archive(
+                video_dir,
+                info,
+                yt_dlp_version_text=yt_dlp_version(yt_dlp),
+                duplicate_policy="refresh" if args.refresh else "reuse-existing-complete-archive",
+            )
+            print(json.dumps(manifest, indent=2, ensure_ascii=False))
+            return 0
+        raise
     if args.lang == "best":
         max_candidates = max(1, args.max_caption_candidates)
         choices = choices[:max_candidates]
@@ -416,9 +525,7 @@ def main() -> int:
                 print(json.dumps(existing, indent=2, ensure_ascii=False))
                 return 0
 
-    video_dir.mkdir(parents=True, exist_ok=True)
-    safe_write(video_dir / "metadata.json", json.dumps(info, indent=2, ensure_ascii=False, sort_keys=True))
-    safe_write(video_dir / "subtitles-list.txt", list_subs(yt_dlp, args.url))
+    ensure_base_artifacts()
 
     def download_selected(candidate_lang: str, candidate_source: str) -> Path:
         return download_caption_vtt(yt_dlp, args.url, video_id, candidate_lang, candidate_source, video_dir)
