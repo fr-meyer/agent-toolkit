@@ -17,6 +17,8 @@ Help the agent safely create, modify, and maintain GitHub Actions workflows in r
 - Edit canonical template sources first, then materialize live `.github/workflows/` copies.
 - Keep pinned reusable-workflow refs coherent with the authoritative reusable workflow commit they describe.
 - Maintain both manifests explicitly: one for materialization, one for reusable-workflow SHA diffusion.
+- Prefer built-in `GITHUB_TOKEN` for default GitHub auth, and use `ELEVATED_GITHUB_TOKEN` only when extra GitHub rights are required.
+- Avoid workflow-specific secret aliases for the default GitHub token unless a truly distinct trust boundary exists.
 - Update local docs when the architecture or rule changes.
 
 ## Scope boundaries
@@ -120,8 +122,9 @@ After editing:
 
 ### 7. Update durable docs when needed
 
-When the layout rule, classification rule, or authoring model changes:
+When the layout rule, classification rule, authoring model, or workflow-auth convention changes:
 - update repo docs that explain the workflow layout
+- update repo-local workflow authoring rules when token, secret, variable, or permission conventions change
 - add or update an `AGENTS.md` or equivalent repo-local instructions file if future agents need recovery guidance
 - keep the rule explicit enough that a future agent can reconstruct the model without relying on memory
 
@@ -132,6 +135,8 @@ When the layout rule, classification rule, or authoring model changes:
 - Do not move a trigger entrypoint into `reusable-workflows` just because this repo runs it.
 - Do not leave a live `.github/workflows/` file without a canonical template source.
 - Do not rename a canonical workflow source without updating manifests, callers, and docs.
+- Do not introduce ad hoc secret names for standard GitHub auth when `GITHUB_TOKEN` or `ELEVATED_GITHUB_TOKEN` already cover the need.
+- Do not assume `GITHUB_TOKEN` can be manually overridden by creating a repository secret of the same name.
 - Do not forget that reusable-workflow SHA diffusion is controlled separately from materialization.
 - When a reusable workflow changes, decide explicitly whether diffusion should reach starter templates only, or starter templates plus linked live workflows.
 - When a target pins a reusable workflow, keep the `uses: ...@<ref>` aligned, and keep `shared_repository_ref` aligned too when that field exists.

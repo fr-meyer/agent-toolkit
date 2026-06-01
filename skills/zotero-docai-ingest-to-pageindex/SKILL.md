@@ -12,6 +12,8 @@ Bridge Zotero-derived PDF sources into Page Index using a Zotero-derived URL ing
 This skill is a Zotero-focused wrapper around `pageindex-ingest-paper-urls`.
 Use `pageindex-ingest-paper-urls` for the actual Page Index submission step.
 
+This skill owns the Zotero-specific authenticated URL handoff policy for downstream MCP-style URL ingestion.
+
 ## When to use
 
 Use this skill when the user already has, or can produce, Zotero-derived attachment URLs or manifests such as:
@@ -59,6 +61,9 @@ Do not use it for:
   - a plain Zotero file URL
   - an authenticated Zotero attachment URL
   - a publicly reachable direct PDF URL
+- Treat authenticated Zotero attachment URLs as runtime-only handoff inputs. Do not persist them to bridge rows, manifests, retry files, summaries, logs, or PR output.
+- Prefer a dedicated read-only fetch credential such as `ZOTERO_PAGEINDEX_FETCH_KEY` for Page Index handoff when possible; do not default casually to a broader read/write Zotero key.
+- Persist only the plain `zotero_file_url`, canonical filename, verification evidence, and redacted URL class/status.
 
 ## Required workflow
 
@@ -72,6 +77,8 @@ Do not use it for:
 8. Normalize the Zotero source into the actual ingestable URL form when upload is still needed:
    - use a plain `zotero_file_url` only if it is truly fetchable by the ingest target
    - use an authenticated Zotero attachment URL when the plain Zotero file URL is not fetchable and authenticated access is the intended bridge
+   - build authenticated fetch URLs only at the handoff step, preferably using a dedicated read-only key such as `ZOTERO_PAGEINDEX_FETCH_KEY`
+   - do not write authenticated fetch URLs to disk or durable manifests
    - do not treat a non-fetchable Zotero URL as ingestion-ready
 9. Verify that the chosen URL is fetchable by the selected ingest path before calling the Page Index submission step.
 10. Verify that the selected ingest method can retain the canonical Zotero filename in Page Index.
@@ -90,7 +97,7 @@ Do not use it for:
 19. If Zotero writeback is explicitly enabled and the record is verified as newly uploaded, exact-duplicate-existing, or bridge-backfilled, add the success tag (`docai-pageindex` by default) to the relevant Zotero item/attachment if missing only after the required bridge upsert/refresh succeeds. If bridge maintenance is required but cannot be completed, treat the record as blocked instead of success-tagging it.
 20. If Zotero writeback is explicitly enabled and the record fails or is blocked, add the failure tag (`docai-error` by default) to the relevant Zotero item/attachment.
 21. Remove the queue tag (`docai` by default) only on verified PageIndex success and only when that behavior is explicitly enabled/configured; keep it on failures so failed records remain retryable/reviewable.
-22. Report which URLs were accepted, which were blocked, whether any likely duplicate was already found in PageIndex, whether fetchability was verified, whether filename preservation was verified, which PageIndex folder was targeted, whether bridge rows were created/refreshed/backfilled/skipped, and whether Zotero tag writeback was applied or skipped.
+22. Report which URLs were accepted, which were blocked, whether any likely duplicate was already found in PageIndex, whether fetchability was verified, whether filename preservation was verified, which PageIndex folder was targeted, whether bridge rows were created/refreshed/backfilled/skipped, and whether Zotero tag writeback was applied or skipped. Redact query-string credentials in any URL shown to the user.
 
 
 ## Bridge maintenance
@@ -125,6 +132,8 @@ Rows that are stale, blocked, ambiguous, inaccessible, generic/degraded, auto-su
 - This skill does not invent Zotero URLs; it expects exported or otherwise supplied Zotero attachment URLs, which are not automatically publicly reachable—when Page Index cannot fetch one, stop and report that the URL must be made reachable.
 - A plain `zotero_file_url` may fail even when the Zotero attachment exists; if the ingest target cannot fetch it directly, do not call that a valid ingest source.
 - An authenticated Zotero attachment URL may be fetchable even when the plain Zotero file URL is not. Treat those as different URL classes and verify the actual one being used.
+- Authenticated URLs are handoff-only. Do not write key-bearing URLs to disk, and do not echo them in logs, reports, surfaced errors, or PR text.
+- Use a dedicated read-only key for runtime handoff when possible. Do not require write credentials for this handoff unless explicit Zotero writeback is also requested.
 - URL-only Page Index ingest may degrade filenames to generic values such as `file.pdf`. Do not silently accept that degradation when the Zotero attachment filename is available.
 - If filename preservation is not supported by the current ingest path, stop and report the limitation clearly instead of treating the ingest as successful.
 - `ZOTERO_WRITE_KEY` or equivalent write credentials are required only for explicit Zotero tag writeback. Do not require write credentials for read-only discovery, duplicate checking, URL fetchability checks, or PageIndex MCP submission.
@@ -142,7 +151,7 @@ Rows that are stale, blocked, ambiguous, inaccessible, generic/degraded, auto-su
 
 When successful, report:
 - the Zotero source that was used
-- the resolved URL used for ingest
+- the resolved URL used for ingest, redacted if authenticated or transient
 - which URL class was used (`zotero_file_url`, authenticated Zotero attachment URL, or public direct PDF URL)
 - the canonical Zotero filename used for ingest
 - whether duplicate checking was done
@@ -162,3 +171,4 @@ When blocked, report:
 - for global-name/folder-placement conflicts, the existing PageIndex document name/id and folder/location where it is already present
 - whether bridge backfill/upsert was applied or skipped, and why
 - whether `docai-error` writeback was applied or skipped, and why
+- never include raw key-bearing URLs in the surfaced output
