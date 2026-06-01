@@ -96,10 +96,23 @@ Useful flags:
 - `--summary-file <path>` — inject an already-written Markdown summary into `report.md`
 - `--no-caption-fallback` — fail immediately if the selected `best` caption track cannot be downloaded
 - `--max-caption-candidates <n>` — cap the number of `best` caption tracks tried before failing; default is `12`
+- `--metadata-only-on-no-captions` — write `metadata.json`, `subtitles-list.txt`, `manifest.json`, and a metadata-only `report.md` instead of failing when YouTube exposes no captions
 
 The helper must call `yt-dlp` in skip-download mode and must not download video/audio streams.
 
 When `--lang best` is used, prefer source/original-language captions when YouTube exposes them, then fall back through common archive languages and remaining caption tracks. If a selected `best` caption track is advertised in metadata but fails during subtitle download, retry alternate caption tracks before giving up. Record fallback attempts in the manifest notes/fields.
+
+For multi-link batches, use the batch helper:
+
+```bash
+python skills/youtube-transcript-archive/scripts/archive_youtube_batch.py \
+  --archive-root "$ARCHIVE_ROOT" \
+  --lang best \
+  --batch-id "$(date -u +%Y-%m-%d-%H%M)-youtube-batch" \
+  "$YOUTUBE_URL_1" "$YOUTUBE_URL_2"
+```
+
+The batch helper calls the single-video helper for each input, enables metadata-only no-caption handling by default, continues through per-video no-caption cases, validates generated file lists and absence of video/audio media, and writes `batches/<batch-id>.md` plus `batches/<batch-id>.json`. Treat the generated batch Markdown as a results/index skeleton; if the user expects nuanced per-video summaries, read the reports/transcripts and expand the batch summary before declaring the batch finished.
 
 ### 3. Write or update the report
 
@@ -142,6 +155,7 @@ If the helper generated a placeholder report, read the transcript and replace th
 
 Before final response:
 - confirm `manifest.json`, `metadata.json`, `subtitles-list.txt`, raw subtitle file, cleaned transcript, and `report.md` exist
+- for metadata-only no-caption entries, confirm `manifest.json`, `metadata.json`, `subtitles-list.txt`, and `report.md` exist and the manifest status is `metadata-only-no-captions`
 - confirm `report.md` identifies source URL, video ID, title, channel, language, transcript source, and archival timestamp
 - confirm no video/audio file was downloaded for transcript-only requests
 - if reusing an existing archive, report that it was reused rather than reprocessed

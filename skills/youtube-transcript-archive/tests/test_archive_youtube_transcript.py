@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "archive_youtube_transcript.py"
+BATCH_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "archive_youtube_batch.py"
 
 
-def load_module():
-    spec = importlib.util.spec_from_file_location("archive_youtube_transcript", SCRIPT)
+def load_module(script: Path = SCRIPT, name: str = "archive_youtube_transcript"):
+    spec = importlib.util.spec_from_file_location(name, script)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -110,6 +113,115 @@ class CaptionSelectionTests(unittest.TestCase):
             )
 
         self.assertEqual([("en", "automatic")], calls)
+
+
+class MetadataOnlyArchiveTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.module = load_module()
+
+    def test_has_any_captions_detects_empty_caption_pools(self) -> None:
+        self.assertFalse(self.module.has_any_captions({"subtitles": {}, "automatic_captions": {}}))
+        self.assertFalse(self.module.has_any_captions({"subtitles": {"en": []}, "automatic_captions": {}}))
+        self.assertTrue(
+            self.module.has_any_captions(
+                {"subtitles": {}, "automatic_captions": {"fr-orig": [{"url": "https://example.invalid/fr"}]}}
+            )
+        )
+
+    def test_metadata_only_archive_writes_manifest_and_report(self) -> None:
+        info = {
+            "id": "abc123",
+            "webpage_url": "https://www.youtube.com/watch?v=abc123",
+            "title": "No captions here",
+            "channel": "Example Channel",
+            "upload_date": "20260601",
+            "duration": 50,
+        }
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            self.module.write_base_artifacts(video_dir, info, "no captions listed\n")
+
+            manifest = self.module.write_metadata_only_archive(
+                video_dir,
+                info,
+                yt_dlp_version_text="test-version",
+                duplicate_policy="reuse-existing-complete-archive",
+            )
+
+            self.assertEqual("metadata-only-no-captions", manifest["status"])
+            self.assertEqual("none", manifest["transcript_source"])
+            self.assertEqual(["manifest.json", "metadata.json", "subtitles-list.txt", "report.md"], manifest["files"])
+            self.assertTrue((video_dir / "manifest.json").exists())
+            self.assertTrue((video_dir / "metadata.json").exists())
+            self.assertTrue((video_dir / "subtitles-list.txt").exists())
+            report = (video_dir / "report.md").read_text(encoding="utf-8")
+            self.assertIn("Metadata-only archive", report)
+            self.assertIn("No transcript available.", report)
+
+
+class BatchArchiveTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.module = load_module(BATCH_SCRIPT, "archive_youtube_batch")
+
+    def test_build_batch_index_summarizes_caption_and_metadata_entries(self) -> None:
+        entries = [
+            {
+                "input_url": "https://www.youtube.com/watch?v=captioned",
+                "status": "created",
+                "video_id": "captioned",
+                "title": "Captioned video",
+                "channel": "Channel A",
+                "language": "fr-orig",
+                "transcript_source": "automatic",
+                "report_path": "/archive/captioned/report.md",
+                "validation_errors": [],
+            },
+            {
+                "input_url": "https://www.youtube.com/watch?v=nocaps",
+                "status": "metadata-only-no-captions",
+                "video_id": "nocaps",
+                "title": "No captions video",
+                "channel": "Channel B",
+                "language": "unknown",
+                "transcript_source": "none",
+                "report_path": "/archive/nocaps/report.md",
+                "validation_errors": [],
+            },
+        ]
+        counts = self.module.summarize_entries(entries)
+
+        index = self.module.build_batch_index(
+            title="Example Batch",
+            archive_root=Path("/archive"),
+            entries=entries,
+            counts=counts,
+        )
+
+        self.assertEqual(1, counts["caption_backed"])
+        self.assertEqual(1, counts["metadata_only"])
+        self.assertIn("| `captioned` | Captioned video | Channel A | transcript archived | `fr-orig` automatic captions |", index)
+        self.assertIn("| `nocaps` | No captions video | Channel B | metadata only | no captions exposed |", index)
+        self.assertIn("- Caption-backed archives: 1", index)
+        self.assertIn("- Metadata-only no-caption archives: 1", index)
+
+    def test_validate_entry_uses_manifest_file_list_and_rejects_media(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            video_dir = root / "abc123"
+            video_dir.mkdir()
+            for name in ["manifest.json", "metadata.json", "subtitles-list.txt", "report.md"]:
+                (video_dir / name).write_text("{}\n" if name.endswith(".json") else "ok\n", encoding="utf-8")
+            (video_dir / "abc123.mp4").write_text("not real media, but extension is enough\n", encoding="utf-8")
+            entry = {
+                "status": "created",
+                "video_id": "abc123",
+                "manifest": {"files": ["manifest.json", "metadata.json", "subtitles-list.txt", "report.md"]},
+            }
+
+            errors = self.module.validate_entry(root, entry)
+
+            self.assertIn("media file present: abc123.mp4", errors)
+            self.assertEqual(1, len(errors))
 
 
 if __name__ == "__main__":
