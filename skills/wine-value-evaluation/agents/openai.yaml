@@ -1,0 +1,4 @@
+interface:
+  display_name: "Wine Value Evaluation"
+  short_description: "Rank wine options by identity, market price, and quality signals."
+  default_prompt: "Evaluate a wine shortlist for value by verifying exact bottle identity, origin, price benchmarks, and review evidence."
