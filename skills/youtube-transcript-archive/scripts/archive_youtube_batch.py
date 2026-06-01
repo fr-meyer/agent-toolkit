@@ -15,6 +15,11 @@ from typing import Any
 
 SCRIPT = Path(__file__).with_name("archive_youtube_transcript.py")
 MEDIA_EXTENSIONS = {".mp4", ".m4a", ".webm", ".mp3", ".wav", ".mov", ".mkv", ".opus"}
+KST = dt.timezone(dt.timedelta(hours=9), "KST")
+SUMMARY_PLACEHOLDERS = (
+    "Raw transcript archival is complete. Summary not yet written",
+    "Metadata-only archive. YouTube exposed no manual subtitles or automatic captions",
+)
 
 
 def read_url_file(path: Path) -> list[str]:
@@ -67,6 +72,40 @@ def parse_manifest_stdout(stdout: str) -> dict[str, Any] | None:
         return None
 
 
+def extract_section(markdown: str, heading: str) -> str | None:
+    marker = f"## {heading}\n"
+    start = markdown.find(marker)
+    if start < 0:
+        return None
+    start += len(marker)
+    next_heading = markdown.find("\n## ", start)
+    section = markdown[start:] if next_heading < 0 else markdown[start:next_heading]
+    section = section.strip()
+    return section or None
+
+
+def concise_summary(summary: str, *, max_chars: int = 500) -> str:
+    first_block = summary.split("\n\n", 1)[0].strip()
+    one_line = " ".join(line.strip() for line in first_block.splitlines() if line.strip())
+    if len(one_line) <= max_chars:
+        return one_line
+    return one_line[: max_chars - 3].rstrip() + "..."
+
+
+def extract_report_summary(report_path: str | None) -> str | None:
+    if not report_path:
+        return None
+    path = Path(report_path)
+    if not path.exists():
+        return None
+    summary = extract_section(path.read_text(encoding="utf-8"), "Summary")
+    if not summary:
+        return None
+    if any(placeholder in summary for placeholder in SUMMARY_PLACEHOLDERS):
+        return None
+    return concise_summary(summary)
+
+
 def archive_one(args: argparse.Namespace, archive_root: Path, url: str) -> dict[str, Any]:
     cmd = archive_command(args, archive_root, url)
     cp = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
@@ -82,6 +121,7 @@ def archive_one(args: argparse.Namespace, archive_root: Path, url: str) -> dict[
 
     video_id = manifest.get("video_id")
     report_path = str(archive_root / str(video_id) / "report.md") if video_id else None
+    report_summary = extract_report_summary(report_path)
     return {
         "input_url": url,
         "status": manifest.get("status"),
@@ -91,6 +131,7 @@ def archive_one(args: argparse.Namespace, archive_root: Path, url: str) -> dict[
         "language": manifest.get("language"),
         "transcript_source": manifest.get("transcript_source"),
         "report_path": report_path,
+        "report_summary": report_summary,
         "notes": manifest.get("notes"),
         "returncode": cp.returncode,
         "manifest": manifest,
@@ -189,6 +230,8 @@ def build_batch_index(
             summary_lines.append(f"- `{video_id}`: blocked — {entry.get('error') or 'archive failed'}.")
         elif entry.get("transcript_source") == "none":
             summary_lines.append(f"- `{video_id}`: metadata-only entry for `{entry.get('title')}`; YouTube exposed no captions.")
+        elif entry.get("report_summary"):
+            summary_lines.append(f"- `{video_id}`: {entry['report_summary']}")
         else:
             summary_lines.append(f"- `{video_id}`: transcript archived for `{entry.get('title')}`.")
 
@@ -237,6 +280,18 @@ def default_batch_id(now: dt.datetime) -> str:
     return now.strftime("%Y-%m-%d-%H%M-youtube-batch")
 
 
+def default_batch_title(now: dt.datetime) -> str:
+    zone = now.tzname() or "UTC"
+    return f"{now:%Y-%m-%d %H:%M} {zone}"
+
+
+def timestamp_now(zone: str) -> dt.datetime:
+    now = dt.datetime.now(dt.timezone.utc)
+    if zone == "kst":
+        return now.astimezone(KST)
+    return now
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("urls", nargs="*", help="YouTube URLs or video IDs")
@@ -257,6 +312,12 @@ def main() -> int:
         action="store_true",
         help="Fail no-caption videos instead of creating metadata-only archive entries",
     )
+    parser.add_argument(
+        "--timestamp-zone",
+        choices=["utc", "kst"],
+        default="utc",
+        help="Timezone for default batch ID/title; default: utc",
+    )
     parser.add_argument("--batch-id", help="Stable output stem; defaults to a UTC timestamp")
     parser.add_argument("--batch-title", help="Human-readable title in the generated Markdown index")
     parser.add_argument("--batch-index", help="Output Markdown path; defaults under <archive-root>/batches/")
@@ -270,12 +331,12 @@ def main() -> int:
 
     archive_root = Path(args.archive_root).expanduser().resolve()
     archive_root.mkdir(parents=True, exist_ok=True)
-    now = dt.datetime.now(dt.timezone.utc)
+    now = timestamp_now(args.timestamp_zone)
     batch_id = args.batch_id or default_batch_id(now)
     batch_dir = archive_root / "batches"
     batch_index = Path(args.batch_index).expanduser() if args.batch_index else batch_dir / f"{batch_id}.md"
     batch_manifest = Path(args.batch_manifest).expanduser() if args.batch_manifest else batch_dir / f"{batch_id}.json"
-    batch_title = args.batch_title or batch_id
+    batch_title = args.batch_title or default_batch_title(now)
 
     entries: list[dict[str, Any]] = []
     for url in urls:
@@ -288,7 +349,9 @@ def main() -> int:
     counts = summarize_entries(entries)
     payload = {
         "batch_id": batch_id,
-        "generated_at": now.isoformat(),
+        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "batch_timestamp": now.isoformat(),
+        "timestamp_zone": args.timestamp_zone,
         "archive_root": str(archive_root),
         "counts": counts,
         "entries": entries,

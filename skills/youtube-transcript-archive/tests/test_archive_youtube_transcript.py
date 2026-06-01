@@ -174,6 +174,7 @@ class BatchArchiveTests(unittest.TestCase):
                 "language": "fr-orig",
                 "transcript_source": "automatic",
                 "report_path": "/archive/captioned/report.md",
+                "report_summary": "Filled report summary from the per-video archive.",
                 "validation_errors": [],
             },
             {
@@ -201,6 +202,7 @@ class BatchArchiveTests(unittest.TestCase):
         self.assertEqual(1, counts["metadata_only"])
         self.assertIn("| `captioned` | Captioned video | Channel A | transcript archived | `fr-orig` automatic captions |", index)
         self.assertIn("| `nocaps` | No captions video | Channel B | metadata only | no captions exposed |", index)
+        self.assertIn("- `captioned`: Filled report summary from the per-video archive.", index)
         self.assertIn("- Caption-backed archives: 1", index)
         self.assertIn("- Metadata-only no-caption archives: 1", index)
 
@@ -222,6 +224,30 @@ class BatchArchiveTests(unittest.TestCase):
 
             self.assertIn("media file present: abc123.mp4", errors)
             self.assertEqual(1, len(errors))
+
+    def test_extract_report_summary_ignores_placeholder_and_keeps_filled_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            filled = root / "filled.md"
+            filled.write_text(
+                "# Report\n\n## Summary\nA filled summary.\n\nWith a second paragraph.\n\n## Full transcript\nText\n",
+                encoding="utf-8",
+            )
+            placeholder = root / "placeholder.md"
+            placeholder.write_text(
+                "# Report\n\n## Summary\nRaw transcript archival is complete. Summary not yet written; read later.\n\n## Full transcript\nText\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual("A filled summary.", self.module.extract_report_summary(str(filled)))
+            self.assertIsNone(self.module.extract_report_summary(str(placeholder)))
+
+    def test_timestamp_zone_kst_changes_default_title_and_id_timezone(self) -> None:
+        kst_now = self.module.timestamp_now("kst")
+
+        self.assertEqual("KST", kst_now.tzname())
+        self.assertTrue(self.module.default_batch_id(kst_now).endswith("-youtube-batch"))
+        self.assertIn("KST", self.module.default_batch_title(kst_now))
 
 
 if __name__ == "__main__":

@@ -108,11 +108,11 @@ For multi-link batches, use the batch helper:
 python skills/youtube-transcript-archive/scripts/archive_youtube_batch.py \
   --archive-root "$ARCHIVE_ROOT" \
   --lang best \
-  --batch-id "$(date -u +%Y-%m-%d-%H%M)-youtube-batch" \
+  --timestamp-zone kst \
   "$YOUTUBE_URL_1" "$YOUTUBE_URL_2"
 ```
 
-The batch helper calls the single-video helper for each input, enables metadata-only no-caption handling by default, continues through per-video no-caption cases, validates generated file lists and absence of video/audio media, and writes `batches/<batch-id>.md` plus `batches/<batch-id>.json`. Treat the generated batch Markdown as a results/index skeleton; if the user expects nuanced per-video summaries, read the reports/transcripts and expand the batch summary before declaring the batch finished.
+The batch helper calls the single-video helper for each input, enables metadata-only no-caption handling by default, continues through per-video no-caption cases, validates generated file lists and absence of video/audio media, and writes `batches/<batch-id>.md` plus `batches/<batch-id>.json`. It also pulls already-filled per-video `## Summary` sections into the batch summary when available; placeholder raw-archive summaries are ignored. Use `--timestamp-zone kst` when the default batch ID/title should use Korean local time instead of UTC. Treat the generated batch Markdown as a results/index skeleton; if newly archived reports still contain placeholder summaries, read the reports/transcripts and expand the batch summary before declaring the batch finished.
 
 ### 3. Write or update the report
 
