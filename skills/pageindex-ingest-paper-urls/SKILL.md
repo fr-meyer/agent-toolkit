@@ -7,16 +7,19 @@ description: Use this skill for PageIndex URL ingestion: submitting public PDF U
 
 ## Goal
 
-Ingest public PDF URLs into Page Index with a conservative duplicate check first, saving processed documents into the intended Page Index folder when a target folder is selected.
+Ingest public PDF URLs, or runtime-only authenticated PDF fetch URLs handed off by another approved workflow, into Page Index with a conservative duplicate check first, saving processed documents into the intended Page Index folder when a target folder is selected.
 
 ## When to use
 
 Use this skill when the user already has one or more **direct public PDF URLs** and wants them added to Page Index.
 
+A calling Zotero/DocAI workflow may also hand off a runtime-only authenticated fetch URL. Treat that URL as sensitive operational input: do not persist it, do not echo it raw, and redact query parameters in surfaced output.
+
 Use it for:
 - URL-based Page Index ingestion
 - adding papers after a duplicate check
 - creating or resolving PageIndex folder destinations needed for URL ingestion
+- runtime-only authenticated fetch URL submission when another skill created the URL and retained the durable plain source URL separately
 - workflows that will later feed Page Index reading or summarization skills
 
 Do not use it for:
@@ -43,9 +46,10 @@ Do not use it for:
 6. Also check for an exact-name duplicate outside the selected folder before upload when possible; PageIndex may enforce global document-name uniqueness and auto-suffix duplicates such as `_1.pdf`, which is not an exact filename-preserving success.
 7. If a verified duplicate exists in the selected destination scope, stop and report the match instead of ingesting again.
 8. If the exact filename exists outside the selected destination scope, stop and report the folder-placement blocker instead of uploading a suffixed duplicate; ask whether to keep the existing document, delete/recreate, or choose another remediation.
-9. If no verified duplicate or global-name blocker is found, submit the public PDF URL with `pageindex__process_document`, passing `folder_id` so the uploaded/processed document is saved in the selected PageIndex folder.
-10. After ingest, verify the resulting document in the same folder when folder-scoped verification is available.
-11. Report the resulting Page Index document status or any ingestion failure clearly.
+9. If a calling workflow supplied a runtime-only authenticated fetch URL, use it only for the immediate Page Index submission. Do not persist it, log it, or surface it without redacting query parameters.
+10. If no verified duplicate or global-name blocker is found, submit the public PDF URL, temporary bridge URL, or runtime-only authenticated fetch URL with `pageindex__process_document`, passing `folder_id` so the uploaded/processed document is saved in the selected PageIndex folder.
+11. After ingest, verify the resulting document in the same folder when folder-scoped verification is available.
+12. Report the resulting Page Index document status or any ingestion failure clearly, redacting sensitive query parameters when present.
 
 ## Hidden PageIndex `create_folder` MCP quirk
 
@@ -110,13 +114,14 @@ If the user has not approved temporary exposure, stop and explain the privacy tr
 - Do not silently upload into the root/default destination if the user selected a folder but folder resolution failed; stop and ask or report the blocker.
 - Do not treat PageIndex auto-suffixed names such as `_1.pdf` as success; they indicate exact filename preservation failed, often because an exact-name duplicate already exists elsewhere.
 - Never rely only on folder-scoped duplicate checks before folder upload; do the global exact-name check too.
+- Treat query-string credentials as sensitive. If an authenticated URL is supplied by another workflow, do not store it and do not surface it without redaction.
 - If the user only has a filename, citation, or title, resolve that first with `pageindex-find-papers` before ingesting anything.
 - If the user needs Zotero attachments, Zotero attachment manifests, or `zotero_file_url` sources, use `zotero-docai-ingest-to-pageindex` instead.
 
 ## Output expectations
 
 When the ingest succeeds, return:
-- the URL ingested, or a redacted statement for transient bridge URLs
+- the URL ingested, or a redacted statement for transient bridge URLs and runtime-only authenticated fetch URLs
 - the Page Index document identifier or result summary
 - whether duplicate checking was performed
 - the target PageIndex folder name/id, if one was selected
@@ -124,3 +129,4 @@ When the ingest succeeds, return:
 When the ingest is blocked, return:
 - the reason
 - the likely duplicate, unresolved folder, or missing input that caused the block
+- any sensitive URL only in redacted form
