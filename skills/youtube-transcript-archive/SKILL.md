@@ -94,8 +94,12 @@ Useful flags:
 - `--refresh` — re-download and update existing artifacts
 - `--yt-dlp-bin <path>` — use a non-default yt-dlp binary
 - `--summary-file <path>` — inject an already-written Markdown summary into `report.md`
+- `--no-caption-fallback` — fail immediately if the selected `best` caption track cannot be downloaded
+- `--max-caption-candidates <n>` — cap the number of `best` caption tracks tried before failing; default is `12`
 
 The helper must call `yt-dlp` in skip-download mode and must not download video/audio streams.
+
+When `--lang best` is used, prefer source/original-language captions when YouTube exposes them, then fall back through common archive languages and remaining caption tracks. If a selected `best` caption track is advertised in metadata but fails during subtitle download, retry alternate caption tracks before giving up. Record fallback attempts in the manifest notes/fields.
 
 ### 3. Write or update the report
 
@@ -145,6 +149,7 @@ Before final response:
 ## Gotchas
 
 - YouTube captions may be manual or automatic; record which source was used.
+- YouTube sometimes advertises translated automatic caption tracks that fail during download. Prefer original/source-language tracks for archival evidence and let the helper retry alternate tracks before marking the video blocked.
 - Official YouTube APIs are not sufficient for arbitrary public transcript retrieval; `yt-dlp` is the default practical tool.
 - `yt-dlp` can break when YouTube changes behavior; record `yt-dlp --version` in the report.
 - Auto-caption VTT often contains repeated karaoke-style fragments; keep raw VTT and also produce deduped readable text.
