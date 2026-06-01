@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -49,7 +50,23 @@ def yt_dlp_version(yt_dlp: str) -> str:
         return "unknown"
 
 
-def choose_caption(info: dict[str, Any], requested: str) -> tuple[str, str, list[dict[str, Any]]]:
+CaptionChoice = tuple[str, str, list[dict[str, Any]]]
+CaptionDownloader = Callable[[str, str], Path]
+
+
+def add_caption_choice(
+    out: list[CaptionChoice],
+    seen: set[tuple[str, str]],
+    lang: str,
+    source: str,
+    entries: list[dict[str, Any]] | None,
+) -> None:
+    if entries and (lang, source) not in seen:
+        out.append((lang, source, entries))
+        seen.add((lang, source))
+
+
+def caption_candidates(info: dict[str, Any], requested: str) -> list[CaptionChoice]:
     subtitles = info.get("subtitles") or {}
     autos = info.get("automatic_captions") or {}
 
@@ -69,23 +86,50 @@ def choose_caption(info: dict[str, Any], requested: str) -> tuple[str, str, list
         for source, pool in (("manual", subtitles), ("automatic", autos)):
             found = exact(pool, requested) or prefix(pool, requested)
             if found:
-                return found[0], source, found[1]
+                return [(found[0], source, found[1])]
         raise SystemExit(f"No captions found for requested language: {requested}")
 
-    preferences = ["en", "en-orig", "fr", "fr-orig"]
-    for key in preferences:
+    candidates: list[CaptionChoice] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add_key(key: str) -> None:
         for source, pool in (("manual", subtitles), ("automatic", autos)):
-            found = exact(pool, key)
+            found = exact(pool, key) or prefix(pool, key)
             if found:
-                return found[0], source, found[1]
+                add_caption_choice(candidates, seen, found[0], source, found[1])
+
+    source_language = info.get("language")
+    source_base = source_language.split("-")[0] if isinstance(source_language, str) and source_language else None
+    source_preferences = []
+    for key in (f"{source_base}-orig" if source_base else None, source_language, source_base):
+        if key and key not in source_preferences:
+            source_preferences.append(key)
+
+    for key in source_preferences:
+        add_key(key)
+
+    for source, pool in (("manual", subtitles), ("automatic", autos)):
+        for lang in sorted(pool):
+            if lang.endswith("-orig"):
+                add_caption_choice(candidates, seen, lang, source, pool.get(lang))
+
+    preferences = ["en", "en-orig", "fr", "fr-orig", "ko", "ko-orig"]
+    for key in preferences:
+        add_key(key)
 
     for source, pool in (("manual", subtitles), ("automatic", autos)):
         for lang in sorted(pool):
             entries = pool.get(lang) or []
             if entries:
-                return lang, source, entries
+                add_caption_choice(candidates, seen, lang, source, entries)
 
-    raise SystemExit("No subtitles or automatic captions found for this video")
+    if not candidates:
+        raise SystemExit("No subtitles or automatic captions found for this video")
+    return candidates
+
+
+def choose_caption(info: dict[str, Any], requested: str) -> CaptionChoice:
+    return caption_candidates(info, requested)[0]
 
 
 def list_subs(yt_dlp: str, url: str) -> str:
@@ -94,6 +138,64 @@ def list_subs(yt_dlp: str, url: str) -> str:
         return cp.stdout + (cp.stderr or "")
     except subprocess.CalledProcessError as exc:
         return (exc.stdout or "") + (exc.stderr or "")
+
+
+def caption_error_summary(exc: subprocess.CalledProcessError | RuntimeError) -> str:
+    if isinstance(exc, subprocess.CalledProcessError):
+        detail = (exc.stderr or exc.stdout or "").strip()
+        detail = detail or f"yt-dlp exited with status {exc.returncode}"
+    else:
+        detail = str(exc).strip()
+    detail = WS_RE.sub(" ", detail)
+    if len(detail) > 500:
+        detail = detail[:497].rstrip() + "..."
+    return detail
+
+
+def download_caption_vtt(yt_dlp: str, url: str, video_id: str, lang: str, source: str, video_dir: Path) -> Path:
+    with tempfile.TemporaryDirectory(prefix="youtube-transcript-") as tmp_s:
+        tmp = Path(tmp_s)
+        cmd = [
+            yt_dlp,
+            "--skip-download",
+            "--sub-langs",
+            lang,
+            "--sub-format",
+            "vtt/best",
+            "-o",
+            f"{video_id}.%(ext)s",
+        ]
+        cmd.append("--write-subs" if source == "manual" else "--write-auto-subs")
+        cmd.append(url)
+        run(cmd, cwd=tmp)
+        candidates = sorted(tmp.glob(f"{video_id}*.vtt")) or sorted(tmp.glob(f"{video_id}*"))
+        if not candidates:
+            raise RuntimeError(f"yt-dlp did not produce a subtitle file for language {lang}")
+        raw_vtt = video_dir / "raw" / lang / f"{video_id}.{lang}.vtt"
+        raw_vtt.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(candidates[0], raw_vtt)
+        return raw_vtt
+
+
+def select_caption_vtt(
+    choices: list[CaptionChoice],
+    requested: str,
+    no_caption_fallback: bool,
+    download: CaptionDownloader,
+) -> tuple[str, str, Path, list[str]]:
+    attempt_errors: list[str] = []
+    for lang, source, _entries in choices:
+        try:
+            raw_vtt = download(lang, source)
+            return lang, source, raw_vtt, attempt_errors
+        except (subprocess.CalledProcessError, RuntimeError) as exc:
+            summary = caption_error_summary(exc)
+            attempt_errors.append(f"{lang} ({source}): {summary}")
+            if requested != "best" or no_caption_fallback:
+                raise RuntimeError(f"Caption download failed for {lang} ({source}): {summary}") from exc
+
+    details = "\n".join(f"- {error}" for error in attempt_errors)
+    raise RuntimeError(f"Caption download failed for all selected caption candidates:\n{details}")
 
 
 def clean_text(text: str) -> str:
@@ -266,6 +368,17 @@ def main() -> int:
     parser.add_argument("--refresh", action="store_true", help="Refresh an existing complete archive in place")
     parser.add_argument("--yt-dlp-bin", default=os.environ.get("YT_DLP", "yt-dlp"), help="yt-dlp binary path")
     parser.add_argument("--summary-file", help="Optional Markdown summary to inject into report.md")
+    parser.add_argument(
+        "--no-caption-fallback",
+        action="store_true",
+        help="Do not retry alternate caption tracks when --lang best selects a track that yt-dlp cannot download",
+    )
+    parser.add_argument(
+        "--max-caption-candidates",
+        type=int,
+        default=12,
+        help="Maximum best-mode caption tracks to try before failing; ignored for explicit --lang values",
+    )
     args = parser.parse_args()
 
     yt_dlp = shutil.which(args.yt_dlp_bin) or args.yt_dlp_bin
@@ -289,48 +402,43 @@ def main() -> int:
             print(json.dumps(existing, indent=2, ensure_ascii=False))
             return 0
 
-    lang, source, _entries = choose_caption(info, args.lang)
+    choices = caption_candidates(info, args.lang)
+    if args.lang == "best":
+        max_candidates = max(1, args.max_caption_candidates)
+        choices = choices[:max_candidates]
+
     if args.lang == "best" and not args.refresh:
-        existing = resolve_existing_archive(video_dir, lang)
-        if existing:
-            existing["status"] = "reused"
-            existing["notes"] = "complete existing archive reused after resolving best language; use --refresh to reprocess"
-            print(json.dumps(existing, indent=2, ensure_ascii=False))
-            return 0
+        for candidate_lang, _candidate_source, _entries in choices:
+            existing = resolve_existing_archive(video_dir, candidate_lang)
+            if existing:
+                existing["status"] = "reused"
+                existing["notes"] = "complete existing archive reused after resolving best language; use --refresh to reprocess"
+                print(json.dumps(existing, indent=2, ensure_ascii=False))
+                return 0
 
     video_dir.mkdir(parents=True, exist_ok=True)
-    raw_dir = video_dir / "raw" / lang
-    transcript_dir = video_dir / "transcript" / lang
-    reports_dir = video_dir / "reports"
-    manifests_dir = video_dir / "manifests"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    transcript_dir.mkdir(parents=True, exist_ok=True)
-    reports_dir.mkdir(exist_ok=True)
-    manifests_dir.mkdir(exist_ok=True)
-
     safe_write(video_dir / "metadata.json", json.dumps(info, indent=2, ensure_ascii=False, sort_keys=True))
     safe_write(video_dir / "subtitles-list.txt", list_subs(yt_dlp, args.url))
 
-    with tempfile.TemporaryDirectory(prefix="youtube-transcript-") as tmp_s:
-        tmp = Path(tmp_s)
-        cmd = [
-            yt_dlp,
-            "--skip-download",
-            "--sub-langs",
-            lang,
-            "--sub-format",
-            "vtt/best",
-            "-o",
-            f"{video_id}.%(ext)s",
-        ]
-        cmd.append("--write-subs" if source == "manual" else "--write-auto-subs")
-        cmd.append(args.url)
-        run(cmd, cwd=tmp)
-        candidates = sorted(tmp.glob(f"{video_id}*.vtt")) or sorted(tmp.glob(f"{video_id}*"))
-        if not candidates:
-            raise SystemExit(f"yt-dlp did not produce a subtitle file for language {lang}")
-        raw_vtt = raw_dir / f"{video_id}.{lang}.vtt"
-        shutil.copyfile(candidates[0], raw_vtt)
+    def download_selected(candidate_lang: str, candidate_source: str) -> Path:
+        return download_caption_vtt(yt_dlp, args.url, video_id, candidate_lang, candidate_source, video_dir)
+
+    try:
+        lang, source, raw_vtt, attempt_errors = select_caption_vtt(
+            choices,
+            args.lang,
+            args.no_caption_fallback,
+            download_selected,
+        )
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    transcript_dir = video_dir / "transcript" / lang
+    reports_dir = video_dir / "reports"
+    manifests_dir = video_dir / "manifests"
+    transcript_dir.mkdir(parents=True, exist_ok=True)
+    reports_dir.mkdir(exist_ok=True)
+    manifests_dir.mkdir(exist_ok=True)
 
     clean_lines, timestamped = parse_vtt(raw_vtt)
     timestamped_deduped = deoverlap_caption_stream(dedupe_consecutive(timestamped))
@@ -370,6 +478,9 @@ def main() -> int:
         "files": rel_files,
         "notes": "caption-only archive; video/audio media not downloaded",
     }
+    if attempt_errors:
+        manifest["notes"] += f"; selected {lang} after caption download fallback"
+        manifest["caption_fallback_errors"] = attempt_errors
     summary = Path(args.summary_file).read_text(encoding="utf-8") if args.summary_file else None
     report = report_markdown(info, manifest, summary, "\n".join(f"[{ts}] {text}" for ts, text in timestamped_deduped))
     manifest_json = json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True)
