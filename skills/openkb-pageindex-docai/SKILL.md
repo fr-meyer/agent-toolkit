@@ -16,10 +16,11 @@ Use this skill as the source-neutral orchestration layer around native OpenKB an
 - Keep provider credentials in the private runtime environment or native OpenKB `.env` locations. Never write API keys into source packs, public config, reports, or skill files.
 - Treat OpenKB compile/query/PageIndex LLM model and OCR model as separate concerns. OCR belongs to the adapter/source-pack layer.
 - Before relying on native behavior, verify the installed runtime when practical: package versions, config, command help, and whether installed files match package records.
+- For user-supplied local/admin folders, run the `document-renaming` workflow before ingest unless the user explicitly asks to leave originals untouched. Staging-copy names are not a substitute for organizing the human-facing source folder.
 
 ## Ingest Workflow
 
-1. Identify the source type and durable recovery path: local file, upload, URL, Zotero, GCS, migration, or manual.
+1. Identify the source type and durable recovery path: local file/folder, upload, URL, Zotero, GCS, migration, or manual.
 2. Create or update a source pack with source hash, source version, sensitivity, recovery metadata, and intended image policy.
 3. Run both extraction routes when both apply:
    - native extraction using OpenKB/PageIndex-compatible parsing;
@@ -34,6 +35,20 @@ Use this skill as the source-neutral orchestration layer around native OpenKB an
 9. Record document family, source version/hash, extraction version, selected reconstruction, conflicts, and active OpenKB document identity.
 
 Never skip an applicable dual extraction for cost or speed. Quality is the default priority.
+
+## Local Folder Preparation Gate
+
+When the user gives a local or remote-node folder of admin, financial, legal, medical, personal, or other human-facing documents for OpenKB/PageIndex import:
+
+1. inventory the original folder and compute hashes before importing;
+2. read or OCR enough of every candidate file to identify document date, issuer, subject, context, document type, and high-value facts;
+3. use `document-renaming` to create a dry-run rename/organization plan with collision checks;
+4. rename/organize the original folder and write a rename manifest, unless the user explicitly says to leave originals untouched;
+5. then stage/import from the organized final paths and preserve the rename manifest path in the import report or notes.
+
+If ingest already happened from unorganized copies, correct the original folder afterward using exact source hashes from the import/source-pack manifest. Do not claim the folder cleanup is complete when only workspace staging copies were renamed.
+
+Skip this gate only for sources whose identity is already canonical and externally managed, such as Zotero attachments, immutable exports, GCS objects, or URLs. In those cases, record why the original-name preservation policy applies.
 
 ## Comparator
 
