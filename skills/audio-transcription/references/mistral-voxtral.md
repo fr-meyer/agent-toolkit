@@ -9,13 +9,9 @@
 
 ## Models
 
-Use by default:
+Use:
 
-- `voxtral-mini-latest` during prototyping.
-
-Use for reproducibility:
-
-- `voxtral-mini-2602`
+- `voxtral-mini-latest` for Voxtral Mini transcription runs.
 
 Older/other identifiers observed in docs/examples may include `voxtral-mini-2507`. Prefer the latest stable model documented by Mistral at run time.
 
