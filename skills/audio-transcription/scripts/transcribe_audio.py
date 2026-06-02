@@ -28,7 +28,6 @@ from zoneinfo import ZoneInfo
 
 MISTRAL_ENDPOINT = "https://api.mistral.ai/v1/audio/transcriptions"
 DEFAULT_MODEL = "voxtral-mini-latest"
-PINNED_MODEL = "voxtral-mini-2602"
 DEFAULT_MAX_DIRECT_DURATION_SECONDS = 3 * 60 * 60
 DEFAULT_TIMEZONE = "UTC"
 DEFAULT_ARCHIVE_ROOT = "memory"

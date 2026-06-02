@@ -138,8 +138,7 @@ python3 scripts/transcribe_audio.py sample.wav --mode seminar --title "Test" --o
 
 Default model:
 
-- `voxtral-mini-latest` for freshness during prototyping.
-- Pin `voxtral-mini-2602` for reproducible runs.
+- `voxtral-mini-latest` for all Voxtral Mini transcription runs.
 
 Use diarization and segment timestamps by default for archives. Request word timestamps when alignment/search requires it. Use the underlying provider model id (for example `voxtral-mini-latest`) when calling Mistral directly; provider/model routing strings used by a wrapper are not necessarily the API model id.
 
