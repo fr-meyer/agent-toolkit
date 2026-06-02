@@ -14,6 +14,7 @@ Use this skill for Zotero-specific orchestration on top of the source-neutral Op
 - Use the existing `zotero-docai-pipeline` repository for Zotero-specific mechanics when available.
 - Use the source-neutral `openkb-pageindex-docai` workflow for source packs, dual extraction, comparison, selected reconstruction, rebuild tests, and export guardrails.
 - Do not duplicate OpenKB/PageIndex active-document state in a Zotero registry. Store only verified mappings and recovery metadata.
+- Preserve Zotero canonical attachment filenames and identity metadata. Do not run generic document renaming over Zotero attachments unless the user is also asking to organize a separate human-facing local folder; if so, keep Zotero filename/key/hash as recovery metadata and record the local rename manifest separately.
 
 ## Zotero Intake Workflow
 
