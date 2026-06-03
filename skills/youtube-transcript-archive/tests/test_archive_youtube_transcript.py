@@ -46,13 +46,28 @@ class CaptionSelectionTests(unittest.TestCase):
             "subtitles": {},
             "automatic_captions": {
                 "en": [{"url": "https://example.invalid/en"}],
-                "fr-orig": [{"url": "https://example.invalid/fr"}],
+                "fr": [{"url": "https://example.invalid/fr"}],
             },
         }
 
         choices = self.module.caption_candidates(info, "best")
 
         self.assertEqual(("en", "automatic"), choices[0][:2])
+
+    def test_best_prefers_original_caption_even_when_metadata_language_is_misleading(self) -> None:
+        info = {
+            "language": "en",
+            "subtitles": {},
+            "automatic_captions": {
+                "en": [{"url": "https://example.invalid/en"}],
+                "fr-orig": [{"url": "https://example.invalid/fr"}],
+            },
+        }
+
+        choices = self.module.caption_candidates(info, "best")
+
+        self.assertEqual(("fr-orig", "automatic"), choices[0][:2])
+        self.assertIn(("en", "automatic"), [choice[:2] for choice in choices])
 
     def test_explicit_language_keeps_requested_language(self) -> None:
         info = {
@@ -174,6 +189,7 @@ class BatchArchiveTests(unittest.TestCase):
                 "language": "fr-orig",
                 "transcript_source": "automatic",
                 "report_path": "/archive/captioned/report.md",
+                "transcript_path": "/archive/captioned/transcript/fr-orig/clean-deduped.txt",
                 "report_summary": "Filled report summary from the per-video archive.",
                 "validation_errors": [],
             },
@@ -186,6 +202,7 @@ class BatchArchiveTests(unittest.TestCase):
                 "language": "unknown",
                 "transcript_source": "none",
                 "report_path": "/archive/nocaps/report.md",
+                "transcript_path": None,
                 "validation_errors": [],
             },
         ]
@@ -200,8 +217,14 @@ class BatchArchiveTests(unittest.TestCase):
 
         self.assertEqual(1, counts["caption_backed"])
         self.assertEqual(1, counts["metadata_only"])
-        self.assertIn("| `captioned` | Captioned video | Channel A | transcript archived | `fr-orig` automatic captions |", index)
-        self.assertIn("| `nocaps` | No captions video | Channel B | metadata only | no captions exposed |", index)
+        self.assertIn(
+            "| `captioned` | Captioned video | Channel A | transcript archived | `fr-orig` automatic captions | `/archive/captioned/report.md` | `/archive/captioned/transcript/fr-orig/clean-deduped.txt` |",
+            index,
+        )
+        self.assertIn(
+            "| `nocaps` | No captions video | Channel B | metadata only | no captions exposed | `/archive/nocaps/report.md` | none |",
+            index,
+        )
         self.assertIn("- `captioned`: Filled report summary from the per-video archive.", index)
         self.assertIn("- Caption-backed archives: 1", index)
         self.assertIn("- Metadata-only no-caption archives: 1", index)
@@ -211,13 +234,25 @@ class BatchArchiveTests(unittest.TestCase):
             root = Path(tmp_s)
             video_dir = root / "abc123"
             video_dir.mkdir()
+            transcript_dir = video_dir / "transcript" / "en"
+            transcript_dir.mkdir(parents=True)
             for name in ["manifest.json", "metadata.json", "subtitles-list.txt", "report.md"]:
                 (video_dir / name).write_text("{}\n" if name.endswith(".json") else "ok\n", encoding="utf-8")
+            (transcript_dir / "clean-deduped.txt").write_text("caption text\n", encoding="utf-8")
             (video_dir / "abc123.mp4").write_text("not real media, but extension is enough\n", encoding="utf-8")
             entry = {
                 "status": "created",
                 "video_id": "abc123",
-                "manifest": {"files": ["manifest.json", "metadata.json", "subtitles-list.txt", "report.md"]},
+                "transcript_source": "automatic",
+                "manifest": {
+                    "files": [
+                        "manifest.json",
+                        "metadata.json",
+                        "subtitles-list.txt",
+                        "report.md",
+                        "transcript/en/clean-deduped.txt",
+                    ]
+                },
             }
 
             errors = self.module.validate_entry(root, entry)
@@ -241,6 +276,111 @@ class BatchArchiveTests(unittest.TestCase):
 
             self.assertEqual("A filled summary.", self.module.extract_report_summary(str(filled)))
             self.assertIsNone(self.module.extract_report_summary(str(placeholder)))
+
+    def test_summary_status_marks_only_caption_backed_placeholder_reports_as_needing_summary(self) -> None:
+        entries = [
+            {
+                "status": "created",
+                "video_id": "captioned",
+                "title": "Captioned",
+                "transcript_source": "automatic",
+                "report_path": "/archive/captioned/report.md",
+                "transcript_path": "/archive/captioned/transcript/en/clean-deduped.txt",
+                "has_placeholder_summary": True,
+                "report_summary": None,
+            },
+            {
+                "status": "metadata-only-no-captions",
+                "video_id": "nocaps",
+                "title": "No captions",
+                "transcript_source": "none",
+                "report_path": "/archive/nocaps/report.md",
+                "transcript_path": None,
+                "has_placeholder_summary": True,
+                "report_summary": None,
+            },
+        ]
+
+        needs_summary = self.module.needs_summary_entries(entries)
+
+        self.assertEqual(["captioned"], [entry["video_id"] for entry in needs_summary])
+
+    def test_validate_entry_can_require_filled_summaries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            video_dir = root / "abc123"
+            transcript_dir = video_dir / "transcript" / "en"
+            transcript_dir.mkdir(parents=True)
+            (video_dir / "manifest.json").write_text("{}\n", encoding="utf-8")
+            (video_dir / "metadata.json").write_text("{}\n", encoding="utf-8")
+            (video_dir / "subtitles-list.txt").write_text("ok\n", encoding="utf-8")
+            (video_dir / "report.md").write_text(
+                "# Report\n\n## Summary\nRaw transcript archival is complete. Summary not yet written; read later.\n\n## Detailed summary\nDetailed summary pending.\n\n## Full transcript\nText\n",
+                encoding="utf-8",
+            )
+            (transcript_dir / "clean-deduped.txt").write_text("caption text\n", encoding="utf-8")
+            entry = {
+                "status": "created",
+                "video_id": "abc123",
+                "transcript_source": "automatic",
+                "report_path": str(video_dir / "report.md"),
+                "manifest": {
+                    "files": [
+                        "manifest.json",
+                        "metadata.json",
+                        "subtitles-list.txt",
+                        "report.md",
+                        "transcript/en/clean-deduped.txt",
+                    ]
+                },
+            }
+
+            errors = self.module.validate_entry(root, entry, require_summaries=True)
+
+            self.assertIn("summary pending in report.md", errors)
+
+    def test_sync_payload_from_reports_updates_summary_and_transcript_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            video_dir = root / "abc123"
+            transcript_dir = video_dir / "transcript" / "en"
+            transcript_dir.mkdir(parents=True)
+            for name in ["manifest.json", "metadata.json", "subtitles-list.txt"]:
+                (video_dir / name).write_text("{}\n" if name.endswith(".json") else "ok\n", encoding="utf-8")
+            (video_dir / "report.md").write_text(
+                "# Report\n\n## Summary\nA filled report summary after agent review.\n\n## Detailed summary\n- Detail.\n\n## Full transcript\nText\n",
+                encoding="utf-8",
+            )
+            (transcript_dir / "clean-deduped.txt").write_text("caption text\n", encoding="utf-8")
+            payload = {
+                "archive_root": str(root),
+                "entries": [
+                    {
+                        "status": "created",
+                        "video_id": "abc123",
+                        "title": "Captioned",
+                        "transcript_source": "automatic",
+                        "report_path": str(video_dir / "report.md"),
+                        "report_summary": None,
+                        "manifest": {
+                            "files": [
+                                "manifest.json",
+                                "metadata.json",
+                                "subtitles-list.txt",
+                                "report.md",
+                                "transcript/en/clean-deduped.txt",
+                            ]
+                        },
+                    }
+                ],
+            }
+
+            synced = self.module.sync_payload_from_reports(payload=payload, archive_root=root, require_summaries=True)
+
+            self.assertEqual("A filled report summary after agent review.", synced["entries"][0]["report_summary"])
+            self.assertEqual(str(transcript_dir / "clean-deduped.txt"), synced["entries"][0]["transcript_path"])
+            self.assertEqual([], synced["entries"][0]["validation_errors"])
+            self.assertEqual([], synced["needs_summary"])
 
     def test_timestamp_zone_kst_changes_default_title_and_id_timezone(self) -> None:
         kst_now = self.module.timestamp_now("kst")

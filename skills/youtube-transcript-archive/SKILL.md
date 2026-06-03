@@ -100,7 +100,7 @@ Useful flags:
 
 The helper must call `yt-dlp` in skip-download mode and must not download video/audio streams.
 
-When `--lang best` is used, prefer source/original-language captions when YouTube exposes them, then fall back through common archive languages and remaining caption tracks. If a selected `best` caption track is advertised in metadata but fails during subtitle download, retry alternate caption tracks before giving up. Record fallback attempts in the manifest notes/fields.
+When `--lang best` is used, prefer source/original-language captions when YouTube exposes them, including `*-orig` tracks, then fall back through plain source-language tracks, common archive languages, and remaining caption tracks. If a selected `best` caption track is advertised in metadata but fails during subtitle download, retry alternate caption tracks before giving up. Record fallback attempts in the manifest notes/fields.
 
 For multi-link batches, use the batch helper:
 
@@ -112,7 +112,18 @@ python skills/youtube-transcript-archive/scripts/archive_youtube_batch.py \
   "$YOUTUBE_URL_1" "$YOUTUBE_URL_2"
 ```
 
-The batch helper calls the single-video helper for each input, enables metadata-only no-caption handling by default, continues through per-video no-caption cases, validates generated file lists and absence of video/audio media, and writes `batches/<batch-id>.md` plus `batches/<batch-id>.json`. It also pulls already-filled per-video `## Summary` sections into the batch summary when available; placeholder raw-archive summaries are ignored. Use `--timestamp-zone kst` when the default batch ID/title should use Korean local time instead of UTC. Treat the generated batch Markdown as a results/index skeleton; if newly archived reports still contain placeholder summaries, read the reports/transcripts and expand the batch summary before declaring the batch finished.
+The batch helper calls the single-video helper for each input, enables metadata-only no-caption handling by default, continues through per-video no-caption cases, validates generated file lists and absence of video/audio media, and writes `batches/<batch-id>.md` plus `batches/<batch-id>.json`. The generated batch index includes one row per video with the canonical `report.md` path and the preferred cleaned transcript path when captions exist. It also pulls already-filled per-video `## Summary` sections into the batch summary when available; placeholder raw-archive summaries are ignored.
+
+Use `--timestamp-zone kst` when the default batch ID/title should use Korean local time instead of UTC. Treat the generated batch Markdown as a results/index skeleton. After extraction, inspect the JSON stdout or batch manifest `needs_summary` list; for every listed caption-backed video, read the per-video transcript, replace the placeholder summary in `report.md` and `reports/<lang>.md`, then sync the batch index/manifest from the per-video reports:
+
+```bash
+python skills/youtube-transcript-archive/scripts/archive_youtube_batch.py \
+  --sync-from-reports \
+  --require-summaries \
+  --batch-manifest "$ARCHIVE_ROOT/batches/<batch-id>.json"
+```
+
+`--sync-from-reports` rereads per-video `report.md` files by video ID, updates `report_summary`, `summary_status`, `needs_summary`, transcript paths, and validation errors in the batch manifest, and rewrites the Markdown batch index. Use `--require-summaries` before declaring a summarized batch finished so caption-backed reports with placeholder or missing summaries fail validation; metadata-only no-caption reports do not require transcript summaries.
 
 ### 3. Write or update the report
 
@@ -158,6 +169,7 @@ Before final response:
 - for metadata-only no-caption entries, confirm `manifest.json`, `metadata.json`, `subtitles-list.txt`, and `report.md` exist and the manifest status is `metadata-only-no-captions`
 - confirm `report.md` identifies source URL, video ID, title, channel, language, transcript source, and archival timestamp
 - confirm no video/audio file was downloaded for transcript-only requests
+- for batches, validate from the batch manifest instead of a hand-written video-ID list; confirm `needs_summary` is empty after summary writing/syncing, transcript paths exist for caption-backed entries, metadata-only entries say no transcript is available because YouTube exposed no captions, and no audio/video files are present
 - if reusing an existing archive, report that it was reused rather than reprocessed
 
 ## Gotchas
@@ -173,8 +185,10 @@ Before final response:
 ## Final response
 
 Report:
-- video title and ID
+- batch index path when applicable, plus one per-video row or bullet with video title and ID
 - archive status: created, reused, resumed, refreshed, or blocked
 - selected language and transcript source
-- report path
-- any missing subtitles, ambiguity, or refresh notes
+- canonical per-video `report.md` path
+- transcript path for caption-backed videos, usually `transcript/<lang>/clean-deduped.txt`
+- metadata-only/no-caption cases stated plainly as `no transcript available because YouTube exposed no captions`
+- any blocked entries, caption fallback notes, ambiguity, or refresh notes
