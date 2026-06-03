@@ -40,6 +40,12 @@
       "why": "Explicit request to draft a shareable Agent Skill."
     },
     {
+      "id": "pos-07",
+      "query": "Make a generic shared skill from this local outage runbook, but keep our host-specific details out of the reusable skill.",
+      "should_trigger": true,
+      "why": "Explicit request to convert a local incident workflow into a generic shared Agent Skill with locality boundaries."
+    },
+    {
       "id": "neg-01",
       "query": "Write a Python script to extract tables from PDFs.",
       "should_trigger": false,
