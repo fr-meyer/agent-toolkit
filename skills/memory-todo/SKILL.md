@@ -28,7 +28,7 @@ Keep tasks readable and stable. Preserve the task's original language by default
 
 ```markdown
 ### [ ] <original-language task title>
-- Status: open | next | waiting | scheduled | done | archived
+- Status: open | next | in-progress | waiting | scheduled | done | archived
 - Priority: P1 | P2 | P3 | someday
 - Area/Project: <area or project, if known>
 - Due: <YYYY-MM-DD HH:mm TZ or none>
@@ -50,7 +50,19 @@ Omit unknown metadata rather than inventing it, but keep `Status`, `Priority`, a
 - Search existing todo files for duplicates, prior context, or completed versions of the same task.
 - If the destination area is unclear, use `memory/todo/inbox.md`; ask only when ambiguity would cause real harm.
 
-### 2. Add or update tasks
+### 2. Start tracked work
+
+When the user asks you to start, continue, work on, or execute work that clearly maps to an existing todo task:
+
+- update the task before substantial work begins, unless the user explicitly asked not to edit todo files;
+- set `Status: in-progress` when the local todo vocabulary supports it; otherwise use the nearest local equivalent and preserve existing conventions;
+- add a dated note stating that work started, the concrete trigger/source, and the immediate execution target;
+- refresh `memory/todo.md` or the dashboard if the task is visible there, so the compact view no longer says merely "next" or "planned";
+- if the work completes in the same turn, update the task again to `done`, `waiting`, or the appropriate next state with evidence and paths.
+
+Do not mark exploratory questions, brainstorming, or "what would you need?" conversations as `in-progress` unless the user also asks you to begin the work.
+
+### 3. Add or update tasks
 
 - Add new tasks to the relevant area/project file, not directly to `MEMORY.md`.
 - Update an existing task in place when it is clearly the same work.
@@ -58,7 +70,7 @@ Omit unknown metadata rather than inventing it, but keep `Status`, `Priority`, a
 - Record due dates/reminders exactly as stated; include timezone when known.
 - Keep sensitive details in the detailed task file only when necessary, and use neutral pointers on the dashboard.
 
-### 3. Maintain the dashboard
+### 4. Maintain the dashboard
 
 `memory/todo.md` should be a compact operating view, not the full database. Include only:
 
@@ -70,7 +82,7 @@ Omit unknown metadata rather than inventing it, but keep `Status`, `Priority`, a
 
 Remove or collapse completed, stale, and low-priority details from the dashboard after updating their source task blocks.
 
-### 4. Complete and archive
+### 5. Complete and archive
 
 When a task is done:
 
