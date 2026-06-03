@@ -382,6 +382,19 @@ class BatchArchiveTests(unittest.TestCase):
             self.assertEqual([], synced["entries"][0]["validation_errors"])
             self.assertEqual([], synced["needs_summary"])
 
+    def test_extract_batch_title_from_existing_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_s:
+            index_path = Path(tmp_s) / "batch.md"
+            index_path.write_text(
+                "# YouTube Batch — YouTube batch 2026-06-03 15:47 KST\n\nInput links: 2\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                "YouTube batch 2026-06-03 15:47 KST",
+                self.module.extract_batch_title_from_index(index_path),
+            )
+
     def test_timestamp_zone_kst_changes_default_title_and_id_timezone(self) -> None:
         kst_now = self.module.timestamp_now("kst")
 

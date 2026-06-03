@@ -109,6 +109,20 @@ def extract_report_summary(report_path: str | None) -> str | None:
     return concise_summary(summary)
 
 
+def extract_batch_title_from_index(index_path: Path) -> str | None:
+    if not index_path.exists():
+        return None
+    first_line = index_path.read_text(encoding="utf-8").splitlines()[0:1]
+    if not first_line:
+        return None
+    prefix = "# YouTube Batch — "
+    title = first_line[0].strip()
+    if not title.startswith(prefix):
+        return None
+    title = title[len(prefix) :].strip()
+    return title or None
+
+
 def report_has_placeholder(report_path: str | None) -> bool:
     if not report_path:
         return False
@@ -483,6 +497,10 @@ def main() -> int:
             batch_index = batch_manifest.parent / batch_index
         if args.batch_title:
             payload["batch_title"] = args.batch_title
+        elif not payload.get("batch_title"):
+            existing_title = extract_batch_title_from_index(batch_index)
+            if existing_title:
+                payload["batch_title"] = existing_title
         payload = sync_payload_from_reports(
             payload=payload,
             archive_root=archive_root,
