@@ -1,6 +1,6 @@
 {
-  "skill": "skill-creator",
-  "purpose": "Trigger-quality evaluation prompts for the skill-creator Agent Skill.",
+  "skill": "portable-skill-authoring",
+  "purpose": "Trigger-quality evaluation prompts for the portable-skill-authoring Agent Skill.",
   "usage": "Use these prompts to test whether the skill triggers on genuine Agent Skill authoring and auditing tasks while avoiding false positives on adjacent creation, documentation, or coding tasks.",
   "cases": [
     {

@@ -37,7 +37,7 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 
 ### Toolkit integration and skill authoring
 - `connect-openclaw-toolkit`
-- `skill-creator`
+- `portable-skill-authoring`
 
 ## Repository layout
 

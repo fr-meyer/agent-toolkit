@@ -1,6 +1,6 @@
 {
-  "skill": "skill-creator",
-  "purpose": "Minimal output-quality review cases for the skill-creator Agent Skill.",
+  "skill": "portable-skill-authoring",
+  "purpose": "Minimal output-quality review cases for the portable-skill-authoring Agent Skill.",
   "usage": "Use these cases after the skill has triggered. Check whether the response produces a strong Agent Skill draft with the expected structure, boundaries, and portability discipline.",
   "cases": [
     {

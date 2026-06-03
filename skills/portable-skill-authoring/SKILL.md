@@ -1,15 +1,15 @@
 ---
-name: skill-creator
-description: Use this skill when creating, updating, modernizing, refining, reviewing, or auditing an Agent Skill intended to be portable and shareable across agents. Apply it to scope definition, SKILL.md authoring, trigger descriptions, resource layout, progressive-disclosure decisions, publication-quality checks, and minimal justified updates to existing skills.
+name: portable-skill-authoring
+description: Use this skill when authoring, updating, modernizing, refining, reviewing, or auditing Agent Skills intended to be portable and shareable across agents. Apply it to scope definition, SKILL.md authoring, trigger descriptions, resource layout, progressive-disclosure decisions, publication-quality checks, and minimal justified updates to existing skills. Do not use it for native platform-bundled skill creation workflows unless the user explicitly asks to align this shared repo skill with them.
 ---
 
-# Skill Creator
+# Portable Skill Authoring
 
 ## Goal
 
 Create Agent Skills that are clear, portable, easy to trigger correctly, and worth sharing across different skills-compatible agents.
 
-Treat **Agent Skills** as the source framework. Use the **online Agent Skills source first**: prefer **Agent Skills MCP** before relying on bundled or local skill documentation. If Agent Skills MCP is not accessible, use the public Agent Skills website (`https://agentskills.io/home`, plus the relevant documentation pages under that site) or the GitHub repository (`https://github.com/agentskills/agentskills`) as the fallback source of truth. Treat the current skill files as secondary guidance that may lag behind the latest Agent Skills resources. If the online source shows that local skill-creator guidance is outdated or incorrect, update the local files directly.
+Treat **Agent Skills** as the source framework. Use the **online Agent Skills source first**: prefer **Agent Skills MCP** before relying on bundled or local skill documentation. If Agent Skills MCP is not accessible, use the public Agent Skills website (`https://agentskills.io/home`, plus the relevant documentation pages under that site) or the GitHub repository (`https://github.com/agentskills/agentskills`) as the fallback source of truth. Treat the current skill files as secondary guidance that may lag behind the latest Agent Skills resources. If the online source shows that local portable-skill-authoring guidance is outdated or incorrect, update the local files directly.
 
 ## Required preconditions
 
@@ -264,8 +264,8 @@ Add references only when they reduce context bloat in `SKILL.md`.
 
 Current references in this skill:
 - `references/agent-skills-publication-checklist.md` — read when preparing a skill for publication or doing a stricter compliance review
-- `references/eval-prompts.json` — read when testing whether `skill-creator` triggers on the right requests
-- `references/output-quality-eval.json` — read when checking whether `skill-creator` produces complete, publication-ready outputs after it triggers
+- `references/eval-prompts.json` — read when testing whether `portable-skill-authoring` triggers on the right requests
+- `references/output-quality-eval.json` — read when checking whether `portable-skill-authoring` produces complete, publication-ready outputs after it triggers
 
 Reference requirements:
 - say exactly when to read each file

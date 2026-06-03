@@ -27,7 +27,7 @@ It is not a universal installer for every AgentSkills-compatible or agent-platfo
 - updating cloned skill repos with `git fetch`, `git pull --ff-only`, or `gh` where appropriate;
 - preparing a safe branch/PR when repository documentation or shared skill metadata must change.
 
-Do not use this skill for creating brand-new skills; use `skill-creator` for that. Do not use it for plain Git repository management unrelated to OpenClaw skill loading.
+Do not use this skill for creating brand-new skills; use `portable-skill-authoring` for shared, portable skill authoring work. Do not use it for plain Git repository management unrelated to OpenClaw skill loading.
 
 ## Repository package model
 
