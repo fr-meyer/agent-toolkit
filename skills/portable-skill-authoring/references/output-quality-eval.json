@@ -1,6 +1,6 @@
 {
-  "skill": "skill-creator",
-  "purpose": "Minimal output-quality review cases for the skill-creator Agent Skill.",
+  "skill": "portable-skill-authoring",
+  "purpose": "Minimal output-quality review cases for the portable-skill-authoring Agent Skill.",
   "usage": "Use these cases after the skill has triggered. Check whether the response produces a strong Agent Skill draft with the expected structure, boundaries, and portability discipline.",
   "cases": [
     {
@@ -68,6 +68,23 @@
         "copying one-off workflow details without generalization"
       ],
       "why": "Tests whether the skill can abstract from a specific workflow into a shareable one."
+    },
+    {
+      "id": "oq-05",
+      "query": "Create a general shared skill from this local container rollback incident, but keep the product-specific deployment details in local notes.",
+      "expected": [
+        "explicit portability tier",
+        "generic shared scope instead of incident-specific scope",
+        "de-instance summary showing which details were generalized, parameterized, moved local, or dropped",
+        "local adapter decision for product-specific commands, paths, container names, and image tags",
+        "publication concerns if any local residue remains"
+      ],
+      "must_not": [
+        "hardcoded local deployment paths",
+        "turning the product incident into the shared skill boundary",
+        "placing host-specific recovery commands in the generic skill"
+      ],
+      "why": "Tests the local-incident-to-generic-skill path that previously allowed scope contamination."
     }
   ]
 }

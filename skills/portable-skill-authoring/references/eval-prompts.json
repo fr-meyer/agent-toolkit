@@ -1,6 +1,6 @@
 {
-  "skill": "skill-creator",
-  "purpose": "Trigger-quality evaluation prompts for the skill-creator Agent Skill.",
+  "skill": "portable-skill-authoring",
+  "purpose": "Trigger-quality evaluation prompts for the portable-skill-authoring Agent Skill.",
   "usage": "Use these prompts to test whether the skill triggers on genuine Agent Skill authoring and auditing tasks while avoiding false positives on adjacent creation, documentation, or coding tasks.",
   "cases": [
     {
@@ -38,6 +38,12 @@
       "query": "I want a generalizable and shareable Agent Skill for code-review workflows. Draft the folder structure and SKILL.md.",
       "should_trigger": true,
       "why": "Explicit request to draft a shareable Agent Skill."
+    },
+    {
+      "id": "pos-07",
+      "query": "Make a generic shared skill from this local outage runbook, but keep our host-specific details out of the reusable skill.",
+      "should_trigger": true,
+      "why": "Explicit request to convert a local incident workflow into a generic shared Agent Skill with locality boundaries."
     },
     {
       "id": "neg-01",

@@ -1,15 +1,15 @@
 ---
-name: skill-creator
-description: Use this skill when creating, updating, modernizing, refining, reviewing, or auditing an Agent Skill intended to be portable and shareable across agents. Apply it to scope definition, SKILL.md authoring, trigger descriptions, resource layout, progressive-disclosure decisions, publication-quality checks, and minimal justified updates to existing skills.
+name: portable-skill-authoring
+description: Use this skill when authoring, updating, modernizing, refining, reviewing, or auditing Agent Skills intended to be portable and shareable across agents. Apply it to scope definition, SKILL.md authoring, trigger descriptions, resource layout, progressive-disclosure decisions, publication-quality checks, and minimal justified updates to existing skills. Do not use it for native platform-bundled skill creation workflows unless the user explicitly asks to align this shared repo skill with them.
 ---
 
-# Skill Creator
+# Portable Skill Authoring
 
 ## Goal
 
 Create Agent Skills that are clear, portable, easy to trigger correctly, and worth sharing across different skills-compatible agents.
 
-Treat **Agent Skills** as the source framework. Use the **online Agent Skills source first**: prefer **Agent Skills MCP** before relying on bundled or local skill documentation. If Agent Skills MCP is not accessible, use the public Agent Skills website (`https://agentskills.io/home`, plus the relevant documentation pages under that site) or the GitHub repository (`https://github.com/agentskills/agentskills`) as the fallback source of truth. Treat the current skill files as secondary guidance that may lag behind the latest Agent Skills resources. If the online source shows that local skill-creator guidance is outdated or incorrect, update the local files directly.
+Treat **Agent Skills** as the source framework. Use the **online Agent Skills source first**: prefer **Agent Skills MCP** before relying on bundled or local skill documentation. If Agent Skills MCP is not accessible, use the public Agent Skills website (`https://agentskills.io/home`, plus the relevant documentation pages under that site) or the GitHub repository (`https://github.com/agentskills/agentskills`) as the fallback source of truth. Treat the current skill files as secondary guidance that may lag behind the latest Agent Skills resources. If the online source shows that local portable-skill-authoring guidance is outdated or incorrect, update the local files directly.
 
 ## Required preconditions
 
@@ -19,6 +19,7 @@ Before starting any create, update, review, or audit work with this skill, confi
 - an Agent Skills validation CLI is executable in the current environment: prefer `agentskills`, but accept `skills-ref` when that is the exposed command name in the current environment
 - the current skill library can be inspected so similar or overlapping skills can be checked before creating or updating anything
 - if the skill is intended for the shared/reusable skill repo, the target repo root must be known from trusted context and the work must start from that repo's `dev` branch on a fresh branch created for the specific skill
+- if the skill is intended for a shared/reusable repo, the requested portability tier can be stated before editing; if the tier is ambiguous, stop and ask one scope question
 
 If any of these requirements are not satisfied:
 - do not start or continue the work
@@ -46,6 +47,25 @@ Default decision order:
 3. split the proposal into multiple reusable skills if the requested scope contains multiple coherent sub-workflows
 4. create a brand-new standalone skill only when the above options are clearly worse
 
+### 1.1 Declare the portability tier before editing
+
+Before drafting or changing any shared/reusable skill, write a short **scope receipt** for yourself and use it as a gate:
+- source request or incident: the concrete task, failure, or workflow that motivated the skill
+- reusable invariant: the general job the skill should perform after removing local facts
+- portability tier: one of `generic-shared`, `product-shared`, `project-shared`, or `workspace-local-adapter`
+- local adapter destination: where host-, user-, repo-, or deployment-specific facts will live if they are needed
+- excluded local facts: concrete names, paths, commands, credentials, hosts, model ids, project labels, or deployment details that must not leak into the shared skill
+
+Tier meanings:
+- `generic-shared` — portable across agents, repositories, products, and hosts; local details must be parameters, examples, or external adapters
+- `product-shared` — intentionally tied to a named public product, API, platform, or tool; host/user/deployment details still stay out of the shared skill
+- `project-shared` — intentionally tied to one repository or project family; document that boundary clearly and avoid private host assumptions
+- `workspace-local-adapter` — local operational notes, exact paths, hostnames, credentials, deployment commands, and site-specific defaults; keep these outside the shared skill unless the user explicitly requested a local skill
+
+If the user asks for a "shared", "global", "generic", "general", or "reusable" skill and the source material is a specific local incident, default to `generic-shared` plus a separate local adapter. Do not convert the incident itself into the shared scope.
+
+If a shared repo contains both generic and product-specific skills, do not infer the tier from the repository alone. The tier must come from the user request, trusted repo policy, or an explicit scoping question before file edits.
+
 ### 1.25 Shared-repo branch rule
 
 When creating a shared/reusable skill in the shared skills repository:
@@ -68,6 +88,19 @@ Prefer:
 - smaller coherent reusable skills
 - explicit delegation/interconnection between skills
 - one orchestrator skill only when coordination logic truly needs to stay centralized
+
+### 1.6 Run a de-instance pass for incident-derived skills
+
+When a skill comes from a one-off workflow, outage, bug, local procedure, or user correction, separate the portable pattern from the instance before finalizing the scope.
+
+For each concrete detail from the source incident, choose one disposition:
+- `keep` — belongs in the shared skill because it defines the reusable behavior
+- `generalize` — replace with a product-neutral concept or broader workflow step
+- `parameterize` — make it an input, flag, environment variable, config key, or caller-provided value
+- `move-local` — put it in local memory, a project runbook, host notes, or a local adapter skill
+- `drop` — useful for the investigation but not for future executions
+
+Block publication if a `generic-shared` skill still requires local paths, personal hosts, private repo names, deployment image tags, workspace memory files, exact container names, account-specific model ids, secrets, or incident-only labels for normal use.
 
 ### 2. Choose the smallest useful structure
 
@@ -179,6 +212,8 @@ Call out:
 
 For reusable skills, treat environment-specific roots, local paths, credentials, archive destinations, binary paths, and runtime notes as configuration, not skill constants. Resolve them from the first trusted source available: explicit caller input, project/repository configuration, then host-agent local environment notes. Host-specific files may act as local adapters, but they are not part of the portable skill contract. If no trusted destination or required local setting is available, instruct the agent to ask before writing files.
 
+For shared skills derived from local incidents, run a local-residue check before finishing. Search the draft and bundled resources for source incident names, private paths, hostnames, usernames, exact deployment objects, provider account labels, and tool-specific commands. Keep only the names that are required by the declared portability tier; parameterize or move the rest to the local adapter destination.
+
 This section often matters more than extra explanation.
 
 ### 9. Evaluate before calling it finished
@@ -229,8 +264,8 @@ Add references only when they reduce context bloat in `SKILL.md`.
 
 Current references in this skill:
 - `references/agent-skills-publication-checklist.md` — read when preparing a skill for publication or doing a stricter compliance review
-- `references/eval-prompts.json` — read when testing whether `skill-creator` triggers on the right requests
-- `references/output-quality-eval.json` — read when checking whether `skill-creator` produces complete, publication-ready outputs after it triggers
+- `references/eval-prompts.json` — read when testing whether `portable-skill-authoring` triggers on the right requests
+- `references/output-quality-eval.json` — read when checking whether `portable-skill-authoring` produces complete, publication-ready outputs after it triggers
 
 Reference requirements:
 - say exactly when to read each file
@@ -256,7 +291,8 @@ When using this skill to create or revise another skill, produce:
 10. for update tasks, a change summary describing what was updated, what was intentionally left unchanged, and why
 11. a similarity-check summary stating which existing skills were reviewed, which ones were considered relevant, and why they were reused, extended, rejected, or delegated to
 12. a scope-splitting decision stating whether the proposed work should remain one skill or be split into multiple reusable skills, and why
-13. if work could not start or continue because a prerequisite was missing, a clear blocked-status explanation naming the missing requirement and why it prevented the work
+13. the declared portability tier, local adapter decision, and de-instance summary
+14. if work could not start or continue because a prerequisite was missing, a clear blocked-status explanation naming the missing requirement and why it prevented the work
 
 ## Starter template
 

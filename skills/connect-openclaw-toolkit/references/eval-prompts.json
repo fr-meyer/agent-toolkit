@@ -67,7 +67,7 @@
       "id": "neg-05",
       "query": "Create a new Agent Skill for wiring shared repos into different tools.",
       "should_trigger": false,
-      "why": "This is skill creation work, which should trigger the skill-creator skill instead."
+      "why": "This is skill creation work, which should trigger the portable-skill-authoring skill instead."
     },
     {
       "id": "neg-06",

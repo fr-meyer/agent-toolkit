@@ -31,11 +31,14 @@ Confirm:
 - the scope is broad enough to be reusable
 - the scope is not so broad that it becomes a vague catch-all
 - adjacent out-of-scope tasks are clear
+- the declared portability tier is explicit: `generic-shared`, `product-shared`, `project-shared`, or `workspace-local-adapter`
+- incident-derived details have been marked as kept, generalized, parameterized, moved local, or dropped
 
 Warning signs:
 - the skill sounds like a general assistant role
 - the skill bundles unrelated workflows
 - the skill exists mainly to restate generic advice the base agent already knows
+- a specific outage, host, deployment, user, or repo became the whole shared skill scope without an explicit product/project tier
 
 ## 3. Trigger quality
 
@@ -101,11 +104,14 @@ Confirm:
 - no private local context is assumed
 - no hidden dependencies are required without being stated
 - commands and file references use portable, explicit conventions
+- local operational facts have a documented adapter destination instead of living in a generic shared skill
+- product or project names that remain are required by the declared tier, not leftovers from the source incident
 
 Warning signs:
 - the skill only makes sense inside one author's machine setup
 - the instructions assume a particular chat product or internal tool without explanation
 - the skill depends on tribal knowledge not written anywhere
+- a `generic-shared` skill contains exact hostnames, workspace paths, deployment image tags, account labels, or incident-specific object names
 
 ## 7. Output quality
 
