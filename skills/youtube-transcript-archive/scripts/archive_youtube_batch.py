@@ -20,6 +20,9 @@ SUMMARY_PLACEHOLDERS = (
     "Raw transcript archival is complete. Summary not yet written",
     "Metadata-only archive. YouTube exposed no manual subtitles or automatic captions",
 )
+DETAIL_PLACEHOLDERS = (
+    "Detailed summary pending.",
+)
 
 
 def read_url_file(path: Path) -> list[str]:
@@ -106,6 +109,78 @@ def extract_report_summary(report_path: str | None) -> str | None:
     return concise_summary(summary)
 
 
+def report_has_placeholder(report_path: str | None) -> bool:
+    if not report_path:
+        return False
+    path = Path(report_path)
+    if not path.exists():
+        return False
+    markdown = path.read_text(encoding="utf-8")
+    summary = extract_section(markdown, "Summary") or ""
+    detailed = extract_section(markdown, "Detailed summary") or ""
+    return any(placeholder in summary for placeholder in SUMMARY_PLACEHOLDERS) or any(
+        placeholder in detailed for placeholder in DETAIL_PLACEHOLDERS
+    )
+
+
+def preferred_transcript_path(archive_root: Path, entry: dict[str, Any]) -> str | None:
+    if entry.get("status") == "blocked" or entry.get("transcript_source") == "none":
+        return None
+    video_id = entry.get("video_id")
+    if not video_id:
+        return None
+    folder = archive_root / str(video_id)
+    rel_files = entry.get("manifest", {}).get("files") or []
+    transcript_files = [rel for rel in rel_files if "/transcript/" in f"/{rel}"]
+    preferences = ("clean-deduped.txt", "timestamped-deduped.txt", "clean.txt", "timestamped.txt")
+    for suffix in preferences:
+        for rel in transcript_files:
+            if rel.endswith(suffix) and (folder / rel).exists():
+                return str(folder / rel)
+    return None
+
+
+def refresh_entry_report_state(archive_root: Path, entry: dict[str, Any]) -> None:
+    if entry.get("status") == "blocked":
+        return
+    video_id = entry.get("video_id")
+    if video_id and not entry.get("report_path"):
+        entry["report_path"] = str(archive_root / str(video_id) / "report.md")
+    entry["transcript_path"] = preferred_transcript_path(archive_root, entry)
+    entry["has_placeholder_summary"] = report_has_placeholder(entry.get("report_path"))
+    entry["report_summary"] = extract_report_summary(entry.get("report_path"))
+
+
+def build_summary_status(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    status: list[dict[str, Any]] = []
+    for entry in entries:
+        metadata_only = entry.get("transcript_source") == "none"
+        blocked = entry.get("status") == "blocked"
+        needs_summary = (
+            not blocked
+            and not metadata_only
+            and (entry.get("has_placeholder_summary") or not entry.get("report_summary"))
+        )
+        status.append(
+            {
+                "video_id": entry.get("video_id"),
+                "title": entry.get("title"),
+                "status": entry.get("status"),
+                "metadata_only": metadata_only,
+                "blocked": blocked,
+                "report_path": entry.get("report_path"),
+                "transcript_path": entry.get("transcript_path"),
+                "has_placeholder_summary": bool(entry.get("has_placeholder_summary")),
+                "needs_summary": bool(needs_summary),
+            }
+        )
+    return status
+
+
+def needs_summary_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [entry for entry in build_summary_status(entries) if entry["needs_summary"]]
+
+
 def archive_one(args: argparse.Namespace, archive_root: Path, url: str) -> dict[str, Any]:
     cmd = archive_command(args, archive_root, url)
     cp = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
@@ -121,8 +196,7 @@ def archive_one(args: argparse.Namespace, archive_root: Path, url: str) -> dict[
 
     video_id = manifest.get("video_id")
     report_path = str(archive_root / str(video_id) / "report.md") if video_id else None
-    report_summary = extract_report_summary(report_path)
-    return {
+    entry = {
         "input_url": url,
         "status": manifest.get("status"),
         "video_id": video_id,
@@ -131,14 +205,15 @@ def archive_one(args: argparse.Namespace, archive_root: Path, url: str) -> dict[
         "language": manifest.get("language"),
         "transcript_source": manifest.get("transcript_source"),
         "report_path": report_path,
-        "report_summary": report_summary,
         "notes": manifest.get("notes"),
         "returncode": cp.returncode,
         "manifest": manifest,
     }
+    refresh_entry_report_state(archive_root, entry)
+    return entry
 
 
-def validate_entry(archive_root: Path, entry: dict[str, Any]) -> list[str]:
+def validate_entry(archive_root: Path, entry: dict[str, Any], *, require_summaries: bool = False) -> list[str]:
     if entry.get("status") == "blocked":
         return []
     video_id = entry.get("video_id")
@@ -153,6 +228,14 @@ def validate_entry(archive_root: Path, entry: dict[str, Any]) -> list[str]:
     for path in folder.rglob("*"):
         if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS:
             errors.append(f"media file present: {path.relative_to(folder)}")
+    if entry.get("transcript_source") == "none":
+        if entry.get("status") != "metadata-only-no-captions":
+            errors.append("transcript_source is none but status is not metadata-only-no-captions")
+    elif not preferred_transcript_path(archive_root, entry):
+        errors.append("missing cleaned transcript path")
+    if require_summaries and entry.get("transcript_source") != "none":
+        if report_has_placeholder(entry.get("report_path")) or not extract_report_summary(entry.get("report_path")):
+            errors.append("summary pending in report.md")
     return errors
 
 
@@ -218,6 +301,7 @@ def build_batch_index(
                     status_label(entry),
                     language_label(entry),
                     f"`{table_escape(report_path)}`" if report_path else "",
+                    f"`{table_escape(entry.get('transcript_path'))}`" if entry.get("transcript_path") else "none",
                 ]
             )
             + " |"
@@ -229,7 +313,9 @@ def build_batch_index(
         if entry.get("status") == "blocked":
             summary_lines.append(f"- `{video_id}`: blocked — {entry.get('error') or 'archive failed'}.")
         elif entry.get("transcript_source") == "none":
-            summary_lines.append(f"- `{video_id}`: metadata-only entry for `{entry.get('title')}`; YouTube exposed no captions.")
+            summary_lines.append(
+                f"- `{video_id}`: metadata-only entry for `{entry.get('title')}`; no transcript available because YouTube exposed no captions."
+            )
         elif entry.get("report_summary"):
             summary_lines.append(f"- `{video_id}`: {entry['report_summary']}")
         else:
@@ -260,8 +346,8 @@ def build_batch_index(
             "",
             "## Results",
             "",
-            "| Video ID | Title | Channel | Status | Language / source | Report |",
-            "|---|---|---|---|---|---|",
+            "| Video ID | Title | Channel | Status | Language / source | Report | Transcript |",
+            "|---|---|---|---|---|---|---|",
             *rows,
             "",
             "## Batch Summary",
@@ -292,11 +378,59 @@ def timestamp_now(zone: str) -> dt.datetime:
     return now
 
 
+def write_batch_outputs(
+    *,
+    payload: dict[str, Any],
+    batch_index: Path,
+    batch_manifest: Path,
+) -> None:
+    archive_root = Path(payload["archive_root"])
+    index_text = build_batch_index(
+        title=payload.get("batch_title") or payload.get("batch_id") or "YouTube batch",
+        archive_root=archive_root,
+        entries=payload["entries"],
+        counts=payload["counts"],
+    )
+    payload["batch_index"] = str(batch_index)
+    payload["batch_manifest"] = str(batch_manifest)
+    payload["summary_status"] = build_summary_status(payload["entries"])
+    payload["needs_summary"] = needs_summary_entries(payload["entries"])
+    batch_index.parent.mkdir(parents=True, exist_ok=True)
+    batch_manifest.parent.mkdir(parents=True, exist_ok=True)
+    batch_index.write_text(index_text, encoding="utf-8")
+    batch_manifest.write_text(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+
+
+def load_batch_payload(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or "entries" not in payload:
+        raise SystemExit(f"Not a batch manifest: {path}")
+    return payload
+
+
+def sync_payload_from_reports(
+    *,
+    payload: dict[str, Any],
+    archive_root: Path,
+    require_summaries: bool,
+) -> dict[str, Any]:
+    entries = payload.get("entries") or []
+    for entry in entries:
+        refresh_entry_report_state(archive_root, entry)
+        entry["validation_errors"] = validate_entry(archive_root, entry, require_summaries=require_summaries)
+    payload["archive_root"] = str(archive_root)
+    payload["counts"] = summarize_entries(entries)
+    payload["synced_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+    payload["summary_status"] = build_summary_status(entries)
+    payload["needs_summary"] = needs_summary_entries(entries)
+    return payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("urls", nargs="*", help="YouTube URLs or video IDs")
     parser.add_argument("--url-file", action="append", help="File containing one YouTube URL/video ID per line")
-    parser.add_argument("--archive-root", required=True, help="Trusted archive root directory")
+    parser.add_argument("--archive-root", help="Trusted archive root directory")
     parser.add_argument("--lang", default="best", help="Caption language preference passed to single-video helper")
     parser.add_argument("--refresh", action="store_true", help="Refresh existing archives in place")
     parser.add_argument("--yt-dlp-bin", default=os.environ.get("YT_DLP", "yt-dlp"), help="yt-dlp binary path")
@@ -323,11 +457,58 @@ def main() -> int:
     parser.add_argument("--batch-index", help="Output Markdown path; defaults under <archive-root>/batches/")
     parser.add_argument("--batch-manifest", help="Output JSON path; defaults next to the Markdown index")
     parser.add_argument("--fail-fast", action="store_true", help="Stop the batch on the first helper failure")
+    parser.add_argument(
+        "--sync-from-reports",
+        action="store_true",
+        help="Update an existing batch manifest/index from per-video report.md summaries without re-archiving URLs",
+    )
+    parser.add_argument(
+        "--require-summaries",
+        action="store_true",
+        help="Treat caption-backed reports with placeholder/missing summaries as validation errors",
+    )
     args = parser.parse_args()
+
+    if args.sync_from_reports:
+        if not args.batch_manifest:
+            raise SystemExit("--sync-from-reports requires --batch-manifest")
+        batch_manifest = Path(args.batch_manifest).expanduser().resolve()
+        payload = load_batch_payload(batch_manifest)
+        archive_root_text = args.archive_root or payload.get("archive_root")
+        if not archive_root_text:
+            raise SystemExit("--archive-root is required when the batch manifest does not contain archive_root")
+        archive_root = Path(archive_root_text).expanduser().resolve()
+        batch_index = Path(args.batch_index or payload.get("batch_index") or batch_manifest.with_suffix(".md")).expanduser()
+        if not batch_index.is_absolute():
+            batch_index = batch_manifest.parent / batch_index
+        if args.batch_title:
+            payload["batch_title"] = args.batch_title
+        payload = sync_payload_from_reports(
+            payload=payload,
+            archive_root=archive_root,
+            require_summaries=args.require_summaries,
+        )
+        write_batch_outputs(payload=payload, batch_index=batch_index, batch_manifest=batch_manifest)
+        print(
+            json.dumps(
+                {
+                    "batch_id": payload.get("batch_id"),
+                    "batch_index": str(batch_index),
+                    "batch_manifest": str(batch_manifest),
+                    "counts": payload["counts"],
+                    "needs_summary": payload["needs_summary"],
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return 1 if payload["counts"]["validation_errors"] else 0
 
     urls = collect_urls(args.urls, args.url_file)
     if not urls:
         raise SystemExit("No YouTube URLs or video IDs provided")
+    if not args.archive_root:
+        raise SystemExit("--archive-root is required")
 
     archive_root = Path(args.archive_root).expanduser().resolve()
     archive_root.mkdir(parents=True, exist_ok=True)
@@ -343,12 +524,15 @@ def main() -> int:
         entry = archive_one(args, archive_root, url)
         if args.fail_fast and entry.get("status") == "blocked":
             raise SystemExit(entry.get("error") or f"Failed to archive {url}")
-        entry["validation_errors"] = validate_entry(archive_root, entry)
+        entry["validation_errors"] = validate_entry(archive_root, entry, require_summaries=args.require_summaries)
         entries.append(entry)
 
     counts = summarize_entries(entries)
     payload = {
         "batch_id": batch_id,
+        "batch_title": batch_title,
+        "batch_index": str(batch_index),
+        "batch_manifest": str(batch_manifest),
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "batch_timestamp": now.isoformat(),
         "timestamp_zone": args.timestamp_zone,
@@ -356,12 +540,9 @@ def main() -> int:
         "counts": counts,
         "entries": entries,
     }
-    index_text = build_batch_index(title=batch_title, archive_root=archive_root, entries=entries, counts=counts)
-
-    batch_index.parent.mkdir(parents=True, exist_ok=True)
-    batch_manifest.parent.mkdir(parents=True, exist_ok=True)
-    batch_index.write_text(index_text, encoding="utf-8")
-    batch_manifest.write_text(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    payload["summary_status"] = build_summary_status(entries)
+    payload["needs_summary"] = needs_summary_entries(entries)
+    write_batch_outputs(payload=payload, batch_index=batch_index, batch_manifest=batch_manifest)
 
     print(
         json.dumps(
@@ -370,6 +551,7 @@ def main() -> int:
                 "batch_index": str(batch_index),
                 "batch_manifest": str(batch_manifest),
                 "counts": counts,
+                "needs_summary": payload["needs_summary"],
             },
             indent=2,
             ensure_ascii=False,

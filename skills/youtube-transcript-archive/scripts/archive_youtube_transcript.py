@@ -98,28 +98,36 @@ def caption_candidates(info: dict[str, Any], requested: str) -> list[CaptionChoi
     candidates: list[CaptionChoice] = []
     seen: set[tuple[str, str]] = set()
 
-    def add_key(key: str) -> None:
+    def add_key(key: str, *, allow_prefix: bool = True) -> None:
         for source, pool in (("manual", subtitles), ("automatic", autos)):
-            found = exact(pool, key) or prefix(pool, key)
+            found = exact(pool, key) or (prefix(pool, key) if allow_prefix else None)
             if found:
                 add_caption_choice(candidates, seen, found[0], source, found[1])
 
     source_language = info.get("language")
     source_base = source_language.split("-")[0] if isinstance(source_language, str) and source_language else None
-    source_preferences = []
-    for key in (f"{source_base}-orig" if source_base else None, source_language, source_base):
-        if key and key not in source_preferences:
-            source_preferences.append(key)
+    source_original_preferences = []
+    for key in (f"{source_base}-orig" if source_base else None,):
+        if key and key not in source_original_preferences:
+            source_original_preferences.append(key)
 
-    for key in source_preferences:
-        add_key(key)
+    for key in source_original_preferences:
+        add_key(key, allow_prefix=False)
 
     for source, pool in (("manual", subtitles), ("automatic", autos)):
         for lang in sorted(pool):
             if lang.endswith("-orig"):
                 add_caption_choice(candidates, seen, lang, source, pool.get(lang))
 
-    preferences = ["en", "en-orig", "fr", "fr-orig", "ko", "ko-orig"]
+    source_plain_preferences = []
+    for key in (source_language, source_base):
+        if key and key not in source_plain_preferences:
+            source_plain_preferences.append(key)
+
+    for key in source_plain_preferences:
+        add_key(key)
+
+    preferences = ["en", "fr", "ko"]
     for key in preferences:
         add_key(key)
 
