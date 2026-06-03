@@ -1,4 +1,0 @@
-interface:
-  display_name: "OpenClaw Runtime Change Control"
-  short_description: "Guard OpenClaw restarts, rebuilds, and upgrades."
-  default_prompt: "Use $openclaw-runtime-change-control to preflight this OpenClaw runtime change before touching Gateway, Docker Compose, plugins, or model routing."

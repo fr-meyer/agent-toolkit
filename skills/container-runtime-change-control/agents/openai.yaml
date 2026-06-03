@@ -1,0 +1,4 @@
+interface:
+  display_name: "Container Runtime Change Control"
+  short_description: "Guard container restarts, rebuilds, and upgrades."
+  default_prompt: "Use $container-runtime-change-control to preflight this containerized service change before touching images, deployment specs, restarts, rebuilds, or runtime repairs."
