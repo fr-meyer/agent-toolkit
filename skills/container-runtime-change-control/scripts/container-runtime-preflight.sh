@@ -17,13 +17,18 @@ Options:
   --image-var NAME            Image variable name in --deployment-env.
   --container NAME            Docker container name or ID to inspect.
   --target-version VERSION    Intended service/software version.
+  --rollback-artifact DESC    Existing rollback artifact or backup plan evidence:
+                              image tag, image archive, registry copy, snapshot,
+                              or env/manifest backup. Do not include secrets.
+                              Values such as "unavailable" fail closed.
   --operation NAME            inspect, restart, recreate, rebuild, upgrade,
                               repair, rollback. Default: inspect.
   --phase NAME                pre-change or post-change. Default: pre-change.
   --strict                    Exit non-zero when not safe-to-proceed.
   -h, --help                  Show this help.
 
-This script never sources dotenv files and never prints secret values.
+This script never sources dotenv files. It prints supplied image and rollback
+evidence, so do not pass tokens, signed URLs, or secret-bearing references.
 USAGE
 }
 
@@ -33,6 +38,7 @@ deployment_env=""
 image_var=""
 container=""
 target_version=""
+rollback_artifact=""
 operation="inspect"
 phase="pre-change"
 strict=0
@@ -76,6 +82,11 @@ while [ "$#" -gt 0 ]; do
     --target-version)
       require_value "$@"
       target_version="${2:-}"
+      shift 2
+      ;;
+    --rollback-artifact)
+      require_value "$@"
+      rollback_artifact="${2:-}"
       shift 2
       ;;
     --operation)
@@ -242,6 +253,19 @@ printf 'container=%s\n' "${container:-not-provided}"
 printf 'running_image_ref=%s\n' "${running_image_ref:-unknown}"
 printf 'running_image_version=%s\n' "${running_image_version:-unknown}"
 printf 'running_image_id=%s\n' "${running_image_id:-unknown}"
+printf 'rollback_artifact=%s\n' "${rollback_artifact:-not-provided}"
+
+if [ "$operation" != "inspect" ] && [ "$phase" = "pre-change" ] && [ -z "$rollback_artifact" ]; then
+  add_warning "No --rollback-artifact was provided for a mutating operation. Capture or identify a known-good image tag, image archive, registry copy, snapshot, or manifest backup before mutation."
+fi
+
+if [ -n "$rollback_artifact" ]; then
+  case "$(printf '%s' "$rollback_artifact" | tr '[:upper:]' '[:lower:]')" in
+    *unavailable*|*not-available*|*not_available*|*"not available"*|none|n/a|na)
+      add_warning "Rollback artifact was declared unavailable. Keep the operation read-only until the operator explicitly accepts that risk."
+      ;;
+  esac
+fi
 
 if [ -n "$target_version" ]; then
   if [ -n "$deployment_version" ] && [ "$deployment_version" != "$target_version" ]; then
