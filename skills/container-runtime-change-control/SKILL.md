@@ -92,6 +92,8 @@ For Docker-style image mutation, do this before any build, pull, tag switch, rec
 - write a small manifest beside the archive or in the change record with image ref, image ID/digest, archive path or registry ref, checksum, creation time, and restore command;
 - verify the rollback artifact is readable before proceeding.
 
+Do not put secrets, signed URLs, registry tokens, or credential-bearing paths in `--rollback-artifact`; the helper prints the value as change evidence. If rollback is unavailable, say so explicitly in the human report, but do not expect strict preflight to pass.
+
 Portable Docker examples:
 
 ```bash

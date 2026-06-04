@@ -19,14 +19,16 @@ Options:
   --target-version VERSION    Intended service/software version.
   --rollback-artifact DESC    Existing rollback artifact or backup plan evidence:
                               image tag, image archive, registry copy, snapshot,
-                              env/manifest backup, or explicit "unavailable".
+                              or env/manifest backup. Do not include secrets.
+                              Values such as "unavailable" fail closed.
   --operation NAME            inspect, restart, recreate, rebuild, upgrade,
                               repair, rollback. Default: inspect.
   --phase NAME                pre-change or post-change. Default: pre-change.
   --strict                    Exit non-zero when not safe-to-proceed.
   -h, --help                  Show this help.
 
-This script never sources dotenv files and never prints secret values.
+This script never sources dotenv files. It prints supplied image and rollback
+evidence, so do not pass tokens, signed URLs, or secret-bearing references.
 USAGE
 }
 
@@ -255,6 +257,14 @@ printf 'rollback_artifact=%s\n' "${rollback_artifact:-not-provided}"
 
 if [ "$operation" != "inspect" ] && [ "$phase" = "pre-change" ] && [ -z "$rollback_artifact" ]; then
   add_warning "No --rollback-artifact was provided for a mutating operation. Capture or identify a known-good image tag, image archive, registry copy, snapshot, or manifest backup before mutation."
+fi
+
+if [ -n "$rollback_artifact" ]; then
+  case "$(printf '%s' "$rollback_artifact" | tr '[:upper:]' '[:lower:]')" in
+    *unavailable*|*not-available*|*not_available*|*"not available"*|none|n/a|na)
+      add_warning "Rollback artifact was declared unavailable. Keep the operation read-only until the operator explicitly accepts that risk."
+      ;;
+  esac
 fi
 
 if [ -n "$target_version" ]; then
