@@ -17,6 +17,9 @@ Options:
   --image-var NAME            Image variable name in --deployment-env.
   --container NAME            Docker container name or ID to inspect.
   --target-version VERSION    Intended service/software version.
+  --rollback-artifact DESC    Existing rollback artifact or backup plan evidence:
+                              image tag, image archive, registry copy, snapshot,
+                              env/manifest backup, or explicit "unavailable".
   --operation NAME            inspect, restart, recreate, rebuild, upgrade,
                               repair, rollback. Default: inspect.
   --phase NAME                pre-change or post-change. Default: pre-change.
@@ -33,6 +36,7 @@ deployment_env=""
 image_var=""
 container=""
 target_version=""
+rollback_artifact=""
 operation="inspect"
 phase="pre-change"
 strict=0
@@ -76,6 +80,11 @@ while [ "$#" -gt 0 ]; do
     --target-version)
       require_value "$@"
       target_version="${2:-}"
+      shift 2
+      ;;
+    --rollback-artifact)
+      require_value "$@"
+      rollback_artifact="${2:-}"
       shift 2
       ;;
     --operation)
@@ -242,6 +251,11 @@ printf 'container=%s\n' "${container:-not-provided}"
 printf 'running_image_ref=%s\n' "${running_image_ref:-unknown}"
 printf 'running_image_version=%s\n' "${running_image_version:-unknown}"
 printf 'running_image_id=%s\n' "${running_image_id:-unknown}"
+printf 'rollback_artifact=%s\n' "${rollback_artifact:-not-provided}"
+
+if [ "$operation" != "inspect" ] && [ "$phase" = "pre-change" ] && [ -z "$rollback_artifact" ]; then
+  add_warning "No --rollback-artifact was provided for a mutating operation. Capture or identify a known-good image tag, image archive, registry copy, snapshot, or manifest backup before mutation."
+fi
 
 if [ -n "$target_version" ]; then
   if [ -n "$deployment_version" ] && [ "$deployment_version" != "$target_version" ]; then

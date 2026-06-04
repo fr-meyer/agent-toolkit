@@ -44,9 +44,28 @@ safe_output="$(
     --container fake-service \
     --operation restart \
     --target-version 2.4.1 \
+    --rollback-artifact 'image-tag=fake-service:backup-test' \
     --strict
 )"
 grep -q '^preflight_status=safe-to-proceed$' <<<"$safe_output"
+grep -q '^rollback_artifact=image-tag=fake-service:backup-test$' <<<"$safe_output"
+
+set +e
+missing_backup_output="$(
+  run_preflight \
+    --live-version-command 'fake-service --version' \
+    --deployment-env "$safe_env" \
+    --image-var SERVICE_IMAGE \
+    --container fake-service \
+    --operation restart \
+    --target-version 2.4.1 \
+    --strict
+)"
+missing_backup_status=$?
+set -e
+test "$missing_backup_status" -ne 0
+grep -q '^preflight_status=read-only-only$' <<<"$missing_backup_output"
+grep -q 'No --rollback-artifact was provided' <<<"$missing_backup_output"
 
 set +e
 drift_output="$(
@@ -57,6 +76,7 @@ drift_output="$(
     --container fake-service \
     --operation restart \
     --target-version 2.4.1 \
+    --rollback-artifact 'image-tag=fake-service:backup-test' \
     --strict
 )"
 drift_status=$?
@@ -73,6 +93,7 @@ upgrade_output="$(
     --container fake-service \
     --operation upgrade \
     --target-version 2.4.1 \
+    --rollback-artifact 'image-tag=fake-service:backup-test' \
     --strict
 )"
 upgrade_status=$?

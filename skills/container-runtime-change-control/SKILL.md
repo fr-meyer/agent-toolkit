@@ -19,7 +19,8 @@ This skill is intentionally generic. Service-specific commands, image variable n
   - desired target version, or explicit statement that the live version should be preserved;
   - durable deployment image/spec, such as Compose env image, Kubernetes image, Helm value, systemd unit, or deployment manifest;
   - actual running container image tag and digest/ID when container tooling is available;
-  - rollback path, such as previous image tag, manifest backup, VM snapshot, or explicit `rollback unavailable`.
+  - rollback path, such as previous image tag, image archive, registry copy, manifest backup, VM snapshot, or explicit `rollback unavailable`.
+- Before touching a container image through pull, build, tag replacement, upgrade, rollback, or recreate from a changed spec, preserve or identify a known-good rollback image first. Prefer both a fast rollback tag and a durable copy when practical.
 - If the live version and the image/spec used for recreate disagree, stop before any recreate/rebuild/restart that could switch versions.
 - Do not treat package installs or source edits inside a running container as durable deployment state unless they are baked into the image or explicitly recorded as temporary hotfixes.
 - Prefer orchestrator-level changes over in-container process kills. Use ad-hoc process kills only for emergency recovery, and record them as such.
@@ -51,6 +52,7 @@ Collect evidence read-only. Prefer the bundled helper when local paths are avail
   --container my-service \
   --operation recreate \
   --target-version 1.2.3 \
+  --rollback-artifact 'image-tag=my-service:backup-YYYYMMDD-HHMM' \
   --strict
 ```
 
@@ -63,6 +65,7 @@ You can also pass an image directly:
   --container my-service \
   --operation restart \
   --target-version 1.2.3 \
+  --rollback-artifact 'archive=/var/backups/my-service-image-YYYYMMDD-HHMM.tar.zst' \
   --strict
 ```
 
@@ -77,6 +80,30 @@ systemctl cat <unit>
 ```
 
 Keep the operation read-only until the comparison is understood.
+
+### 2.5 Capture or Verify the Rollback Image
+
+For Docker-style image mutation, do this before any build, pull, tag switch, recreate from a changed spec, upgrade, or rollback:
+
+- record the current image reference and immutable image ID/digest;
+- preserve the deployment env/manifest that points at the current image;
+- create a fast local rollback tag for the current image when the platform supports it;
+- when storage and policy allow, create a durable image archive with `docker save` and compression, or copy the image to a registry/object store;
+- write a small manifest beside the archive or in the change record with image ref, image ID/digest, archive path or registry ref, checksum, creation time, and restore command;
+- verify the rollback artifact is readable before proceeding.
+
+Portable Docker examples:
+
+```bash
+docker inspect --format '{{.Config.Image}} {{.Image}}' <container>
+docker image tag <current-image-ref-or-id> <service>:backup-YYYYMMDD-HHMM
+docker save <service>:backup-YYYYMMDD-HHMM | zstd -T0 -o <backup-dir>/<service>-image-YYYYMMDD-HHMM.tar.zst
+sha256sum <backup-dir>/<service>-image-YYYYMMDD-HHMM.tar.zst > <backup-dir>/<service>-image-YYYYMMDD-HHMM.tar.zst.sha256
+```
+
+Use an available compression tool such as `zstd` or `gzip`; do not install packages as part of the backup step unless that package change is itself approved.
+
+If a local archive is too large, use the strongest available substitute: a registry copy, cloud snapshot, or documented previous image tag plus manifest backup. If no rollback artifact can be created, classify the operation as `read-only-only` or explicitly report `rollback unavailable` and ask before continuing.
 
 ### 3. Classify the State
 
@@ -97,6 +124,7 @@ Prefer durable deployment paths:
 - update image tags, manifests, Helm values, Compose env files, or overlays intentionally;
 - use the orchestrator's normal lifecycle command;
 - keep config/env/manifest backups before mutation;
+- keep the pre-change image rollback tag/archive/registry copy/snapshot until post-change verification passes and the operator explicitly accepts the new baseline;
 - separate image/runtime changes from unrelated config/model/plugin changes when practical;
 - make one risky change at a time and verify before continuing.
 
@@ -111,7 +139,7 @@ After any mutation, verify:
 - running container image tag and digest/ID;
 - service health endpoint, CLI status, logs, or platform readiness;
 - any touched plugin/tool/model/runtime surface;
-- rollback artifact still exists if rollback remains relevant.
+- rollback artifact still exists, has a recorded restore command, and remains usable if rollback remains relevant.
 
 If post-change state differs from the intended target, stop and report. Do not stack additional repairs without a new preflight.
 
