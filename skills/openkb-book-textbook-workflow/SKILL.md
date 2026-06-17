@@ -204,6 +204,15 @@ Before declaring the workflow complete, verify:
 - Do not promote an experimental tree/retrieval layer to canonical storage without a separate decision.
 - Do not hardcode local paths, private project names, personal names, provider keys, hostnames, or account-specific model aliases in shared artifacts.
 
+## Portability Notes
+
+This is a `product-shared` skill: OpenKB/PageIndex concepts are intentional product dependencies, but host, user, repo, credential, model, and deployment details are not.
+
+- Resolve local roots, source-pack locations, provider configuration, and MCP endpoints from explicit caller input, project configuration, or host-agent local notes.
+- Keep corpus-specific facts, personal project names, and one-off evaluation results in project memory or local runbooks.
+- Treat ConDB, ChatIndex, and local PageIndex MCP as optional lanes whose availability depends on the current environment.
+- If the runtime lacks a named source-system skill or tool, explain the missing dependency and use direct source-system commands only when they are available and trusted.
+
 ## Resources
 
 Read only when needed:
