@@ -12,13 +12,15 @@ metadata:
 
 ## Goal
 
-Create or prepare GitHub pull requests only after the branch diff **and** PR title/body are safe to publish. This skill exists because PR prose is often drafted from private chat context even when the committed diff is clean.
+Create or prepare GitHub pull requests only after every public artifact is safe to publish. This includes the branch name, commit subjects/bodies/trailers, branch diff, PR title/body, and live hosting metadata after the PR is created or edited.
 
 Treat the PR title and body as public artifacts from the first draft, not only at `gh pr create` time. A sanitized draft shown to the user must pass the same PR prose red-list gate as a PR that will be published.
 
 ## Use this skill for
 
 - drafting PR titles and bodies;
+- drafting or reviewing public branch names;
+- reviewing commit messages and trailers before pushing a PR branch;
 - creating PRs with `gh pr create`;
 - editing PR descriptions with `gh pr edit`;
 - final public-safety checks before opening a PR;
@@ -38,6 +40,7 @@ Gather or infer:
 - expected branch hygiene policy, normally dedicated head branch from current `origin/<base>`;
 - whether the repository is public, private, unknown, or public-intended;
 - whether the user wants a draft only or an actual PR creation/edit.
+- intended commit identity and any co-author trailers.
 
 Treat unknown visibility as public-intended.
 
@@ -50,32 +53,45 @@ Treat unknown visibility as public-intended.
    - Confirm the dedicated branch was created from the current upstream base head, or at least contains it: `git merge-base --is-ancestor origin/<base> HEAD`.
    - If the branch is missing, stale, or based on an old base, report drift and stop unless the user explicitly authorizes branch creation, rebase, or recreation.
    - Check `git status --short --branch` and stop on uncommitted changes unless they are intentionally part of the PR.
+   - Treat the branch name as public metadata. It must describe the technical change without personal names, private project names, customer names, incident names, local path fragments, account identifiers, or internal runtime aliases.
 
 2. **Review the public diff**
    - Run `git diff --check <base>...HEAD`.
    - List changed files with `git diff --name-only <base>...HEAD`.
    - Inspect the diff for red-list content before PR creation.
 
-3. **Draft public-safe PR prose**
+3. **Review commit messages and trailers**
+   - Inspect every commit that will appear in the PR: `git log --format='%H%n%B%n---END---' origin/<base>..HEAD`.
+   - Treat commit subjects, bodies, trailers, author names, and committer names as public artifacts.
+   - Commit messages should describe the repository change, not the private conversation, private incident, user request, local environment, or remediation backstory that led to it.
+   - Co-author trailers and bot identities are allowed only when they are verified, current, intentional public identities for the repository. Remove stale, transitional, internal, or unapproved bot trailers before pushing.
+   - If a commit message or trailer contains private context, amend or rewrite the branch before publishing the PR branch.
+
+4. **Draft public-safe PR prose**
    - Explain the technical change, not the private user story that caused it.
    - Use generic context such as “validated during a recent workflow” instead of naming people, customers, documents, locations, private projects, or sensitive cases.
    - Do not include transient URLs, local filesystem paths, tokens, private filenames, session IDs, or internal logs.
+   - Avoid “Context” sections when the context comes from private chat. Use “Notes” only for public implementation details.
+   - Do not mention the private triggering incident, the affected private repo/workflow, or tool/source limitations unless they are already public and necessary for reviewers.
 
-4. **Audit the PR title/body as publishable content**
+5. **Audit the PR title/body as publishable content**
    - Save the proposed title/body to a temporary file or otherwise inspect it as text.
    - Run a named **PR prose red-list gate** before showing the draft to the user and again before publishing if the prose changed.
    - Scan the PR prose with the same red-list mindset as the diff.
    - Treat names from chat, private task motivation, local workspace details, phone numbers, account IDs, file paths, incident specifics, and internal operational history as unsafe unless they are intentionally public and necessary for the repository.
    - If prose contains private context, rewrite and re-scan before showing the draft, calling GitHub, or saving it as a reusable PR body.
 
-5. **Create or update the PR only after both gates pass**
+6. **Create or update the PR only after all gates pass**
    - If the user asked only for a draft, return the sanitized title/body and stop.
    - If PR creation/editing is authorized, use `gh pr create` or `gh pr edit` with `--body-file` to avoid shell quoting mistakes.
-   - After creation/editing, report the PR URL and the checks that passed.
+   - After creation/editing, re-query the live PR title/body/head SHA and commit list from the hosting provider. Scan the live metadata and reachable PR commit messages, not just the local draft.
+   - If live metadata is not the sanitized text you intended, immediately edit it before reporting success.
+   - If a pushed commit message is unsafe, amend/rewrite the feature branch and update the PR branch before reporting success. If branch rewrite is risky, stop and ask.
+   - After live verification passes, report the PR URL and the checks that passed.
 
 ## Red-list gate
 
-Block PR creation/editing when the diff or PR prose contains:
+Block PR branch push, PR creation, or PR editing when the branch name, commit messages/trailers, diff, or PR prose contains:
 
 - secrets, API keys, access tokens, OAuth tokens, cookies, passwords, private keys;
 - real personal/customer/patient/family names unless clearly public and intentionally part of the repo;
@@ -84,8 +100,9 @@ Block PR creation/editing when the diff or PR prose contains:
 - private email addresses, phone numbers, account IDs, tenant IDs, or cloud project identifiers;
 - screenshots/log excerpts/transcripts that may contain private content;
 - internal incident narratives that are not needed to understand the public technical change.
+- stale or unapproved bot identities, automation trailers, or internal tool/source labels that expose implementation details without reviewer value.
 
-If a red-list item is found only in the PR prose, rewrite the prose; do not change the code just to mask a prose issue. If it is in the diff, stop and remediate the branch before creating the PR.
+If a red-list item is found only in the PR prose, rewrite the prose; do not change the code just to mask a prose issue. If it is in the branch name or commit messages, rename/amend/rewrite the branch before publishing. If it is in the diff, stop and remediate the branch before creating the PR.
 
 ## PR prose red-list gate
 
@@ -98,7 +115,8 @@ Minimum procedure:
 3. Manually inspect the file for private motivation that keyword scans can miss.
 4. Rewrite any private context into public technical language.
 5. Re-run the scan after every rewrite.
-6. Only then show the draft to the user or pass it to `gh pr create` / `gh pr edit`.
+6. Scan the branch name and proposed commit messages/trailers with the same red-list.
+7. Only then show the draft to the user or pass it to `gh pr create` / `gh pr edit`.
 
 Default rewrite rules:
 
@@ -106,6 +124,7 @@ Default rewrite rules:
 - Replace private motivation such as `requested by <person>` with public motivation such as `tightens the workflow` or `documents the expected behavior`.
 - Remove chat-derived context that is not needed to understand the technical change.
 - Remove local paths, machine names, account identifiers, cloud project IDs, phone numbers, emails, private URLs, and session IDs.
+- Remove private incident names, affected private repo names, internal tool/source labels, and stale automation identity trailers.
 - Keep validation commands and changed-file summaries when they are public-safe.
 
 Suggested backstop scan for a PR body file:
@@ -133,6 +152,7 @@ Block PR creation when:
 - the head branch is `dev`, `main`, `master`, or a release/integration branch;
 - the branch does not contain the current `origin/<base>` and no rebase/recreate decision has been approved;
 - multiple unrelated logical changes are mixed into one branch.
+- the branch name itself exposes private context.
 
 ## Recommended PR body shape
 
@@ -146,7 +166,9 @@ Block PR creation when:
 
 - Command/check that passed
 - Branch diff red-list gate passed: no private names, URLs, tokens, local paths, or case-specific details found
+- Commit-message/trailer gate passed: no private context or stale automation identity found
 - PR prose red-list gate passed: title/body contain only public, technical repository context
+- Live PR metadata gate passed after creation/edit
 ```
 
 Optional sections:
@@ -173,6 +195,10 @@ git diff --check origin/<base>...HEAD
 git diff --name-only origin/<base>...HEAD
 git diff --stat origin/<base>...HEAD
 
+# Commit message/trailer gate
+git log --format='%H%n%B%n---END---' origin/<base>..HEAD > /tmp/pr-commits.txt
+grep -En '([A-Z][a-z]+ [A-Z][a-z]+|/Users/|/home/|\+?[0-9][0-9 .-]{7,}|@[A-Za-z0-9_.-]+\.[A-Za-z]{2,}|token|secret|password|cookie|oauth|private key|signed url|trycloudflare|ngrok|customer|patient|passport|invoice|tax|medical|legal|co-authored-by)' /tmp/pr-commits.txt || true
+
 # Conservative red-list scan over diff
 git diff origin/<base>...HEAD | grep -Ei 'token|secret|password|cookie|oauth|private key|signed url|trycloudflare|ngrok|/Users/|/home/|email|phone|tax|medical|patient|passport|invoice|customer' || true
 
@@ -181,6 +207,9 @@ grep -En '([A-Z][a-z]+ [A-Z][a-z]+|/Users/|/home/|\+?[0-9][0-9 .-]{7,}|@[A-Za-z0
 
 # Create PR from sanitized body file
 gh pr create --base <base> --head <branch> --title "<title>" --body-file /tmp/pr-body.md
+
+# Verify live PR metadata after create/edit
+gh pr view <number-or-url> --json title,body,headRefName,commits
 ```
 
 `grep` is only a backstop. Manual review of the title/body is mandatory.
@@ -195,11 +224,15 @@ When preparing a PR, return:
 - validation performed;
 - branch hygiene gate result;
 - branch diff red-list gate result;
+- commit-message/trailer gate result;
 - PR prose red-list gate result;
+- live PR metadata gate result, if created or edited;
 - gate decision: `ready`, `needs-rewrite`, or `blocked`.
 
 When creating or editing a PR, also return:
 
 - PR URL;
 - whether the diff gate passed;
-- whether the PR prose gate passed.
+- whether the commit-message/trailer gate passed;
+- whether the PR prose gate passed;
+- whether the live PR metadata gate passed.
