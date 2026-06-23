@@ -12,7 +12,7 @@ metadata:
 
 ## Goal
 
-Create or prepare GitHub pull requests only after every public artifact is safe to publish. This includes the branch name, commit subjects/bodies/trailers, branch diff, PR title/body, and live hosting metadata after the PR is created or edited.
+Create or prepare GitHub pull requests only after every public artifact is safe to publish. This includes the branch name, commit subjects/bodies/trailers, branch diff, PR title/body, generated PR `.patch`/`.diff` views, and live hosting metadata after the PR is created or edited.
 
 Treat the PR title and body as public artifacts from the first draft, not only at `gh pr create` time. A sanitized draft shown to the user must pass the same PR prose red-list gate as a PR that will be published.
 
@@ -24,6 +24,7 @@ Treat the PR title and body as public artifacts from the first draft, not only a
 - creating PRs with `gh pr create`;
 - editing PR descriptions with `gh pr edit`;
 - final public-safety checks before opening a PR;
+- final public-safety checks before merging a public or public-intended PR;
 - enforcing a dedicated feature branch from the fetched upstream base before PR creation;
 - converting private task context into public, technical PR language.
 
@@ -65,6 +66,7 @@ Treat unknown visibility as public-intended.
    - Treat commit subjects, bodies, trailers, author names, and committer names as public artifacts.
    - Commit messages should describe the repository change, not the private conversation, private incident, user request, local environment, or remediation backstory that led to it.
    - Co-author trailers and bot identities are allowed only when they are verified, current, intentional public identities for the repository. Remove stale, transitional, internal, or unapproved bot trailers before pushing.
+   - Public author/committer/coauthor names are allowed in normal attribution contexts. Do not redact them solely because they are names; instead remove private context from commit messages, branch names, diffs, or PR prose.
    - If a commit message or trailer contains private context, amend or rewrite the branch before publishing the PR branch.
 
 4. **Draft public-safe PR prose**
@@ -85,8 +87,10 @@ Treat unknown visibility as public-intended.
    - If the user asked only for a draft, return the sanitized title/body and stop.
    - If PR creation/editing is authorized, use `gh pr create` or `gh pr edit` with `--body-file` to avoid shell quoting mistakes.
    - After creation/editing, re-query the live PR title/body/head SHA and commit list from the hosting provider. Scan the live metadata and reachable PR commit messages, not just the local draft.
+   - For public, public-intended, or unknown-visibility repositories, fetch and scan the live GitHub PR `.patch` or `.diff` view after PR creation/edit and again immediately before merge if new commits or body edits occurred.
    - If live metadata is not the sanitized text you intended, immediately edit it before reporting success.
    - If a pushed commit message is unsafe, amend/rewrite the feature branch and update the PR branch before reporting success. If branch rewrite is risky, stop and ask.
+   - If the live `.patch`/`.diff` view exposes private context, do not merge. Rewrite or remediate the branch before merge while the PR head is still writable.
    - After live verification passes, report the PR URL and the checks that passed.
 
 ## Red-list gate
@@ -103,6 +107,8 @@ Block PR branch push, PR creation, or PR editing when the branch name, commit me
 - stale or unapproved bot identities, automation trailers, or internal tool/source labels that expose implementation details without reviewer value.
 
 If a red-list item is found only in the PR prose, rewrite the prose; do not change the code just to mask a prose issue. If it is in the branch name or commit messages, rename/amend/rewrite the branch before publishing. If it is in the diff, stop and remediate the branch before creating the PR.
+
+Do not treat public attribution as red-list by itself. Public author, committer, `Co-authored-by`, copyright, license, package author, and maintainer names can remain when they are intentional public identities for the repository. The private context around those names remains subject to the red-list gate.
 
 ## PR prose red-list gate
 
@@ -210,6 +216,10 @@ gh pr create --base <base> --head <branch> --title "<title>" --body-file /tmp/pr
 
 # Verify live PR metadata after create/edit
 gh pr view <number-or-url> --json title,body,headRefName,commits
+
+# Verify hosted PR patch for public/public-intended repos
+curl -Ls "https://github.com/<owner>/<repo>/pull/<number>.patch" > /tmp/pr.patch
+grep -Ei 'token|secret|password|cookie|oauth|private key|signed url|trycloudflare|ngrok|/Users/|/home/|workspace|private|customer|patient|passport|invoice|tax|medical|legal' /tmp/pr.patch || true
 ```
 
 `grep` is only a backstop. Manual review of the title/body is mandatory.
@@ -226,6 +236,7 @@ When preparing a PR, return:
 - branch diff red-list gate result;
 - commit-message/trailer gate result;
 - PR prose red-list gate result;
+- live PR patch/diff gate result, if created, edited, or being prepared for merge;
 - live PR metadata gate result, if created or edited;
 - gate decision: `ready`, `needs-rewrite`, or `blocked`.
 
@@ -235,4 +246,5 @@ When creating or editing a PR, also return:
 - whether the diff gate passed;
 - whether the commit-message/trailer gate passed;
 - whether the PR prose gate passed;
+- whether the live PR patch/diff gate passed;
 - whether the live PR metadata gate passed.

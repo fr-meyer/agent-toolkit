@@ -19,6 +19,7 @@ This skill is safety-focused and should be treated as a blocking gate when high-
 - public homepage, README, documentation, release note, package metadata, topic, and description checks
 - "is this repo safe to make public?" assessments
 - identifying red-list content in files, diffs, logs, exports, configs, docs, Git history, and hosting metadata
+- checking GitHub PR titles/bodies and generated `.patch`/`.diff` views for repositories that are public or public-intended
 
 ## Do not use this skill for
 
@@ -48,6 +49,8 @@ If visibility is unknown and a push is requested, treat risk conservatively and 
 
 For a repository that is already public or about to become public, prefer `full-repo` unless the user explicitly narrowed the question. `full-repo` means current tree plus full reachable Git history plus hosting metadata.
 
+When a GitHub PR already exists for a public or public-intended repository, treat the PR body and generated PR `.patch`/`.diff` endpoints as public hosting metadata. A clean local tree is not enough if the hosted PR patch still exposes private context.
+
 ## Red-list categories
 
 Treat the following as high-priority risk classes:
@@ -59,7 +62,8 @@ Treat the following as high-priority risk classes:
 3. Internal-only operational/security material
    - sensitive runbooks, internal architecture/network details, privileged procedures, deployment topology, access paths, hostnames, private IPs, SSH aliases, forced-command details, and token handling internals not intentionally public
 4. Personal/context disclosure beyond the public purpose
-   - unnecessary personal names, private project names, internal runtime names, local usernames, home directory paths, machine names, workspace names, account aliases, and implementation details that identify the owner or operating environment without adding public trust value
+   - unnecessary non-public personal/context disclosure, private project names, internal runtime names, local usernames, home directory paths, machine names, workspace names, account aliases, and implementation details that identify the owner or operating environment without adding public trust value
+   - do **not** flag intentionally public attribution names solely because they are personal names when they appear in author, committer, `Co-authored-by`, copyright, license, package-author, maintainer, or profile-backed project metadata
 5. Risky generated artifacts
    - logs, dumps, backups, support bundles that may contain tokens/data
 6. Non-approved proprietary or internal business material
@@ -70,7 +74,7 @@ Treat the following as high-priority risk classes:
 - `blocker`: live secret/credential, private key, regulated/private data, private token-bearing log, or any public history exposure that cannot be remediated by editing only the current tree.
 - `review-required`: unnecessary personal/context disclosure, internal runtime names, host paths, private architecture descriptions, sensitive-looking generated artifacts, or ambiguous proprietary content.
 - `warning`: low-risk but unnecessary public detail, stale internal references, overly specific implementation clues, or metadata that should be generalized.
-- `info`: benign publication notes, such as no findings or intentionally public identifiers.
+- `info`: benign publication notes, such as no findings, intentionally public identifiers, or intentionally public attribution names in attribution contexts.
 
 When in doubt, prefer `review-required` over `pass`.
 
@@ -97,6 +101,8 @@ When in doubt, prefer `review-required` over `pass`.
    - topics
    - package metadata such as `package.json`, Python project metadata, crate metadata, or release notes
    - GitHub App / marketplace / README homepage text when the repo is used as an app or integration homepage
+   - GitHub PR title/body when a PR exists
+   - GitHub PR `.patch` and `.diff` views when a PR exists and the repo is public, public-intended, or visibility is unknown
 5. Check for both secret-like patterns and privacy/context disclosure patterns.
 6. Evaluate findings against red-list categories.
 7. Assign severity:
@@ -118,8 +124,9 @@ Use judgment and tune to the repository, but include at least these families for
 
 - Secret markers: `ghp_`, `github_pat_`, `BEGIN .*PRIVATE KEY`, `api[_-]?key`, `secret`, `password`, `token`, provider-specific key names.
 - Local paths: `/home/`, `/Users/`, `C:\\Users\\`, `.openclaw`, `.ssh`, `.config/gh`, `.env`.
-- Personal/context identifiers named by the user or visible in the task, such as owner names, internal runtime names, private repo names, machine names, and workflow-specific aliases.
+- Personal/context identifiers named by the user or visible in the task, such as private project names, internal runtime names, private repo names, machine names, workflow-specific aliases, local usernames, and private property/customer names. Treat public author/committer/coauthor names as context-sensitive: preserve them in attribution fields, but flag them when coupled to private operational context.
 - Generated artifacts: `.log`, `.dump`, `.bak`, `.zip`, `.tar`, `.sqlite`, transcripts, screenshots, exported JSON, support bundles.
+- Hosted PR artifacts: PR bodies, generated `.patch`/`.diff` files, closed PR refs, release notes, and issue comments when they contain copied task metadata.
 
 Do not rely only on regex. Read surrounding context for ambiguous matches.
 
@@ -151,7 +158,9 @@ Output rules:
 ## Gotchas
 
 - Removing a secret in a later commit may not remove exposure from history.
+- Rewriting branch history may not remove exposure from hosted PR artifacts; GitHub `refs/pull/*` refs are read-only and may require support purge, repo recreation, or temporary privacy containment when sensitive context appeared in a public PR.
 - Repository descriptions, topics, release notes, package metadata, and homepages can leak context even when files are clean.
+- Generated PR patches can leak context even when the current tree and PR body are clean.
 - Test/demo files often carry real credentials by mistake.
 - "Internal-only but harmless" assumptions are frequently wrong for public repos.
 - A public trust homepage should explain the security model without naming private infrastructure unless that naming is intentionally public.
