@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+"""
+Scan GitHub PR publication surfaces for high-confidence public-safety findings.
+
+The scanner intentionally keeps project-specific terms out of source control.
+Pass private names, local labels, or case-specific strings with
+--denylist-file from an ignored local file.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable
+
+
+SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
+@dataclass(frozen=True)
+class Rule:
+    name: str
+    category: str
+    pattern: re.Pattern[str]
+
+
+@dataclass(frozen=True)
+class Finding:
+    surface: str
+    line_no: int
+    rule: str
+    category: str
+    preview: str
+    match_text: str
+
+
+def built_in_rules() -> list[Rule]:
+    dot_openclaw = r"\." + "openclaw"
+    return [
+        Rule(
+            "github-token-prefix",
+            "credential-shape",
+            re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{24,}\b"),
+        ),
+        Rule(
+            "github-fine-grained-token-prefix",
+            "credential-shape",
+            re.compile(r"\bgithub_pat_[A-Za-z0-9_]{24,}\b"),
+        ),
+        Rule(
+            "private-key-block-marker",
+            "credential-shape",
+            re.compile(r"-{5}BEGIN [A-Z0-9 ]*PRIVATE KEY-{5}"),
+        ),
+        Rule(
+            "unix-home-path",
+            "local-path",
+            re.compile(r"(?<![A-Za-z0-9_])/(?:home|Users)/[A-Za-z0-9._-]+(?:/[^\s'\"<>)]*)?"),
+        ),
+        Rule(
+            "windows-user-path",
+            "local-path",
+            re.compile(r"\b[A-Za-z]:\\Users\\[^\\\s]+(?:\\[^\s'\"<>)]*)?"),
+        ),
+        Rule(
+            "openclaw-local-marker",
+            "local-runtime-marker",
+            re.compile(dot_openclaw, re.IGNORECASE),
+        ),
+        Rule(
+            "workspace_name_shape",
+            "local-runtime-marker",
+            re.compile(r"\bworkspace-[A-Za-z0-9_.-]+\b", re.IGNORECASE),
+        ),
+        Rule(
+            "tunnel-url",
+            "transient-url",
+            re.compile(r"https?://[A-Za-z0-9.-]*(?:trycloudflare|ngrok|loca\.lt)[^\s'\"<>)]*", re.IGNORECASE),
+        ),
+    ]
+
+
+def literal_rule(name: str, value: str) -> Rule:
+    return Rule(name, "denylist-literal", re.compile(re.escape(value), re.IGNORECASE))
+
+
+def regex_rule(name: str, value: str) -> Rule:
+    try:
+        return Rule(name, "denylist-regex", re.compile(value, re.IGNORECASE))
+    except re.error as exc:
+        raise SystemExit(f"Invalid denylist regex {name}: {exc}") from exc
+
+
+def load_denylist(path: Path | None) -> list[Rule]:
+    if path is None:
+        return []
+    if not path.exists():
+        raise SystemExit(f"Denylist file not found: {path}")
+
+    rules: list[Rule] = []
+    for idx, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("literal:"):
+            value = line.removeprefix("literal:").strip()
+            if value:
+                rules.append(literal_rule(f"denylist:{idx}", value))
+            continue
+        if line.startswith("regex:"):
+            value = line.removeprefix("regex:").strip()
+            if value:
+                rules.append(regex_rule(f"denylist:{idx}", value))
+            continue
+        rules.append(literal_rule(f"denylist:{idx}", line))
+    return rules
+
+
+def github_headers() -> dict[str, str]:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "agent-toolkit-public-pr-safety-scan",
+    }
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def fetch_text(url: str, *, accept: str | None = None) -> str:
+    headers = github_headers()
+    if accept:
+        headers["Accept"] = accept
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise SystemExit(f"Fetch failed for {url}: HTTP {exc.code} {detail[:240]}") from exc
+    except urllib.error.URLError as exc:
+        raise SystemExit(f"Fetch failed for {url}: {exc}") from exc
+
+
+def load_pr_surfaces(slug: str, number: str, *, include_diff: bool, include_patch: bool) -> dict[str, str]:
+    api_text = fetch_text(f"https://api.github.com/repos/{slug}/pulls/{number}")
+    try:
+        pr = json.loads(api_text)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"GitHub PR metadata response was not JSON: {exc}") from exc
+
+    title = str(pr.get("title") or "")
+    body = str(pr.get("body") or "")
+    surfaces = {
+        "pr-title": title,
+        "pr-body": body,
+    }
+
+    if include_patch:
+        surfaces["pr-patch"] = fetch_text(
+            f"https://github.com/{slug}/pull/{number}.patch",
+            accept="text/plain",
+        )
+    if include_diff:
+        surfaces["pr-diff"] = fetch_text(
+            f"https://github.com/{slug}/pull/{number}.diff",
+            accept="text/plain",
+        )
+    return surfaces
+
+
+def load_offline_surfaces(paths: Iterable[Path]) -> dict[str, str]:
+    surfaces: dict[str, str] = {}
+    for path in paths:
+        if not path.exists():
+            raise SystemExit(f"Offline surface not found: {path}")
+        surfaces[str(path)] = path.read_text(encoding="utf-8", errors="replace")
+    return surfaces
+
+
+def redact_preview(line: str, match_text: str) -> str:
+    compact = line.strip()
+    compact = compact.replace(match_text, "[REDACTED]")
+    if len(compact) > 180:
+        compact = compact[:177] + "..."
+    return compact
+
+
+def scan_surface(surface: str, text: str, rules: list[Rule]) -> list[Finding]:
+    findings: list[Finding] = []
+    for line_no, line in enumerate(text.splitlines() or [""], start=1):
+        for rule in rules:
+            match = rule.pattern.search(line)
+            if not match:
+                continue
+            match_text = match.group(0)
+            findings.append(
+                Finding(
+                    surface=surface,
+                    line_no=line_no,
+                    rule=rule.name,
+                    category=rule.category,
+                    preview=redact_preview(line, match_text),
+                    match_text=match_text,
+                )
+            )
+    return findings
+
+
+def scan_surfaces(surfaces: dict[str, str], rules: list[Rule]) -> list[Finding]:
+    findings: list[Finding] = []
+    for surface, text in surfaces.items():
+        findings.extend(scan_surface(surface, text, rules))
+    return findings
+
+
+def finding_dict(finding: Finding, *, show_matches: bool) -> dict[str, object]:
+    item: dict[str, object] = {
+        "surface": finding.surface,
+        "line": finding.line_no,
+        "rule": finding.rule,
+        "category": finding.category,
+        "preview": finding.preview,
+    }
+    if show_matches:
+        item["match"] = finding.match_text
+    return item
+
+
+def print_text_report(findings: list[Finding], *, show_matches: bool) -> None:
+    if not findings:
+        print("public-pr-safety-scan: pass")
+        return
+
+    print(f"public-pr-safety-scan: block ({len(findings)} finding{'s' if len(findings) != 1 else ''})")
+    for finding in findings:
+        print(
+            f"- {finding.surface}:{finding.line_no} "
+            f"{finding.category}/{finding.rule}: {finding.preview}"
+        )
+        if show_matches:
+            print(f"  match: {finding.match_text}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Scan GitHub PR title/body and hosted patch/diff for public-safety findings."
+    )
+    parser.add_argument("repo", nargs="?", help="GitHub repository slug, e.g. owner/repo")
+    parser.add_argument("pr_number", nargs="?", help="GitHub pull request number")
+    parser.add_argument(
+        "--denylist-file",
+        type=Path,
+        help="ignored local file with literal lines, literal:<text>, or regex:<pattern>",
+    )
+    parser.add_argument(
+        "--offline-surface",
+        action="append",
+        type=Path,
+        default=[],
+        help="scan a local text file instead of fetching GitHub; can be repeated",
+    )
+    parser.add_argument("--skip-diff", action="store_true", help="do not fetch the hosted .diff view")
+    parser.add_argument("--skip-patch", action="store_true", help="do not fetch the hosted .patch view")
+    parser.add_argument("--show-matches", action="store_true", help="print exact matched text")
+    parser.add_argument("--json", action="store_true", help="emit JSON")
+    args = parser.parse_args()
+
+    rules = built_in_rules() + load_denylist(args.denylist_file)
+
+    if args.offline_surface:
+        surfaces = load_offline_surfaces(args.offline_surface)
+    else:
+        if not args.repo or not args.pr_number:
+            parser.error("repo and pr_number are required unless --offline-surface is used")
+        if not SLUG_RE.fullmatch(args.repo):
+            parser.error("repo must look like owner/repo")
+        if not args.pr_number.isdigit() or int(args.pr_number) <= 0:
+            parser.error("pr_number must be a positive integer")
+        surfaces = load_pr_surfaces(
+            args.repo,
+            args.pr_number,
+            include_diff=not args.skip_diff,
+            include_patch=not args.skip_patch,
+        )
+
+    findings = scan_surfaces(surfaces, rules)
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "status": "block" if findings else "pass",
+                    "finding_count": len(findings),
+                    "findings": [finding_dict(item, show_matches=args.show_matches) for item in findings],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+    else:
+        print_text_report(findings, show_matches=args.show_matches)
+
+    return 1 if findings else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
