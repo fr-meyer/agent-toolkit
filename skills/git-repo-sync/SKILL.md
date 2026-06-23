@@ -249,6 +249,7 @@ Do not assume `main` or `master`.
 Before selecting commit or push actions, decide which delegated skills are required:
 
 - If this run may commit or push to a public repository, or a repository intended to become public, activate `public-repo-red-list-audit` before any commit or push action.
+- If the same run will draft, create, update, or prepare to merge a GitHub PR for a public or public-intended repository, activate `github-pr-preflight` before publishing or merging so PR prose and hosted `.patch`/`.diff` views are checked too.
 - Use the available change scope (staged, unstaged, and approved untracked files) and the best available visibility context (`public`, `private`, `unknown`, `public-intended`).
 - If `public-repo-red-list-audit` reports blocker findings, activate `public-repo-red-list-remediation` before committing.
 - After remediation, re-run `public-repo-red-list-audit`. If blockers still remain and no concrete remediation is available, then set:
