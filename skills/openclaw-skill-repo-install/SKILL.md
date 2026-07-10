@@ -1,6 +1,6 @@
 ---
 name: openclaw-skill-repo-install
-description: Use this skill when installing, updating, auditing, or removing an existing Git-hosted skill repository in an OpenClaw runtime by cloning it under a persistent repos directory and wiring the correct skill root through `skills.load.extraDirs`. Apply it for GitHub-managed or Git-managed skill packs, single-skill repos, multi-skill repos, extraDirs ordering, duplicate skill-name resolution, and package-like update workflows with git or gh. Do not use it for creating new skills, editing skill contents, generic Git operations unrelated to OpenClaw skill loading, or ClawHub installs.
+description: Use this skill when installing, updating, auditing, or removing an external Git/GitHub skill repository for an OpenClaw runtime after the target scope is clearly OpenClaw or `external-skill-repo-scope-router` has selected the OpenClaw adapter. Apply it for `skills.load.extraDirs`, OpenClaw-visible skill packs, single-skill repos, multi-skill repos, extraDirs ordering, duplicate skill-name resolution, and package-like updates with git or gh. Do not use it for creating new skills, generic Git operations, ClawHub installs, or explicitly Codex-only/native-agent installs.
 metadata:
   openclaw:
     emoji: "📦"
@@ -17,6 +17,24 @@ Install and manage existing skill repositories as Git-managed packages for OpenC
 This skill is **OpenClaw-specific**: it assumes OpenClaw skill loading and `skills.load.extraDirs`. Within that scope, it is repo-, host-, and agent-neutral. Do not hardcode a specific skill repo, cloud provider, machine name, workspace, agent id, or personal path. Resolve paths from the current runtime and user intent.
 
 It is not a universal installer for every AgentSkills-compatible or agent-platform runtime. For non-OpenClaw platforms, use this only as a conceptual reference unless a platform-specific adapter exists.
+
+## Adapter boundary
+
+This is the OpenClaw adapter for external skill repo installs.
+
+If the target runtime or visibility scope is unclear, first apply `external-skill-repo-scope-router` and continue here only when its routing decision selects an OpenClaw shared/package-managed install.
+
+Continue directly with this skill when:
+
+- the target runtime is OpenClaw;
+- the routing receipt selects `OpenClaw extraDir` or equivalent wording;
+- the user is speaking from an OpenClaw-managed session and does not explicitly request another runtime;
+- the user asks for shared, OpenClaw-wide, agent-visible, reusable, or extraDir-based skills;
+- the request mentions a GitHub/Git skill repo, AgentSkills-compatible repo, skill pack, or multi-skill repository.
+
+Do not install the repo into Codex `$CODEX_HOME/skills`, Claude/Cursor/Windsurf agent-private skill folders, or another private runtime-specific skill directory when this adapter is selected.
+
+If the target scope is ambiguous, prefer OpenClaw `extraDirs` in an OpenClaw session. Ask one concise scope question only when choosing the wrong runtime would create real risk or visible configuration churn.
 
 ## Use this skill for
 
@@ -46,6 +64,8 @@ Avoid copying Git-managed `SKILL.md` files into `~/.openclaw/skills`; copied fil
 
 Before changing anything, identify:
 
+- target visibility scope: OpenClaw-wide, one OpenClaw agent, workspace-local, Codex-only/native-agent, or another runtime;
+- whether the request is ambiguous; in an OpenClaw session, ambiguous external skill-repo installs default to OpenClaw `extraDirs` unless the user explicitly says otherwise;
 - target runtime/host;
 - OpenClaw home path: explicit input → `OPENCLAW_HOME` → `~/.openclaw`;
 - persistent repos root: explicit input → `<openclaw-home>/repos`;
@@ -58,6 +78,17 @@ Before changing anything, identify:
 Treat unknown trust/visibility conservatively. Inspect before loading.
 
 ## Required workflow
+
+### 0. Confirm routing receipt
+
+Before touching files or using any installer, confirm the install scope:
+
+- `OpenClaw extraDir` for Git-hosted skill repos intended to be visible to OpenClaw;
+- target runtime is OpenClaw;
+- install model is Git-managed package plus `skills.load.extraDirs`;
+- no other runtime-private install was explicitly requested.
+
+If any of these are unclear, route through `external-skill-repo-scope-router` before proceeding.
 
 ### 1. Snapshot current state
 
@@ -139,6 +170,8 @@ Verification checklist:
 - `openclaw skills check` succeeds;
 - expected skills are eligible/visible for the intended agent;
 - `openclaw skills info <skill-name>` points to the cloned repo path;
+- the install did not land only in an agent-private skill folder unless that was explicitly requested;
+- the expected skill source matches the target scope: OpenClaw installs should resolve from the configured extraDir clone path, not from Codex `$CODEX_HOME/skills` or another private runtime cache;
 - duplicate-name resolution matches the user's intended source;
 - existing unrelated extraDirs still load;
 - no secrets, transient URLs, or private tokens were printed in logs or chat.
@@ -175,6 +208,7 @@ Removing a skill repo from OpenClaw requires explicit user approval. Prefer reve
 
 Report:
 
+- target visibility scope chosen and why;
 - repo remote and local clone path;
 - detected repo shape and chosen extraDir;
 - config backup path or why no file backup was needed;
@@ -182,4 +216,5 @@ Report:
 - skills added/updated and their resolved source paths;
 - duplicate-name decisions;
 - validation commands/results;
+- whether any agent-private install path was skipped, left untouched, or intentionally used;
 - whether a reload/restart was needed.
