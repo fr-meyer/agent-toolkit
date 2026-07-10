@@ -1,6 +1,6 @@
 ---
 name: openclaw-skill-repo-install
-description: Use this skill when installing, updating, auditing, or removing an external, third-party, GitHub, or Git-hosted skill repository for an OpenClaw runtime. Default to this skill when a user asks to add, use, clone, install, wire, or make visible a skill pack in OpenClaw, including AgentSkills-compatible repos, multi-skill repos, single-skill repos, `skills.load.extraDirs`, extraDirs ordering, duplicate skill-name resolution, and package-like updates with git or gh. Do not use it for creating new skills, editing skill contents, generic Git operations unrelated to OpenClaw skill loading, ClawHub installs, or explicitly Codex-only/native-agent skill installs.
+description: Use this skill when installing, updating, auditing, or removing an external Git/GitHub skill repository for an OpenClaw runtime after the target scope is clearly OpenClaw or `external-skill-repo-scope-router` has selected the OpenClaw adapter. Apply it for `skills.load.extraDirs`, OpenClaw-visible skill packs, single-skill repos, multi-skill repos, extraDirs ordering, duplicate skill-name resolution, and package-like updates with git or gh. Do not use it for creating new skills, generic Git operations, ClawHub installs, or explicitly Codex-only/native-agent installs.
 metadata:
   openclaw:
     emoji: "📦"
@@ -18,18 +18,21 @@ This skill is **OpenClaw-specific**: it assumes OpenClaw skill loading and `skil
 
 It is not a universal installer for every AgentSkills-compatible or agent-platform runtime. For non-OpenClaw platforms, use this only as a conceptual reference unless a platform-specific adapter exists.
 
-## Routing guardrail
+## Adapter boundary
 
-If the user asks to install, add, clone, use, wire, audit, or make visible an external or third-party Git/GitHub skill repo, first resolve the target runtime and visibility scope.
+This is the OpenClaw adapter for external skill repo installs.
 
-Default to this skill and the `skills.load.extraDirs` package model when:
+If the target runtime or visibility scope is unclear, first apply `external-skill-repo-scope-router` and continue here only when its routing decision selects an OpenClaw shared/package-managed install.
+
+Continue directly with this skill when:
 
 - the target runtime is OpenClaw;
+- the routing receipt selects `OpenClaw extraDir` or equivalent wording;
 - the user is speaking from an OpenClaw-managed session and does not explicitly request another runtime;
 - the user asks for shared, OpenClaw-wide, agent-visible, reusable, or extraDir-based skills;
 - the request mentions a GitHub/Git skill repo, AgentSkills-compatible repo, skill pack, or multi-skill repository.
 
-Do not install the repo into Codex `$CODEX_HOME/skills`, Claude/Cursor/Windsurf agent-private skill folders, or another private runtime-specific skill directory first unless the user explicitly asks for that runtime-only install.
+Do not install the repo into Codex `$CODEX_HOME/skills`, Claude/Cursor/Windsurf agent-private skill folders, or another private runtime-specific skill directory when this adapter is selected.
 
 If the target scope is ambiguous, prefer OpenClaw `extraDirs` in an OpenClaw session. Ask one concise scope question only when choosing the wrong runtime would create real risk or visible configuration churn.
 
@@ -76,16 +79,16 @@ Treat unknown trust/visibility conservatively. Inspect before loading.
 
 ## Required workflow
 
-### 0. Confirm routing scope
+### 0. Confirm routing receipt
 
-Before touching files or using any installer, decide the install scope:
+Before touching files or using any installer, confirm the install scope:
 
 - `OpenClaw extraDir` for Git-hosted skill repos intended to be visible to OpenClaw;
-- `workspace-local skill` only for local, non-package skill files intentionally owned by the workspace;
-- `agent-private/Codex-only` only when the user explicitly requests that runtime-specific install;
-- `ClawHub` only for ClawHub-backed skills, using the appropriate OpenClaw command path.
+- target runtime is OpenClaw;
+- install model is Git-managed package plus `skills.load.extraDirs`;
+- no other runtime-private install was explicitly requested.
 
-If a Codex/native skill installer looks applicable, check whether the user actually requested Codex-only visibility. In an OpenClaw session, do not let Codex-private installation satisfy a request for external skill repo installation unless explicitly scoped that way.
+If any of these are unclear, route through `external-skill-repo-scope-router` before proceeding.
 
 ### 1. Snapshot current state
 
