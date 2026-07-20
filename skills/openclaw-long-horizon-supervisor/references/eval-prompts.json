@@ -1,0 +1,16 @@
+{
+  "should_trigger": [
+    "Keep this migration moving over several days without making me remind you after every wait.",
+    "Register a durable OpenClaw supervisor for this project with a named session and a recovery watchdog.",
+    "The project wake was missed; recover the exact scheduled continuation without creating a duplicate.",
+    "Audit whether this autonomous project safely handles leases, approvals, and non-idempotent operations.",
+    "Resume this multi-turn project after compaction and preserve its exact branch and review state."
+  ],
+  "should_not_trigger": [
+    "Remind me in twenty minutes to call the dentist.",
+    "Run the unit tests once and tell me whether they pass.",
+    "Restart this systemd service if it crashes.",
+    "Write a handoff message to another agent.",
+    "Summarize this checkpoint but do not continue the project."
+  ]
+}
