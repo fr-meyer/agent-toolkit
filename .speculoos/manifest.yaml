@@ -1,0 +1,72 @@
+schema_version: 0.1
+project: agent-toolkit
+workflow: speculoos-v1
+canonical_task: pr-080-agent-toolkit-review-gate
+repository:
+  upstream: fr-meyer/agent-toolkit
+  base_branch: dev
+  default_branch: main
+status:
+  phase: active
+  blocker_summary: []
+publication_policy:
+  repository_visibility: shared-repository
+  intended_public_visibility: public
+  license: MIT
+release_policy:
+  branch_model: feature-branch-to-dev
+  stable_branch: main
+  integration_branch: dev
+  release_gate: separate-explicit-approval
+review_policy:
+  self_managed:
+    policy: optional
+    fallback_role: emergency_fallback
+    evidence_source: ignored local self-review artifact
+  legacy_pullfrog:
+    policy: disabled
+    evidence_source: historical-only
+  legacy_coderabbit:
+    policy: disabled
+    evidence_source: historical-only
+  mergeguez_review:
+    policy: primary
+    evidence_source: broker pr-state reviewers/reviews/checks normalized by review-evidence and merge-plan
+    protocol: https://github.com/fr-meyer/speculoos/blob/dev/docs/mergeguez-pr-command-protocol.md
+  required_pr_review:
+    policy: required
+    primary:
+      - mergeguez_review
+    fallback_any_of:
+      - self_managed
+    fallback_summary: self_managed is an emergency fallback when hosted Mergeguez review is unavailable.
+actor_policy:
+  commit_actor: human_approved_agent_assisted
+  push_actor: franck_user_pr_author
+  pr_actor: franck_user_pr_author
+  review_actor: mergeguez_review
+  default_merge_actor: user_api
+  feature_to_dev_merge_actor: mergeguez_dev_merge
+  native_review_requires_distinct_author: true
+  exact_pr_base_head_sha_required: true
+surfaces:
+  manifest:
+    enabled: true
+    authority: canonical
+  github_pull_request:
+    enabled: true
+    status: active
+    base_branch: dev
+    default_branch: main
+gates:
+  before_publish:
+    - human-approval
+    - tests-pass
+    - private-data-check-pass
+    - review-policy-recorded
+    - review-request-dry-run-pass
+  after_publish:
+    - exact-head-mergeguez-review-requested
+    - exact-head-review-and-check-evidence
+current_task: pr-080-agent-toolkit-review-gate
+current_task_metadata: .speculoos/tasks/pr-080-agent-toolkit-review-gate.yaml

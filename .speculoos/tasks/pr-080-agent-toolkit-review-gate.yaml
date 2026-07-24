@@ -1,0 +1,54 @@
+id: pr-080-agent-toolkit-review-gate
+title: Establish fail-closed Speculoos review policy for agent-toolkit
+status: local-implementation
+branch: feat/pr-080-agent-toolkit-review-gate
+base_branch: dev
+write_paths:
+  - .speculoos/manifest.yaml
+  - .speculoos/actors.json
+  - .speculoos/review-evidence.json
+  - .speculoos/publish-policy.yaml
+  - .speculoos/goal.md
+  - .speculoos/tasks/pr-080-agent-toolkit-review-gate.yaml
+  - specs/pr-080-agent-toolkit-review-gate/**
+scope:
+  - establish repo-local Speculoos review policy metadata
+  - make Mergeguez the primary exact-head review source
+  - keep Pullfrog and CodeRabbit historical lanes disabled
+  - document the publication boundary and required evidence
+non_goals:
+  - changing application code or runtime behavior
+  - changing cleanup PR #79 contents
+  - reactivating legacy reviewer workflows
+  - granting review, push, merge, release, or secret authority to repository code
+acceptance:
+  - manifest review_policy.mergeguez_review is primary
+  - manifest review_policy.required_pr_review.primary contains only mergeguez_review
+  - actors and review-evidence metadata parse
+  - request-review dry-run no longer fails on missing manifest policy or actors.json
+  - publish-check and validate pass for the committed task packet
+  - no private credentials or host paths are committed
+validation:
+  - "ruby -ryaml -rjson -e 'Dir[\".speculoos/**/*.yaml\", \"specs/**/*.yaml\"].sort.each { |p| Psych.parse_file(p) }; Dir[\".speculoos/**/*.json\", \"specs/**/*.json\"].sort.each { |p| JSON.parse(File.read(p)) }; puts \"metadata ok\"'"
+  - "git diff --check origin/dev...HEAD"
+  - "speculoos request-review --repo . --reviewer mergeguez --pr 79 --expected-base dev --expected-head-branch cleanup/retire-legacy-reviewers --expected-head-sha 480dc9b3eb2ef3bdad6357a5bf3de339787d57ba --broker-command mergeguez --broker-repo agent-toolkit --dry-run --json"
+  - "speculoos validate --task pr-080-agent-toolkit-review-gate --validation \"git diff --check origin/dev...HEAD\" --json"
+  - "speculoos publish-check --task pr-080-agent-toolkit-review-gate --pr-body specs/pr-080-agent-toolkit-review-gate/pr-body.md --commit-message specs/pr-080-agent-toolkit-review-gate/commit-message.txt --json"
+publication_boundary:
+  statement: "Repository workflow metadata only: establish a fail-closed exact-head Mergeguez review policy for agent-toolkit. No credentials, provider calls, application code, deployment, release, main-branch change, or approval bypass."
+documentation_impact:
+  status: none
+  rationale: Repo-local Speculoos metadata and task packet document the workflow gate; product documentation is unchanged.
+branch_plan: Create one isolated dev-target metadata PR, request exact-head Mergeguez review, merge only through the approved policy-gated lane, then close out evidence.
+executor: OpenClaw main session
+private_data_scan: required
+publish_authority: Active feature-to-dev publication; stable-branch promotion and live operations remain excluded.
+github:
+  issue: null
+  pull_request: null
+  issue_project_item: null
+  project_item: unavailable
+  project_status: In Progress
+  url: null
+  head_sha: null
+  merge_commit: null
