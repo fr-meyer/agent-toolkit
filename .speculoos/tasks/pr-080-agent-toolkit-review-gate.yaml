@@ -1,7 +1,7 @@
 id: pr-080-agent-toolkit-review-gate
 title: Establish fail-closed Speculoos review policy for agent-toolkit
 status: local-implementation
-branch: feat/pr-080-agent-toolkit-review-gate
+branch: feat/pr-080-agent-toolkit-review-gate-user
 base_branch: dev
 write_paths:
   - .speculoos/manifest.yaml
