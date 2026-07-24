@@ -14,28 +14,21 @@ Keep workflow files here as canonical source assets, without treating this repos
 agent-toolkit/
 ├── .github/
 │   └── workflows/
-│       ├── coderabbit-pr-automation.yml
-│       ├── coderabbit-pr-comment-trigger.yml
 │       ├── sync-starter-workflow-template-refs-reusable.yml
 │       ├── cross-repo-workflow-updater-reusable.yml
 │       ├── cross-repo-workflow-updater-push-trigger.yml
 │       └── cross-repo-workflow-updater-manual-trigger.yml
 ├── templates/
 │   ├── reusable-workflows/
-│   │   ├── coderabbit-pr-automation.yml
 │   │   ├── sync-starter-workflow-template-refs-reusable.yml
 │   │   └── cross-repo-workflow-updater-reusable.yml
 │   ├── starter-workflows/
-│   │   ├── coderabbit-pr-automation-pr-trigger.yml
-│   │   ├── coderabbit-pr-automation-manual-trigger.yml
-│   │   ├── coderabbit-pr-comment-trigger.yml
 │   │   ├── sync-starter-workflow-template-refs-trigger.yml
 │   │   ├── cross-repo-workflow-updater-push-trigger.yml
 │   │   └── cross-repo-workflow-updater-manual-trigger.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
 ├── scripts/
-│   ├── coderabbit/
 │   └── github/
 └── docs/
 ```
@@ -62,9 +55,11 @@ That path is a publication target shape, not a statement that the canonical sour
 
 Repo-local trigger entrypoints that are intended to be copied or adapted later should also live here as canonical starter sources, even if this repository materializes a live copy under `.github/workflows/` for its own runtime.
 
-### `scripts/coderabbit/`
-Runtime helper scripts used by the CodeRabbit automation flow.
+### Retired CodeRabbit workflow assets
 
+The CodeRabbit remediation workflows, templates, helper scripts, and active
+distribution bindings were removed. Historical skill directories are retained
+only as compatibility material and are not part of the workflow asset library.
 
 ### `scripts/github/`
 Deterministic maintenance or publishing helpers for republishing, pinned-ref maintenance, and materializing repo-local workflow copies from canonical template sources.
