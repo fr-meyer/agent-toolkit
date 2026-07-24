@@ -94,8 +94,8 @@ Proposed V1 shape:
       "updateMode": "pull_request",
       "managedBindings": [
         {
-          "starterTemplate": "templates/starter-workflows/coderabbit-pr-comment-trigger.yml",
-          "targetPath": ".github/workflows/coderabbit-pr-comment-trigger.yml",
+          "starterTemplate": "templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml",
+          "targetPath": ".github/workflows/sync-starter-workflow-template-refs-trigger.yml",
           "divergencePolicy": "exact",
           "enabled": true,
           "notes": "Consumer must provide required vars/secrets documented by the starter template."

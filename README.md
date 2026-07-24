@@ -22,11 +22,9 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 - `pageindex-summarize-papers`
 - `summarize-research-papers`
 
-### CodeRabbit and GitHub automation
-- `coderabbit-pr-autofix` — wrapper for unresolved CodeRabbit review threads that depends on an available `autofix` skill.
-- `coderabbit-pr-automation` — bounded GitHub Actions workflow support for unresolved CodeRabbit PR review threads.
-
-> Official CodeRabbit default skills such as `autofix` and `code-review` are intentionally **not** vendored in this repository. Install or load the upstream `coderabbitai/skills` repository separately when those skills are needed.
+### Legacy reviewer compatibility
+- CodeRabbit workflow automation has been retired from this toolkit.
+- Historical CodeRabbit skill directories remain isolated for compatibility and are not wired into active workflows.
 
 ### Repo maintenance and publication safety
 - `git-repo-sync`
@@ -47,8 +45,6 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 agent-toolkit/
 ├── .github/
 │   └── workflows/
-│       ├── coderabbit-pr-automation.yml
-│       ├── coderabbit-pr-comment-trigger.yml
 │       ├── sync-starter-workflow-template-refs-reusable.yml
 │       ├── sync-starter-workflow-template-refs-trigger.yml
 │       ├── cross-repo-workflow-updater-reusable.yml
@@ -56,13 +52,9 @@ agent-toolkit/
 │       └── cross-repo-workflow-updater-manual-trigger.yml
 ├── templates/
 │   ├── reusable-workflows/
-│   │   ├── coderabbit-pr-automation.yml
 │   │   ├── sync-starter-workflow-template-refs-reusable.yml
 │   │   └── cross-repo-workflow-updater-reusable.yml
 │   ├── starter-workflows/
-│   │   ├── coderabbit-pr-automation-pr-trigger.yml
-│   │   ├── coderabbit-pr-automation-manual-trigger.yml
-│   │   ├── coderabbit-pr-comment-trigger.yml
 │   │   ├── sync-starter-workflow-template-refs-trigger.yml
 │   │   ├── cross-repo-workflow-updater-push-trigger.yml
 │   │   └── cross-repo-workflow-updater-manual-trigger.yml
@@ -106,52 +98,23 @@ The committed scanner contains only generic structural checks. Put project-speci
 
 ## GitHub Actions workflow assets
 
-This repository now treats GitHub Actions files as **source assets**, not as active GitHub-special paths for this repo.
+This repository stores only the remaining maintenance and distribution workflow
+assets. CodeRabbit remediation workflows, starter templates, helper scripts, and
+consumer bindings were retired because Mergeguez is now the first-party review
+lane and Speculoos owns review evidence and merge planning.
 
-- **Reusable workflow source:** `templates/reusable-workflows/coderabbit-pr-automation.yml`
 - **Reusable maintenance workflow source:** `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
-- **Starter workflow sources:** `templates/starter-workflows/`, including `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`
-- **CodeRabbit split-trigger starter sources:** `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml` and `templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml`
+- **Starter workflow sources:** `templates/starter-workflows/`
 - **Ref-sync manifest:** `templates/workflow-ref-sync-manifest.json`
 - **Repo-workflow materialization manifest:** `templates/repo-workflow-materialization-manifest.json`
-- **Helper scripts:** `scripts/coderabbit/` plus `scripts/github/` (including the deterministic ref updater and repo-workflow materializer)
-- **Materialized live reusable maintenance workflow:** `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
-- **Live repo entrypoint workflow:** `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
+- **Cross-repo distribution manifest:** `templates/cross-repo-workflow-distribution-manifest.json`
+- **Helper scripts:** `scripts/github/`
 - **Architecture note:** `docs/workflow-asset-library-layout.md`
 - **Workflow catalog:** `docs/github-actions-template-catalog.md`
 
-The intended split is:
-- this repository stores the canonical workflow source assets under `templates/`
-- reusable workflow sources are meant to be published later into `.github/workflows/` of a serving repository
-- starter workflow sources are meant to be copied or adapted into consumer repositories later
-- every live workflow under `.github/workflows/` should have a canonical source under `templates/`
-- workflow classification is based on role, not on whether this repo happens to execute a rendered copy locally
-- repo-local GitHub execution can use thin entrypoint workflows under `.github/workflows/` that call materialized reusable workflow copies
-- `.github/workflows/` contains the live runtime files used by this repository at runtime, while reusable workflow source of truth stays under `templates/reusable-workflows/`
-
-Current workflow-maintenance policy:
-- workflow-maintenance branches are created from `dev`
-- repo-local workflow-sync automation opens a dedicated PR instead of pushing maintenance commits directly onto the triggering branch
-- cross-repo workflow divergence is reviewed through managed PR comments by default, not committed `docs/shared-workflow-reviews/*` files
-
-Important note for the current starter workflow sources:
-- they still show the eventual GitHub reusable-workflow serving path shape, for example `owner/repo/.github/workflows/<file>@<ref>`
-- that `uses:` path is a publication-target shape, not a claim that this source-library repo currently serves that workflow at HEAD
-- if you publish these assets later, keep the `uses: ...@<sha>` reference aligned with the paired `shared_repository_ref` when that field is present
-
-Current runtime contract for the CodeRabbit workflow source:
-- this repo provides CodeRabbit PR-thread orchestration, wrapper skills, helper scripts, and workflow assets; it does not provide the upstream default CodeRabbit `autofix` or `code-review` skills
-- choose the coding-agent runtime with `CODERABBIT_AGENT_RUNTIME` (for example `cursor`)
-- keep the actual remediation command explicit via `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
-- provide `CURSOR_API_KEY` when using `cursor`
-- for the current free-tier path, default to `run_validation: false`
-- `install_shared_skills` installs this repository's `skills/` directory into the target repo; configure the selected agent runtime separately if it also needs upstream `coderabbitai/skills`
-- shared Cursor rules can be installed into the target repo via `install_cursor_rules`
-- the default install mode for shared agent context is `copy`
-- optional local post-remediation commit creation can be enabled via `auto_commit`
-- split-by-scope autocommit can run in `auto` or `fixed` commit-count mode
-- commit planning and commit-message drafting are delegated to the installed Git skills rather than hardcoded into the workflow
-- provide `CODERABBIT_API_KEY` only when CodeRabbit CLI validation is explicitly enabled
+The remaining workflow assets are deterministic maintenance plumbing only. They do
+not review pull requests, invoke Mergeguez, fix findings, commit remediation
+changes, or grant merge authority.
 
 ## Shared-content boundary
 
@@ -166,7 +129,6 @@ This repository is for **shared, reusable content only**. It should not contain 
 - `docs/workflow-authoring-rules.md` — workflow classification and edit rules for humans and agents
 - `scripts/public-pr-safety-scan` — deterministic public PR title/body and hosted patch/diff safety scanner
 - `AGENTS.md` — repo-local operating instructions and doc map for future agents
-- `scripts/coderabbit/README.md` — runtime notes for the CodeRabbit helper scripts
 - `cursor/rules/README.md` — how shared Cursor rules are linked into projects
 
 ## License

@@ -390,8 +390,8 @@ Recommended top-level summary shape:
       "status": "pr_opened",
       "bindings": [
         {
-          "starterTemplate": "templates/starter-workflows/coderabbit-pr-comment-trigger.yml",
-          "targetPath": ".github/workflows/coderabbit-pr-comment-trigger.yml",
+          "starterTemplate": "templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml",
+          "targetPath": ".github/workflows/sync-starter-workflow-template-refs-trigger.yml",
           "status": "staged_for_pr"
         }
       ],

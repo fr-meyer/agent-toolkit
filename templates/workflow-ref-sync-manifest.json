@@ -3,24 +3,6 @@
   "description": "Maps reusable workflow source assets to starter workflow sources and linked live workflow copies that must keep pinned refs aligned.",
   "managedWorkflows": [
     {
-      "source": "templates/reusable-workflows/coderabbit-pr-automation.yml",
-      "publishedWorkflowPath": ".github/workflows/coderabbit-pr-automation.yml",
-      "templates": [
-        {
-          "path": "templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml"
-        },
-        {
-          "path": "templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml"
-        },
-        {
-          "path": "templates/starter-workflows/coderabbit-pr-comment-trigger.yml"
-        },
-        {
-          "path": ".github/workflows/coderabbit-pr-comment-trigger.yml"
-        }
-      ]
-    },
-    {
       "source": "templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml",
       "publishedWorkflowPath": ".github/workflows/sync-starter-workflow-template-refs-reusable.yml",
       "templates": [
