@@ -106,13 +106,13 @@ jobs:
   coderabbit-pr-automation:
     needs: resolve-pr-context
     if: ${{ needs.resolve-pr-context.outputs.should_run == 'true' }}
-    uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@871a65bd186da8bf3f574b3019d42b89b2141d1c
+    uses: fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@51d98abb85a3a6947de96412227961c925328896
     with:
       pr_number: ${{ fromJSON(needs.resolve-pr-context.outputs.pr_number) }}
       run_validation: ${{ inputs.run_validation }}
       working_tree_must_be_clean: ${{ inputs.working_tree_must_be_clean }}
       max_cycles: ${{ fromJSON(inputs.max_cycles) }}
-      shared_repository_ref: 871a65bd186da8bf3f574b3019d42b89b2141d1c
+      shared_repository_ref: 51d98abb85a3a6947de96412227961c925328896
       agent_runtime: ${{ vars.CODERABBIT_AGENT_RUNTIME != '' && vars.CODERABBIT_AGENT_RUNTIME || 'none' }}
       agent_command_json: ${{ vars.CODERABBIT_AGENT_COMMAND_JSON }}
       agent_command: ${{ vars.CODERABBIT_AGENT_COMMAND }}
