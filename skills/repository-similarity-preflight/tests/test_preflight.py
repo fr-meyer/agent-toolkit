@@ -235,6 +235,24 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertTrue(any(item["code"] == "unsupported_schema" for item in report["blockers"]))
 
+    def test_repository_identity_rejects_url_and_path_components(self) -> None:
+        payload = base_payload()
+        payload["repository"]["host"] = "https://github.com"
+        payload["repository"]["owner"] = "example/team"
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["code"] == "invalid_repository_identity" for item in report["blockers"]))
+
+    def test_evidence_bounds_fail_closed_and_clip_retained_strings(self) -> None:
+        payload = base_payload()
+        payload["search"]["queries"] = ["query"] * 33
+        payload["intent"]["summary"] = "x" * 3000
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertLessEqual(len(report["intent"]["summary"]), 2060)
+        self.assertTrue(any(item["code"] == "evidence_collection_too_large" for item in report["blockers"]))
+        self.assertTrue(any(item["code"] == "evidence_string_too_long" for item in report["blockers"]))
+
     def test_url_redaction_covers_userinfo_path_and_innocuous_query_values(self) -> None:
         payload = base_payload()
         raw_token = "ghp_123456789012345678901234567890"

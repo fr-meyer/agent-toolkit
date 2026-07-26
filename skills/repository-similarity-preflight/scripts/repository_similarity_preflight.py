@@ -29,6 +29,14 @@ DEFAULT_SOURCE_KINDS = (
     "code",
     "tests",
 )
+MAX_RETAINED_STRING_LENGTH = 2048
+MAX_QUERY_COUNT = 32
+MAX_SOURCE_COUNT = 32
+MAX_ITEMS_PER_SOURCE = 200
+MAX_TOTAL_ITEMS = 1000
+MAX_TERM_COUNT = 64
+_HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$")
+_REPOSITORY_COMPONENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 # These patterns are deliberately conservative. A finding blocks the gate; the
 # report contains a redacted value and never echoes the original text.
@@ -57,6 +65,51 @@ def _tokens(value: str) -> set[str]:
     return {token for token in _normalise(value).split() if len(token) > 1}
 
 
+def _iter_string_values(value: Any):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for child in value.values():
+            yield from _iter_string_values(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            yield from _iter_string_values(child)
+
+
+def _validate_evidence_bounds(
+    repository: dict[str, Any], intent: dict[str, Any], search: dict[str, Any], blockers: list[dict[str, str]]
+) -> bool:
+    exceeded = False
+    if any(len(value) > MAX_RETAINED_STRING_LENGTH for value in _iter_string_values((repository, intent, search))):
+        blockers.append(_issue("evidence_string_too_long", "evidence strings must not exceed 2048 characters"))
+        exceeded = True
+    for field, limit in (("queries", MAX_QUERY_COUNT), ("sources", MAX_SOURCE_COUNT), ("required_source_kinds", MAX_TERM_COUNT)):
+        value = search.get(field)
+        if isinstance(value, list) and len(value) > limit:
+            blockers.append(_issue("evidence_collection_too_large", f"search.{field} exceeds the supported evidence limit"))
+            exceeded = True
+    for field in ("terms", "behavior_names"):
+        value = intent.get(field)
+        if isinstance(value, list) and len(value) > MAX_TERM_COUNT:
+            blockers.append(_issue("evidence_collection_too_large", f"intent.{field} exceeds the supported evidence limit"))
+            exceeded = True
+    sources = search.get("sources")
+    if isinstance(sources, list):
+        total_items = 0
+        for source in sources:
+            if not isinstance(source, dict) or not isinstance(source.get("items"), list):
+                continue
+            item_count = len(source["items"])
+            total_items += item_count
+            if item_count > MAX_ITEMS_PER_SOURCE:
+                blockers.append(_issue("evidence_collection_too_large", "a search source exceeds the supported item limit"))
+                exceeded = True
+        if total_items > MAX_TOTAL_ITEMS:
+            blockers.append(_issue("evidence_collection_too_large", "search sources exceed the supported total item limit"))
+            exceeded = True
+    return exceeded
+
+
 def _safe_finding_field(field: Any) -> str:
     label = str(field)
     for _, pattern, replacement in _REDACTION_PATTERNS:
@@ -75,6 +128,8 @@ def _redact_text(value: Any, findings: list[dict[str, str]], field: str) -> str:
         if pattern.search(redacted):
             findings.append({"field": _safe_finding_field(field), "kind": kind})
             redacted = pattern.sub(replacement, redacted)
+    if len(redacted) > MAX_RETAINED_STRING_LENGTH:
+        redacted = redacted[:MAX_RETAINED_STRING_LENGTH] + "<truncated>"
     return redacted
 
 
@@ -106,7 +161,10 @@ def _redact_url(value: Any, findings: list[dict[str, str]], field: str) -> str:
             safe_query.append((key, "<redacted>"))
         else:
             safe_query.append((key, _redact_text(val, findings, f"{field}.query.{key}")))
-    return urlunsplit((parts.scheme, netloc, safe_path, urlencode(safe_query), ""))
+    safe_url = urlunsplit((parts.scheme, netloc, safe_path, urlencode(safe_query), ""))
+    if len(safe_url) > MAX_RETAINED_STRING_LENGTH:
+        return safe_url[:MAX_RETAINED_STRING_LENGTH] + "<truncated>"
+    return safe_url
 
 
 def _safe_text(value: Any, findings: list[dict[str, str]], field: str) -> str:
@@ -127,7 +185,7 @@ def _safe_item(item: dict[str, Any], findings: list[dict[str, str]], field: str)
         if isinstance(terms, list):
             safe["matched_terms"] = [
                 _safe_text(term, findings, f"{field}.matched_terms")
-                for term in terms
+                for term in terms[:MAX_TERM_COUNT]
                 if str(term).strip()
             ]
         else:
@@ -305,8 +363,16 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
     for key in ("host", "owner", "name", "visibility", "revision", "branch"):
         if not safe_repository.get(key):
             blockers.append(_issue(f"missing_repository_{key}", f"repository.{key} is required"))
+    if not isinstance(repository.get("host"), str) or not _HOST_RE.fullmatch(repository.get("host", "")) or ".." in repository.get("host", ""):
+        blockers.append(_issue("invalid_repository_identity", "repository.host must be a hostname, not a URL or path"))
+    for key in ("owner", "name"):
+        value = repository.get(key)
+        if not isinstance(value, str) or not _REPOSITORY_COMPONENT_RE.fullmatch(value):
+            blockers.append(_issue("invalid_repository_identity", f"repository.{key} must be a single path-safe component"))
     if not isinstance(visibility, str) or visibility not in {"public", "private"}:
         blockers.append(_issue("visibility_unknown", "repository visibility must be explicitly public or private"))
+
+    bounds_exceeded = _validate_evidence_bounds(repository, intent, search, blockers)
 
     title = _require_string(intent, "title", blockers, "intent")
     summary = _require_string(intent, "summary", blockers, "intent")
@@ -316,9 +382,11 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
     if not isinstance(terms_raw, list) or not all(isinstance(v, str) for v in terms_raw):
         blockers.append(_issue("invalid_intent_terms", "intent.terms must be a list of strings"))
         terms_raw = []
+    terms_raw = terms_raw[:MAX_TERM_COUNT]
     if not isinstance(behavior_raw, list) or not all(isinstance(v, str) for v in behavior_raw):
         blockers.append(_issue("invalid_behavior_names", "intent.behavior_names must be a list of strings"))
         behavior_raw = []
+    behavior_raw = behavior_raw[:MAX_TERM_COUNT]
     safe_intent = {
         "title": _safe_text(title, findings, "intent.title"),
         "summary": _safe_text(summary, findings, "intent.summary"),
@@ -378,10 +446,12 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
     if not isinstance(source_list, list) or not source_list:
         blockers.append(_issue("missing_search_sources", "at least one search source is required"))
         source_list = []
+    source_list = source_list[:MAX_SOURCE_COUNT]
     required_kinds = search.get("required_source_kinds", list(DEFAULT_SOURCE_KINDS))
     if not isinstance(required_kinds, list) or not all(isinstance(v, str) for v in required_kinds):
         blockers.append(_issue("invalid_required_source_kinds", "required_source_kinds must be a list of strings"))
         required_kinds = list(DEFAULT_SOURCE_KINDS)
+    required_kinds = required_kinds[:MAX_TERM_COUNT]
     source_by_kind: dict[str, list[dict[str, Any]]] = {}
     configured_kinds = set(required_kinds)
     omitted_default_kinds = set(DEFAULT_SOURCE_KINDS) - configured_kinds
@@ -441,6 +511,7 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
     if not isinstance(raw_queries, list):
         blockers.append(_issue("invalid_search_queries", "search.queries must be a list of strings"))
         raw_queries = []
+    raw_queries = raw_queries[:MAX_QUERY_COUNT]
     queries: list[str] = []
     for index, query in enumerate(raw_queries):
         if not isinstance(query, str) or not query.strip():
@@ -453,7 +524,7 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
     intent_terms = _tokens(" ".join([title, summary, *terms_raw, *behavior_raw]))
     matches: list[dict[str, Any]] = []
     relationship_hits: list[str] = []
-    for source_index, source in enumerate(source_list):
+    for source_index, source in enumerate([] if bounds_exceeded else source_list):
         if not isinstance(source, dict) or source.get("status") == "not_applicable":
             continue
         items = source.get("items", [])
