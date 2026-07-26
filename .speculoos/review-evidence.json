@@ -1,11 +1,11 @@
 {
   "schema_version": "0.1",
   "requirements": {
-    "required_sources": ["local_validation", "github_checks"],
-    "optional_sources": ["self_managed", "mergeguez_review"],
+    "required_sources": ["local_validation", "github_checks", "mergeguez_review"],
+    "optional_sources": ["self_managed"],
     "reviewers": {
       "self_managed": {"policy": "optional"},
-      "mergeguez_review": {"policy": "optional"}
+      "mergeguez_review": {"policy": "required"}
     },
     "reviewer_groups": {
       "required_pr_review": {
