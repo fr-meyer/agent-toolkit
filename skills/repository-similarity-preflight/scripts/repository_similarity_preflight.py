@@ -144,8 +144,27 @@ def _require_string(obj: dict[str, Any], key: str, errors: list[dict[str, str]],
     return value.strip()
 
 
+def _usable_route(item: dict[str, Any]) -> bool:
+    number = item.get("number")
+    if isinstance(number, int) and not isinstance(number, bool) and number > 0:
+        return True
+    for key in ("url", "canonical_url"):
+        value = item.get(key)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        try:
+            parts = urlsplit(value)
+        except ValueError:
+            continue
+        path_parts = [part for part in parts.path.split("/") if part]
+        if parts.scheme in {"http", "https"} and parts.hostname and len(path_parts) >= 3:
+            return True
+    return False
+
+
 def _classify_item(
-    item: dict[str, Any], intent_terms: set[str], findings: list[dict[str, str]], field: str
+    item: dict[str, Any], intent_terms: set[str], intent_title: str,
+    findings: list[dict[str, str]], field: str
 ) -> tuple[dict[str, Any], str | None]:
     safe = _safe_item(item, findings, field)
     relationship = item.get("relationship")
@@ -157,7 +176,7 @@ def _classify_item(
         safe["matched_terms"] = sorted(matched)
         if item.get("exact_match") or (
             _normalise(str(item.get("title", "")))
-            and _normalise(str(item.get("title", ""))) in intent_terms
+            and _normalise(str(item.get("title", ""))) == intent_title
         ):
             relationship = "duplicate"
             safe["match_type"] = "exact"
@@ -169,7 +188,7 @@ def _classify_item(
             safe["match_type"] = "none"
     safe["relationship"] = relationship
     if relationship in {"duplicate", "directly_related", "superseded"}:
-        if not safe.get("canonical_url") and not safe.get("url") and not safe.get("number"):
+        if not _usable_route(item):
             return safe, "related_match_without_canonical_route"
         return safe, relationship
     return safe, None
@@ -388,7 +407,10 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
             if "relationship" in item and item["relationship"] not in RELATIONSHIPS:
                 blockers.append(_issue("invalid_search_item_relationship", f"search.sources[{source_index}].items[{item_index}].relationship must be one of the supported relationship values"))
                 continue
-            safe_item, hit = _classify_item(item, intent_terms, findings, f"search.sources[{source_index}].items[{item_index}]")
+            safe_item, hit = _classify_item(
+                item, intent_terms, _normalise(title), findings,
+                f"search.sources[{source_index}].items[{item_index}]",
+            )
             # Keep all explicit matches and only retain deterministic inferred
             # matches with enough evidence. Unrelated results are proof too.
             if item.get("relationship") in RELATIONSHIPS or hit in {"duplicate", "directly_related", "superseded"}:

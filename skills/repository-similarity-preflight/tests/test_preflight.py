@@ -250,6 +250,27 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertTrue(any(item["code"] == "invalid_search_item_relationship" for item in report["blockers"]))
 
+    def test_invalid_canonical_route_blocks_related_match(self) -> None:
+        payload = base_payload()
+        payload["search"]["sources"][0]["items"] = [{
+            "url": "not-a-url",
+            "title": "Potential duplicate",
+            "relationship": "duplicate",
+        }]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["code"] == "canonical_route_missing" for item in report["blockers"]))
+
+    def test_exact_multi_word_title_is_inferred_as_duplicate(self) -> None:
+        payload = base_payload()
+        payload["search"]["sources"][0]["items"] = [{
+            "url": "https://github.com/example/project/issues/13",
+            "title": payload["intent"]["title"],
+        }]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "duplicate")
+        self.assertEqual(report["matches"][0]["match_type"], "exact")
+
     def test_narrowed_source_kinds_require_explicit_omission_justification(self) -> None:
         payload = base_payload()
         payload["search"]["required_source_kinds"] = ["issues"]
