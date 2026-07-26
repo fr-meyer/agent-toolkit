@@ -41,7 +41,24 @@ actor_policy:
     - exact_head_sha
     - exact_head_mergeguez_review
     - live_github_checks
-    - user_api_merge_actor
+    - branch_policy_merge_actor
+  branch_merge_actor_requirements:
+    - name: feature_to_dev
+      base_branch: dev
+      head_patterns:
+        - feat/*
+        - fix/*
+        - docs/*
+        - test/*
+        - chore/*
+      merge_actor: mergeguez_dev_merge
+    - name: dev_to_stable
+      base_branches:
+        - main
+        - master
+      head_refs:
+        - dev
+      merge_actor: user_api
 planning_only:
   markers:
     - Planning/docs/metadata only

@@ -25,15 +25,18 @@ acceptance:
   - manifest review_policy.mergeguez_review is primary
   - manifest review_policy.required_pr_review.primary contains only mergeguez_review
   - actors and review-evidence metadata parse
+  - feature-to-dev publication resolves merge actor from branch policy as mergeguez_dev_merge, not generic user_api
+  - the feature-to-dev policy covers base dev and the actual feat/* PR head pattern
   - request-review dry-run no longer fails on missing manifest policy or actors.json
   - publish-check and validate pass for the committed task packet
   - no private credentials or host paths are committed
 validation:
   - "ruby -ryaml -rjson -e 'Dir[\".speculoos/**/*.yaml\", \"specs/**/*.yaml\"].sort.each { |p| Psych.parse_file(p) }; Dir[\".speculoos/**/*.json\", \"specs/**/*.json\"].sort.each { |p| JSON.parse(File.read(p)) }; puts \"metadata ok\"'"
+  - "ruby -ryaml -rjson -e 'p=YAML.load_file(\".speculoos/publish-policy.yaml\").fetch(\"actor_policy\"); a=JSON.parse(File.read(\".speculoos/actors.json\")); r=p.fetch(\"branch_merge_actor_requirements\").find { |x| x[\"name\"] == \"feature_to_dev\" }; b=a.fetch(\"branch_policies\").find { |x| x[\"name\"] == \"feature_to_dev\" }; abort \"feature-to-dev actor policy mismatch\" unless r[\"base_branch\"] == \"dev\" && r.fetch(\"head_patterns\").include?(\"feat/*\") && r[\"merge_actor\"] == \"mergeguez_dev_merge\" && b[\"merge_actor\"] == r[\"merge_actor\"]; puts \"feature-to-dev actor policy ok\"'"
   - "git diff --check origin/dev...HEAD"
   - "speculoos request-review --repo . --reviewer mergeguez --pr 79 --expected-base dev --expected-head-branch cleanup/retire-legacy-reviewers --expected-head-sha 480dc9b3eb2ef3bdad6357a5bf3de339787d57ba --broker-command mergeguez --broker-repo agent-toolkit --dry-run --json"
   - "speculoos validate --task pr-080-agent-toolkit-review-gate --validation \"git diff --check origin/dev...HEAD\" --json"
-  - "speculoos publish-check --task pr-080-agent-toolkit-review-gate --pr-body specs/pr-080-agent-toolkit-review-gate/pr-body.md --commit-message specs/pr-080-agent-toolkit-review-gate/commit-message.txt --json"
+  - "speculoos publish-check --base origin/dev --task pr-080-agent-toolkit-review-gate --pr-body specs/pr-080-agent-toolkit-review-gate/pr-body.md --commit-message specs/pr-080-agent-toolkit-review-gate/commit-message.txt --json"
 publication_boundary:
   statement: "Repository workflow metadata only: establish a fail-closed exact-head Mergeguez review policy for agent-toolkit. No credentials, provider calls, application code, deployment, release, main-branch change, or approval bypass."
 documentation_impact:
