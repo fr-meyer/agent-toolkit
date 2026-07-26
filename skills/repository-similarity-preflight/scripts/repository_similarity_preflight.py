@@ -352,16 +352,25 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
         search = {}
 
     visibility = repository.get("visibility")
+    revision_value = repository.get("revision") or repository.get("base_revision")
     safe_repository = {
         "host": _safe_text(repository.get("host"), findings, "repository.host"),
         "owner": _safe_text(repository.get("owner"), findings, "repository.owner"),
         "name": _safe_text(repository.get("name"), findings, "repository.name"),
         "visibility": visibility if isinstance(visibility, str) and visibility in {"public", "private"} else _safe_text(visibility, findings, "repository.visibility"),
-        "revision": _safe_text(repository.get("revision") or repository.get("base_revision"), findings, "repository.revision"),
+        "revision": _safe_text(revision_value, findings, "repository.revision"),
         "branch": _safe_text(repository.get("branch"), findings, "repository.branch"),
     }
-    for key in ("host", "owner", "name", "visibility", "revision", "branch"):
-        if not safe_repository.get(key):
+    raw_repository_values = {
+        "host": repository.get("host"),
+        "owner": repository.get("owner"),
+        "name": repository.get("name"),
+        "visibility": visibility,
+        "revision": revision_value,
+        "branch": repository.get("branch"),
+    }
+    for key, value in raw_repository_values.items():
+        if not isinstance(value, str) or not value.strip():
             blockers.append(_issue(f"missing_repository_{key}", f"repository.{key} is required"))
     if not isinstance(repository.get("host"), str) or not _HOST_RE.fullmatch(repository.get("host", "")) or ".." in repository.get("host", ""):
         blockers.append(_issue("invalid_repository_identity", "repository.host must be a hostname, not a URL or path"))

@@ -243,6 +243,15 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertTrue(any(item["code"] == "invalid_repository_identity" for item in report["blockers"]))
 
+    def test_repository_identity_requires_string_revision_and_branch(self) -> None:
+        payload = base_payload()
+        payload["repository"]["revision"] = 123
+        payload["repository"]["branch"] = ["planned/change"]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["code"] == "missing_repository_revision" for item in report["blockers"]))
+        self.assertTrue(any(item["code"] == "missing_repository_branch" for item in report["blockers"]))
+
     def test_evidence_bounds_fail_closed_and_clip_retained_strings(self) -> None:
         payload = base_payload()
         payload["search"]["queries"] = ["query"] * 33
