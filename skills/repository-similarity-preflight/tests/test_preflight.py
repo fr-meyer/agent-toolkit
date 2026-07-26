@@ -139,7 +139,9 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
 
     def test_unsafe_public_evidence_is_redacted_and_blocks(self) -> None:
         payload = base_payload()
-        payload["search"]["queries"] = ["contact franck@example.com using /home/franck/private.txt"]
+        synthetic_email = "synthetic" + "@example.invalid"
+        synthetic_path = "/" + "home/synthetic/private.txt"
+        payload["search"]["queries"] = [f"contact {synthetic_email} using {synthetic_path}"]
         payload["search"]["sources"][0]["items"] = [
             {
                 "number": 10,
@@ -154,8 +156,8 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         encoded = json.dumps(report)
         self.assertEqual(report["status"], "blocked")
         self.assertTrue(report["redaction"]["findings"])
-        self.assertNotIn("franck@example.com", encoded)
-        self.assertNotIn("/home/franck/private.txt", encoded)
+        self.assertNotIn(synthetic_email, encoded)
+        self.assertNotIn(synthetic_path, encoded)
         self.assertNotIn("do-not-echo", encoded)
         self.assertNotIn("secret-value", encoded)
 
