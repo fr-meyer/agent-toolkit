@@ -283,13 +283,15 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
     def test_malformed_bracketed_url_is_structured_blocked_report(self) -> None:
         payload = base_payload()
         payload["search"]["sources"][0]["items"] = [{
-            "url": "http://[invalid",
+            "url": "http://user:short-password@[invalid",
             "title": "Malformed URL evidence",
             "relationship": "unrelated",
         }]
         report = self.module.build_report(payload)
         self.assertEqual(report["status"], "blocked")
         self.assertTrue(any(item["kind"] == "malformed_url" for item in report["redaction"]["findings"]))
+        self.assertNotIn("short-password", json.dumps(report))
+        self.assertNotIn("user:", json.dumps(report))
 
     def test_malformed_source_entry_is_structured_blocked_report(self) -> None:
         payload = base_payload()

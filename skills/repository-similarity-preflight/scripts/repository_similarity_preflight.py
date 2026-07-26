@@ -145,7 +145,7 @@ def _redact_url(value: Any, findings: list[dict[str, str]], field: str) -> str:
         password = parts.password
     except (UnicodeError, ValueError):
         findings.append({"field": _safe_finding_field(field), "kind": "malformed_url"})
-        return _redact_text(raw_url, findings, field)
+        return "<redacted-malformed-url>"
 
     # Never preserve URL userinfo. It is credential material even when the
     # username/password does not use a recognised query-parameter name.
