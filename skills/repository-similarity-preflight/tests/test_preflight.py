@@ -322,7 +322,7 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         payload = base_payload()
         payload["search"]["sources"].append({
             "kind": "contact synthetic@example.invalid",
-            "status": "complete",
+            "status": "incomplete",
             "items": [],
         })
         report = self.module.build_report(payload)

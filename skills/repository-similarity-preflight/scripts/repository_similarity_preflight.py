@@ -374,13 +374,14 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
             blockers.append(_issue("search_source_kind_missing", f"search.sources[{index}].kind is required"))
             continue
         source_by_kind.setdefault(kind, []).append(source)
+        safe_kind = _safe_text(kind, findings, f"search.sources[{index}].kind")
         if status == "not_applicable":
             if not _safe_text(source.get("reason"), findings, f"search.sources[{index}].reason"):
-                blockers.append(_issue("search_source_reason_missing", f"not-applicable source {kind} needs a reason"))
+                blockers.append(_issue("search_source_reason_missing", f"not-applicable source {safe_kind} needs a reason"))
         elif status != "complete":
-            blockers.append(_issue("search_source_incomplete", f"search source {kind} is not complete"))
+            blockers.append(_issue("search_source_incomplete", f"search source {safe_kind} is not complete"))
         elif not isinstance(source.get("items", []), list):
-            blockers.append(_issue("search_source_items_invalid", f"search source {kind}.items must be a list"))
+            blockers.append(_issue("search_source_items_invalid", f"search source {safe_kind}.items must be a list"))
     safe_source_metadata = [
         {
             "kind": _safe_text(source.get("kind"), findings, f"search.sources[{index}].kind"),
@@ -406,7 +407,8 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
     for kind in required_kinds:
         entries = source_by_kind.get(kind, [])
         if not entries:
-            blockers.append(_issue("required_search_source_missing", f"required search source is missing: {kind}"))
+            safe_kind = _safe_text(kind, findings, f"search.required_source_kinds.{kind}")
+            blockers.append(_issue("required_search_source_missing", f"required search source is missing: {safe_kind}"))
     if not blockers:
         checks.append({"name": "search_coverage", "status": "passed", "detail": "all required search sources have complete or justified not-applicable evidence"})
 
