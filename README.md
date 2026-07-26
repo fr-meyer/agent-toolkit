@@ -10,6 +10,7 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
   - starter workflow sources under `templates/starter-workflows/`
 - **Setup and linking scripts** under `scripts/`
 - **Publication-safety helpers** such as `scripts/public-pr-safety-scan`
+- **Repository-work deduplication** via `skills/repository-similarity-preflight`
 - **Shared Cursor assets** under `cursor/`
 - **Reference and setup docs** under `docs/`
 
@@ -34,6 +35,7 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 - `public-repo-red-list-audit`
 - `public-repo-red-list-remediation`
 - `github-pr-preflight`
+- `repository-similarity-preflight`
 - `repo-documentation-audit`
 - `repo-documentation-drift-fix`
 

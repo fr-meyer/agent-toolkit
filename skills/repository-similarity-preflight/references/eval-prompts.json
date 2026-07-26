@@ -1,0 +1,15 @@
+{
+  "should_trigger": [
+    "Before opening an issue, check whether this repository already has the same request.",
+    "Search existing PRs and discussions before I start this repo task.",
+    "Run a duplicate preflight before creating the branch and PR.",
+    "This is a continuation of upstream work; find the canonical issue first.",
+    "Check whether the proposed API behavior already exists or is superseded."
+  ],
+  "should_not_trigger": [
+    "Review the code for correctness after the PR is ready.",
+    "Debug why the CI test failed.",
+    "Write a local README without interacting with a repository issue or PR.",
+    "Merge the already-approved PR after the normal PR safety checks pass."
+  ]
+}
