@@ -230,6 +230,32 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertTrue(any(item["code"] == "invalid_search_source" for item in report["blockers"]))
 
+    def test_non_list_items_are_structured_blocked_report(self) -> None:
+        payload = base_payload()
+        payload["search"]["sources"][0]["items"] = 1
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["code"] == "search_source_items_invalid" for item in report["blockers"]))
+
+    def test_invalid_relationship_enum_blocks_instead_of_inference(self) -> None:
+        payload = base_payload()
+        payload["search"]["sources"][0]["items"] = [{
+            "number": 12,
+            "url": "https://github.com/example/project/issues/12",
+            "title": "Potential duplicate",
+            "relationship": "duplicte",
+        }]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["code"] == "invalid_search_item_relationship" for item in report["blockers"]))
+
+    def test_narrowed_source_kinds_require_explicit_omission_justification(self) -> None:
+        payload = base_payload()
+        payload["search"]["required_source_kinds"] = ["issues"]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["code"] == "required_search_source_omission_not_justified" for item in report["blockers"]))
+
     def test_openclaw_continuation_fixture_routes_issue_106704(self) -> None:
         payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
         report = self.module.build_report(payload)

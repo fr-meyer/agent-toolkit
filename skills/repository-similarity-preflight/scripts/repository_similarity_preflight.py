@@ -311,6 +311,8 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
         blockers.append(_issue("invalid_required_source_kinds", "required_source_kinds must be a list of strings"))
         required_kinds = list(DEFAULT_SOURCE_KINDS)
     source_by_kind: dict[str, list[dict[str, Any]]] = {}
+    configured_kinds = set(required_kinds)
+    omitted_default_kinds = set(DEFAULT_SOURCE_KINDS) - configured_kinds
     for index, source in enumerate(source_list):
         if not isinstance(source, dict):
             blockers.append(_issue("invalid_search_source", f"search.sources[{index}] must be an object"))
@@ -328,6 +330,19 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
             blockers.append(_issue("search_source_incomplete", f"search source {kind} is not complete"))
         elif not isinstance(source.get("items", []), list):
             blockers.append(_issue("search_source_items_invalid", f"search source {kind}.items must be a list"))
+    for kind in omitted_default_kinds:
+        entries = source_by_kind.get(kind, [])
+        if not entries or any(
+            entry.get("status") != "not_applicable"
+            or not _safe_text(entry.get("reason"), findings, f"search.sources.{kind}.reason")
+            for entry in entries
+        ):
+            blockers.append(
+                _issue(
+                    "required_search_source_omission_not_justified",
+                    f"omitted default search source {kind} must be present with an explicit not-applicable reason",
+                )
+            )
     for kind in required_kinds:
         entries = source_by_kind.get(kind, [])
         if not entries:
@@ -356,9 +371,15 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
     for source_index, source in enumerate(source_list):
         if not isinstance(source, dict):
             continue
-        for item_index, item in enumerate(source.get("items", []) or []):
+        items = source.get("items", [])
+        if not isinstance(items, list):
+            continue
+        for item_index, item in enumerate(items):
             if not isinstance(item, dict):
                 blockers.append(_issue("invalid_search_item", f"search.sources[{source_index}].items[{item_index}] must be an object"))
+                continue
+            if "relationship" in item and item["relationship"] not in RELATIONSHIPS:
+                blockers.append(_issue("invalid_search_item_relationship", f"search.sources[{source_index}].items[{item_index}].relationship must be one of the supported relationship values"))
                 continue
             safe_item, hit = _classify_item(item, intent_terms, findings, f"search.sources[{source_index}].items[{item_index}]")
             # Keep all explicit matches and only retain deterministic inferred
