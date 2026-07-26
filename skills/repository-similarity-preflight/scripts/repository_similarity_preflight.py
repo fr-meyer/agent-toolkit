@@ -139,19 +139,21 @@ def _redact_url(value: Any, findings: list[dict[str, str]], field: str) -> str:
     raw_url = str(value)
     try:
         parts = urlsplit(raw_url)
-    except ValueError:
+        hostname = parts.hostname or ""
+        port = parts.port
+        username = parts.username
+        password = parts.password
+    except (UnicodeError, ValueError):
+        findings.append({"field": _safe_finding_field(field), "kind": "malformed_url"})
         return _redact_text(raw_url, findings, field)
 
     # Never preserve URL userinfo. It is credential material even when the
     # username/password does not use a recognised query-parameter name.
-    netloc = parts.hostname or ""
-    try:
-        if parts.port is not None:
-            netloc = f"{netloc}:{parts.port}"
-    except ValueError:
-        findings.append({"field": field, "kind": "url_userinfo"})
-    if parts.username is not None or parts.password is not None:
-        findings.append({"field": field, "kind": "url_userinfo"})
+    netloc = hostname
+    if port is not None:
+        netloc = f"{netloc}:{port}"
+    if username is not None or password is not None:
+        findings.append({"field": _safe_finding_field(field), "kind": "url_userinfo"})
 
     safe_path = _redact_text(parts.path, findings, f"{field}.path")
     safe_query: list[tuple[str, str]] = []
@@ -659,8 +661,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = build_report(_load(args.input), external_write=args.external_write)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
-        print(json.dumps({"schema_version": SCHEMA_VERSION, "status": "blocked", "reason": str(exc)}), file=sys.stderr)
+    except OSError:
+        print(json.dumps({"schema_version": SCHEMA_VERSION, "status": "blocked", "reason": "input read failed"}), file=sys.stderr)
+        return 5
+    except (ValueError, json.JSONDecodeError):
+        print(json.dumps({"schema_version": SCHEMA_VERSION, "status": "blocked", "reason": "input validation failed"}), file=sys.stderr)
         return 5
     encoded = json.dumps(report, indent=2 if args.pretty else None, sort_keys=True)
     try:

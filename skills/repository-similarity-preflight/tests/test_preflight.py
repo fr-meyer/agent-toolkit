@@ -280,6 +280,17 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertNotIn(raw_token, encoded)
         self.assertNotIn(raw_bearer, encoded)
 
+    def test_malformed_bracketed_url_is_structured_blocked_report(self) -> None:
+        payload = base_payload()
+        payload["search"]["sources"][0]["items"] = [{
+            "url": "http://[invalid",
+            "title": "Malformed URL evidence",
+            "relationship": "unrelated",
+        }]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["kind"] == "malformed_url" for item in report["redaction"]["findings"]))
+
     def test_malformed_source_entry_is_structured_blocked_report(self) -> None:
         payload = base_payload()
         payload["search"]["sources"] = [None]
@@ -434,6 +445,19 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         markdown = self.module._markdown(report)
         self.assertNotIn("## forged section", markdown)
         self.assertNotIn("[x](https://evil.invalid)", markdown)
+
+    def test_cli_input_read_failure_does_not_echo_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            missing_path = Path(directory) / "private" / "missing.json"
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "--input", str(missing_path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 5)
+        self.assertEqual(json.loads(result.stderr)["reason"], "input read failed")
+        self.assertNotIn(str(missing_path), result.stderr)
 
     def test_cli_artifact_write_failure_returns_structured_helper_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
