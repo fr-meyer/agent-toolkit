@@ -144,15 +144,20 @@ def _require_string(obj: dict[str, Any], key: str, errors: list[dict[str, str]],
     return value.strip()
 
 
-def _usable_route(item: dict[str, Any], source_kind: str) -> bool:
+def _usable_route(item: dict[str, Any], source_kind: str, repository: dict[str, Any]) -> bool:
     number = item.get("number")
     if (
         isinstance(number, int)
         and not isinstance(number, bool)
         and number > 0
-        and source_kind in DEFAULT_SOURCE_KINDS
+        and source_kind in {"issues", "pull_requests", "discussions"}
     ):
         return True
+    expected_host = repository.get("host")
+    expected_owner = repository.get("owner")
+    expected_name = repository.get("name")
+    if not all(isinstance(value, str) and value.strip() for value in (expected_host, expected_owner, expected_name)):
+        return False
     for key in ("url", "canonical_url"):
         value = item.get(key)
         if not isinstance(value, str) or not value.strip():
@@ -162,14 +167,21 @@ def _usable_route(item: dict[str, Any], source_kind: str) -> bool:
         except ValueError:
             continue
         path_parts = [part for part in parts.path.split("/") if part]
-        if parts.scheme in {"http", "https"} and parts.hostname and len(path_parts) >= 3:
+        if (
+            parts.scheme in {"http", "https"}
+            and parts.hostname
+            and parts.hostname.casefold() == expected_host.casefold()
+            and len(path_parts) >= 3
+            and path_parts[0] == expected_owner
+            and path_parts[1] == expected_name
+        ):
             return True
     return False
 
 
 def _classify_item(
     item: dict[str, Any], intent_terms: set[str], intent_title: str,
-    source_kind: str, findings: list[dict[str, str]], field: str
+    source_kind: str, repository: dict[str, Any], findings: list[dict[str, str]], field: str
 ) -> tuple[dict[str, Any], str | None]:
     safe = _safe_item(item, findings, field)
     safe["source_kind"] = _safe_text(source_kind, findings, f"{field}.source_kind")
@@ -194,7 +206,7 @@ def _classify_item(
             safe["match_type"] = "none"
     safe["relationship"] = relationship
     if relationship in {"duplicate", "directly_related", "superseded"}:
-        if not _usable_route(item, source_kind):
+        if not _usable_route(item, source_kind, repository):
             return safe, "related_match_without_canonical_route"
         return safe, relationship
     return safe, None
@@ -257,7 +269,7 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
     checks: list[dict[str, str]] = []
     findings: list[dict[str, str]] = []
 
-    if payload.get("schema_version") not in (None, SCHEMA_VERSION):
+    if payload.get("schema_version") != SCHEMA_VERSION:
         blockers.append(_issue("unsupported_schema", "input schema_version is not supported"))
     repository = payload.get("repository")
     intent = payload.get("intent")
@@ -444,7 +456,7 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
                 blockers.append(_issue("invalid_search_item_relationship", f"search.sources[{source_index}].items[{item_index}].relationship must be one of the supported relationship values"))
                 continue
             safe_item, hit = _classify_item(
-                item, intent_terms, _normalise(title), str(source.get("kind")), findings,
+                item, intent_terms, _normalise(title), str(source.get("kind")), repository, findings,
                 f"search.sources[{source_index}].items[{item_index}]",
             )
             # Keep all explicit matches and only retain deterministic inferred

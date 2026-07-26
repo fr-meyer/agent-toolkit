@@ -214,6 +214,13 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertTrue(any(item["code"] == "invalid_not_applicable" for item in report["blockers"]))
 
+    def test_schema_version_is_required(self) -> None:
+        payload = base_payload()
+        del payload["schema_version"]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["code"] == "unsupported_schema" for item in report["blockers"]))
+
     def test_url_redaction_covers_userinfo_path_and_innocuous_query_values(self) -> None:
         payload = base_payload()
         raw_token = "ghp_123456789012345678901234567890"
@@ -269,6 +276,17 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         payload = base_payload()
         payload["search"]["sources"][0]["items"] = [{
             "url": "not-a-url",
+            "title": "Potential duplicate",
+            "relationship": "duplicate",
+        }]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["code"] == "canonical_route_missing" for item in report["blockers"]))
+
+    def test_canonical_url_must_target_declared_repository(self) -> None:
+        payload = base_payload()
+        payload["search"]["sources"][0]["items"] = [{
+            "url": "https://github.com/other/repository/issues/7",
             "title": "Potential duplicate",
             "relationship": "duplicate",
         }]
