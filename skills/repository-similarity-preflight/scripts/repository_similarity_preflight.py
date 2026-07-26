@@ -399,6 +399,8 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
         if status == "not_applicable":
             if not _safe_text(source.get("reason"), findings, f"search.sources[{index}].reason"):
                 blockers.append(_issue("search_source_reason_missing", f"not-applicable source {safe_kind} needs a reason"))
+            if source.get("items", []) != []:
+                blockers.append(_issue("not_applicable_source_has_items", f"not-applicable source {safe_kind} must not include search items"))
         elif status != "complete":
             blockers.append(_issue("search_source_incomplete", f"search source {safe_kind} is not complete"))
         elif "items" not in source or not isinstance(source.get("items"), list):
@@ -452,7 +454,7 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
     matches: list[dict[str, Any]] = []
     relationship_hits: list[str] = []
     for source_index, source in enumerate(source_list):
-        if not isinstance(source, dict):
+        if not isinstance(source, dict) or source.get("status") == "not_applicable":
             continue
         items = source.get("items", [])
         if not isinstance(items, list):

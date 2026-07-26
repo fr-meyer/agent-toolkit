@@ -196,6 +196,20 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertEqual(report["status"], "not-applicable")
         self.assertFalse(report["external_write"]["allowed"])
 
+    def test_not_applicable_source_with_items_blocks_and_does_not_classify(self) -> None:
+        payload = base_payload()
+        discussions = next(item for item in payload["search"]["sources"] if item["kind"] == "discussions")
+        discussions["items"] = [{
+            "number": 99,
+            "url": "https://github.com/example/project/discussions/99",
+            "title": "Add repository similarity preflight",
+            "relationship": "duplicate",
+        }]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["matches"])
+        self.assertTrue(any(item["code"] == "not_applicable_source_has_items" for item in report["blockers"]))
+
     def test_not_applicable_cannot_authorize_external_write(self) -> None:
         payload = base_payload()
         payload["intent"]["not_applicable"] = True
