@@ -317,6 +317,7 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
         blockers.append(_issue("missing_search_auth", "search.auth object is required"))
         auth = {}
     auth_status = auth.get("status")
+    safe_auth_status = _safe_text(auth_status, findings, "search.auth.status")
     allowed_auth = PRIVATE_AUTH if visibility == "private" else PUBLIC_AUTH
     if not isinstance(auth_status, str) or auth_status not in allowed_auth:
         blockers.append(
@@ -356,6 +357,15 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
             blockers.append(_issue("search_source_incomplete", f"search source {kind} is not complete"))
         elif not isinstance(source.get("items", []), list):
             blockers.append(_issue("search_source_items_invalid", f"search source {kind}.items must be a list"))
+    safe_source_metadata = [
+        {
+            "kind": _safe_text(source.get("kind"), findings, f"search.sources[{index}].kind"),
+            "status": _safe_text(source.get("status"), findings, f"search.sources[{index}].status"),
+            "item_count": len(source.get("items", []) or []) if isinstance(source.get("items", []), list) else 0,
+        }
+        for index, source in enumerate(source_list)
+        if isinstance(source, dict)
+    ]
     for kind in omitted_default_kinds:
         entries = source_by_kind.get(kind, [])
         if not entries or any(
@@ -479,17 +489,9 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
         "repository": safe_repository,
         "intent": safe_intent,
         "search": {
-            "auth": {"status": auth_status},
+            "auth": {"status": safe_auth_status},
             "queries": queries,
-            "sources": [
-                {
-                    "kind": _safe_text(source.get("kind"), findings, f"search.sources[{source_index}].kind"),
-                    "status": _safe_text(source.get("status"), findings, f"search.sources[{source_index}].status"),
-                    "item_count": len(source.get("items", []) or []) if isinstance(source.get("items", []), list) else 0,
-                }
-                for source in source_list
-                if isinstance(source, dict)
-            ],
+            "sources": safe_source_metadata,
         },
         "matches": matches,
         "checks": checks,

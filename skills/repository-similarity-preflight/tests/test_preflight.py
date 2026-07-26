@@ -291,6 +291,26 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertNotIn("do-not-echo", encoded)
         self.assertNotIn("synthetic@example.invalid", encoded)
 
+    def test_auth_status_is_redacted_and_blocks(self) -> None:
+        payload = base_payload()
+        payload["search"]["auth"]["status"] = "Bearer abcdefghijklmnop"
+        report = self.module.build_report(payload)
+        encoded = json.dumps(report)
+        self.assertEqual(report["status"], "blocked")
+        self.assertNotIn("abcdefghijklmnop", encoded)
+
+    def test_source_metadata_redaction_forces_blocked_status(self) -> None:
+        payload = base_payload()
+        payload["search"]["sources"].append({
+            "kind": "contact synthetic@example.invalid",
+            "status": "complete",
+            "items": [],
+        })
+        report = self.module.build_report(payload)
+        encoded = json.dumps(report)
+        self.assertEqual(report["status"], "blocked")
+        self.assertNotIn("synthetic@example.invalid", encoded)
+
     def test_openclaw_continuation_fixture_routes_issue_106704(self) -> None:
         payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
         report = self.module.build_report(payload)
