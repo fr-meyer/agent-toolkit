@@ -272,6 +272,18 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertTrue(any(item["code"] == "invalid_search_item_relationship" for item in report["blockers"]))
 
+    def test_non_boolean_exact_match_cannot_force_duplicate(self) -> None:
+        payload = base_payload()
+        payload["search"]["sources"][0]["items"] = [{
+            "number": 16,
+            "url": "https://github.com/example/project/issues/16",
+            "title": "Unrelated title",
+            "exact_match": "false",
+        }]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["code"] == "invalid_search_item_exact_match" for item in report["blockers"]))
+
     def test_invalid_canonical_route_blocks_related_match(self) -> None:
         payload = base_payload()
         payload["search"]["sources"][0]["items"] = [{
@@ -381,6 +393,23 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         markdown = self.module._markdown(report)
         self.assertNotIn("## forged section", markdown)
         self.assertNotIn("[x](https://evil.invalid)", markdown)
+
+    def test_cli_artifact_write_failure_returns_structured_helper_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "input.json"
+            input_path.write_text(json.dumps(base_payload()), encoding="utf-8")
+            blocked_parent = root / "not-a-directory"
+            blocked_parent.write_text("file", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "--input", str(input_path), "--output", str(blocked_parent / "report.json")],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 5)
+        self.assertEqual(json.loads(result.stderr)["status"], "blocked")
+        self.assertEqual(json.loads(result.stderr)["reason"], "artifact output failed")
 
     def test_cli_writes_json_and_markdown_and_returns_duplicate_code(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

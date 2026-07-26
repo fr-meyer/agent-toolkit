@@ -201,7 +201,7 @@ def _classify_item(
         )
         matched = _tokens(candidate_text) & intent_terms
         safe["matched_terms"] = sorted(matched)
-        if item.get("exact_match") or (
+        if item.get("exact_match") is True or (
             _normalise(str(item.get("title", "")))
             and _normalise(str(item.get("title", ""))) == intent_title
         ):
@@ -461,8 +461,13 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
             if not isinstance(item, dict):
                 blockers.append(_issue("invalid_search_item", f"search.sources[{source_index}].items[{item_index}] must be an object"))
                 continue
-            if "relationship" in item and item["relationship"] not in RELATIONSHIPS:
+            if "relationship" in item and (
+                not isinstance(item["relationship"], str) or item["relationship"] not in RELATIONSHIPS
+            ):
                 blockers.append(_issue("invalid_search_item_relationship", f"search.sources[{source_index}].items[{item_index}].relationship must be one of the supported relationship values"))
+                continue
+            if "exact_match" in item and not isinstance(item["exact_match"], bool):
+                blockers.append(_issue("invalid_search_item_exact_match", f"search.sources[{source_index}].items[{item_index}].exact_match must be a boolean"))
                 continue
             safe_item, hit = _classify_item(
                 item, intent_terms, _normalise(title), str(source.get("kind")), repository, findings,
@@ -576,12 +581,16 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"schema_version": SCHEMA_VERSION, "status": "blocked", "reason": str(exc)}), file=sys.stderr)
         return 5
     encoded = json.dumps(report, indent=2 if args.pretty else None, sort_keys=True)
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(encoded + "\n", encoding="utf-8")
-    if args.markdown_output:
-        args.markdown_output.parent.mkdir(parents=True, exist_ok=True)
-        args.markdown_output.write_text(_markdown(report), encoding="utf-8")
+    try:
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(encoded + "\n", encoding="utf-8")
+        if args.markdown_output:
+            args.markdown_output.parent.mkdir(parents=True, exist_ok=True)
+            args.markdown_output.write_text(_markdown(report), encoding="utf-8")
+    except OSError:
+        print(json.dumps({"schema_version": SCHEMA_VERSION, "status": "blocked", "reason": "artifact output failed"}), file=sys.stderr)
+        return 5
     print(encoded)
     return _exit_code(report["status"])
 
