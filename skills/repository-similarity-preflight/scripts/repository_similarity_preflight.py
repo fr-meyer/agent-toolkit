@@ -106,16 +106,23 @@ def _safe_text(value: Any, findings: list[dict[str, str]], field: str) -> str:
 
 def _safe_item(item: dict[str, Any], findings: list[dict[str, str]], field: str) -> dict[str, Any]:
     safe: dict[str, Any] = {}
-    for key in ("kind", "number", "state", "relationship", "match_type", "matched_terms"):
+    for key in ("kind", "number", "state", "relationship", "match_type"):
         if key in item:
-            if key == "matched_terms":
-                safe[key] = [
-                    _safe_text(term, findings, f"{field}.matched_terms")
-                    for term in item.get(key, [])
-                    if str(term).strip()
-                ]
+            value = item[key]
+            if key == "number" and isinstance(value, int) and not isinstance(value, bool):
+                safe[key] = value
             else:
-                safe[key] = item[key]
+                safe[key] = _safe_text(value, findings, f"{field}.{key}")
+    if "matched_terms" in item:
+        terms = item.get("matched_terms")
+        if isinstance(terms, list):
+            safe["matched_terms"] = [
+                _safe_text(term, findings, f"{field}.matched_terms")
+                for term in terms
+                if str(term).strip()
+            ]
+        else:
+            safe["matched_terms"] = _safe_text(terms, findings, f"{field}.matched_terms")
     for key in ("url", "canonical_url"):
         if key in item:
             safe[key] = _redact_url(item[key], findings, f"{field}.{key}")
@@ -231,7 +238,7 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
         "host": _safe_text(repository.get("host"), findings, "repository.host"),
         "owner": _safe_text(repository.get("owner"), findings, "repository.owner"),
         "name": _safe_text(repository.get("name"), findings, "repository.name"),
-        "visibility": visibility,
+        "visibility": visibility if isinstance(visibility, str) and visibility in {"public", "private"} else _safe_text(visibility, findings, "repository.visibility"),
         "revision": _safe_text(repository.get("revision") or repository.get("base_revision"), findings, "repository.revision"),
         "branch": _safe_text(repository.get("branch"), findings, "repository.branch"),
     }
@@ -283,7 +290,7 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
                     "blockers": [],
                     "warnings": [],
                     "redaction": {"findings": findings},
-                    "external_write": {"requested": external_write, "allowed": not external_write},
+                    "external_write": {"requested": external_write, "allowed": False},
                 }
 
     auth = search.get("auth")
@@ -292,7 +299,7 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
         auth = {}
     auth_status = auth.get("status")
     allowed_auth = PRIVATE_AUTH if visibility == "private" else PUBLIC_AUTH
-    if auth_status not in allowed_auth:
+    if not isinstance(auth_status, str) or auth_status not in allowed_auth:
         blockers.append(
             _issue(
                 "search_auth_unavailable",
@@ -454,8 +461,8 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
             "queries": queries,
             "sources": [
                 {
-                    "kind": source.get("kind"),
-                    "status": source.get("status"),
+                    "kind": _safe_text(source.get("kind"), findings, f"search.sources[{source_index}].kind"),
+                    "status": _safe_text(source.get("status"), findings, f"search.sources[{source_index}].status"),
                     "item_count": len(source.get("items", []) or []) if isinstance(source.get("items", []), list) else 0,
                 }
                 for source in source_list

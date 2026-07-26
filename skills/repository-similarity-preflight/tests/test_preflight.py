@@ -194,6 +194,7 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         payload["intent"]["not_applicable_reason"] = "No repository issue, PR, or code change is involved."
         report = self.module.build_report(payload)
         self.assertEqual(report["status"], "not-applicable")
+        self.assertFalse(report["external_write"]["allowed"])
 
     def test_not_applicable_cannot_authorize_external_write(self) -> None:
         payload = base_payload()
@@ -255,6 +256,19 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         report = self.module.build_report(payload)
         self.assertEqual(report["status"], "blocked")
         self.assertTrue(any(item["code"] == "required_search_source_omission_not_justified" for item in report["blockers"]))
+
+    def test_scalar_candidate_fields_are_redacted(self) -> None:
+        payload = base_payload()
+        payload["search"]["sources"][0]["items"] = [{
+            "number": "api_key=do-not-echo",
+            "state": "contact synthetic@example.invalid",
+            "relationship": "unrelated",
+        }]
+        report = self.module.build_report(payload)
+        encoded = json.dumps(report)
+        self.assertEqual(report["status"], "blocked")
+        self.assertNotIn("do-not-echo", encoded)
+        self.assertNotIn("synthetic@example.invalid", encoded)
 
     def test_openclaw_continuation_fixture_routes_issue_106704(self) -> None:
         payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
