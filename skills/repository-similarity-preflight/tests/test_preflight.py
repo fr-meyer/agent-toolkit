@@ -246,6 +246,13 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertTrue(any(item["code"] == "search_source_items_invalid" for item in report["blockers"]))
 
+    def test_complete_source_requires_items_field(self) -> None:
+        payload = base_payload()
+        del payload["search"]["sources"][0]["items"]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["code"] == "search_source_items_invalid" for item in report["blockers"]))
+
     def test_invalid_relationship_enum_blocks_instead_of_inference(self) -> None:
         payload = base_payload()
         payload["search"]["sources"][0]["items"] = [{

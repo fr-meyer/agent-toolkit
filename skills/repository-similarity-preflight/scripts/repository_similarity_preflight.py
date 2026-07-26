@@ -380,7 +380,7 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
                 blockers.append(_issue("search_source_reason_missing", f"not-applicable source {safe_kind} needs a reason"))
         elif status != "complete":
             blockers.append(_issue("search_source_incomplete", f"search source {safe_kind} is not complete"))
-        elif not isinstance(source.get("items", []), list):
+        elif "items" not in source or not isinstance(source.get("items"), list):
             blockers.append(_issue("search_source_items_invalid", f"search source {safe_kind}.items must be a list"))
     safe_source_metadata = [
         {
