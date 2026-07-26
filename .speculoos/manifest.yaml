@@ -37,9 +37,7 @@ review_policy:
     policy: required
     primary:
       - mergeguez_review
-    fallback_any_of:
-      - self_managed
-    fallback_summary: self_managed is an emergency fallback when hosted Mergeguez review is unavailable.
+    fallback_summary: self_managed evidence is not accepted for normal closeout; hosted Mergeguez review is mandatory.
 actor_policy:
   commit_actor: human_approved_agent_assisted
   push_actor: franck_user_pr_author

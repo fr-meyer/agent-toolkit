@@ -11,9 +11,8 @@
       "required_pr_review": {
         "policy": "required",
         "primary": ["mergeguez_review"],
-        "fallback_any_of": ["self_managed"],
         "summary": "Mergeguez review evidence is the primary required PR-review source.",
-        "fallback_summary": "Self-managed evidence is an emergency fallback when hosted Mergeguez review is unavailable."
+        "fallback_summary": "Self-managed evidence is not accepted for normal closeout; hosted Mergeguez review is mandatory."
       }
     }
   },

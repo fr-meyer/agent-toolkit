@@ -33,4 +33,4 @@ No user-facing documentation changes required. This PR adds only repository-loca
 - `git diff --check`
 - Speculoos validation
 - Speculoos publish-check
-- Exact-head Mergeguez request dry-run for the existing agent-toolkit cleanup PR
+- Exact-head Mergeguez request dry-run for this PR's current base, branch, and head
