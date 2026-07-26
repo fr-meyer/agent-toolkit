@@ -206,6 +206,14 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertFalse(report["external_write"]["allowed"])
         self.assertTrue(any(item["code"] == "external_write_not_allowed" for item in report["blockers"]))
 
+    def test_non_boolean_not_applicable_blocks_and_does_not_skip_search(self) -> None:
+        payload = base_payload()
+        payload["intent"]["not_applicable"] = "false"
+        payload["intent"]["not_applicable_reason"] = "Malformed flag"
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["code"] == "invalid_not_applicable" for item in report["blockers"]))
+
     def test_url_redaction_covers_userinfo_path_and_innocuous_query_values(self) -> None:
         payload = base_payload()
         raw_token = "ghp_123456789012345678901234567890"
@@ -260,6 +268,17 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         report = self.module.build_report(payload)
         self.assertEqual(report["status"], "blocked")
         self.assertTrue(any(item["code"] == "canonical_route_missing" for item in report["blockers"]))
+
+    def test_numeric_route_preserves_source_kind(self) -> None:
+        payload = base_payload()
+        payload["search"]["sources"][0]["items"] = [{
+            "number": 14,
+            "title": "Potential duplicate",
+            "relationship": "duplicate",
+        }]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "duplicate")
+        self.assertEqual(report["matches"][0]["source_kind"], "issues")
 
     def test_exact_multi_word_title_is_inferred_as_duplicate(self) -> None:
         payload = base_payload()
@@ -317,6 +336,18 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertEqual(report["status"], "duplicate")
         self.assertEqual(report["matches"][0]["number"], 106704)
         self.assertEqual(report["matches"][0]["url"], "https://github.com/openclaw/openclaw/issues/106704")
+
+    def test_markdown_escapes_untrusted_candidate_metadata(self) -> None:
+        payload = base_payload()
+        payload["search"]["sources"][0]["items"] = [{
+            "url": "https://github.com/example/project/issues/15",
+            "title": "bad\n## forged section [x](https://evil.invalid)",
+            "relationship": "duplicate",
+        }]
+        report = self.module.build_report(payload)
+        markdown = self.module._markdown(report)
+        self.assertNotIn("## forged section", markdown)
+        self.assertNotIn("[x](https://evil.invalid)", markdown)
 
     def test_cli_writes_json_and_markdown_and_returns_duplicate_code(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

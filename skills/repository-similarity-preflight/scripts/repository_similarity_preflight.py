@@ -144,9 +144,14 @@ def _require_string(obj: dict[str, Any], key: str, errors: list[dict[str, str]],
     return value.strip()
 
 
-def _usable_route(item: dict[str, Any]) -> bool:
+def _usable_route(item: dict[str, Any], source_kind: str) -> bool:
     number = item.get("number")
-    if isinstance(number, int) and not isinstance(number, bool) and number > 0:
+    if (
+        isinstance(number, int)
+        and not isinstance(number, bool)
+        and number > 0
+        and source_kind in DEFAULT_SOURCE_KINDS
+    ):
         return True
     for key in ("url", "canonical_url"):
         value = item.get(key)
@@ -164,9 +169,10 @@ def _usable_route(item: dict[str, Any]) -> bool:
 
 def _classify_item(
     item: dict[str, Any], intent_terms: set[str], intent_title: str,
-    findings: list[dict[str, str]], field: str
+    source_kind: str, findings: list[dict[str, str]], field: str
 ) -> tuple[dict[str, Any], str | None]:
     safe = _safe_item(item, findings, field)
+    safe["source_kind"] = _safe_text(source_kind, findings, f"{field}.source_kind")
     relationship = item.get("relationship")
     if relationship not in RELATIONSHIPS:
         candidate_text = " ".join(
@@ -188,42 +194,56 @@ def _classify_item(
             safe["match_type"] = "none"
     safe["relationship"] = relationship
     if relationship in {"duplicate", "directly_related", "superseded"}:
-        if not _usable_route(item):
+        if not _usable_route(item, source_kind):
             return safe, "related_match_without_canonical_route"
         return safe, relationship
     return safe, None
 
 
+def _markdown_text(value: Any) -> str:
+    text = str(value if value is not None else "")
+    text = re.sub(r"[\r\n\t]+", " ", text)
+    text = text.replace("\\", "\\\\")
+    for character in ("`", "*", "_", "[", "]", "#", "+", "-", "!", "|", ">"):
+        text = text.replace(character, f"\\{character}")
+    return text.replace("<", "&lt;")
+
+
 def _markdown(report: dict[str, Any]) -> str:
-    status = report["status"]
+    repository = report.get("repository", {})
     lines = [
         "# Repository Similarity Preflight",
         "",
-        f"- Schema: `{report['schema_version']}`",
-        f"- Status: **{status}**",
-        f"- Reason: {report['reason']}",
-        f"- Repository: `{report['repository'].get('host', '')}/{report['repository'].get('owner', '')}/{report['repository'].get('name', '')}`",
-        f"- Visibility: `{report['repository'].get('visibility', '')}`",
-        f"- Revision: `{report['repository'].get('revision', '')}`",
-        f"- Branch: `{report['repository'].get('branch', '')}`",
+        f"- Schema: `{_markdown_text(report.get('schema_version'))}`",
+        f"- Status: **{_markdown_text(report.get('status'))}**",
+        f"- Reason: {_markdown_text(report.get('reason'))}",
+        f"- Repository: `{_markdown_text(repository.get('host'))}/{_markdown_text(repository.get('owner'))}/{_markdown_text(repository.get('name'))}`",
+        f"- Visibility: `{_markdown_text(repository.get('visibility'))}`",
+        f"- Revision: `{_markdown_text(repository.get('revision'))}`",
+        f"- Branch: `{_markdown_text(repository.get('branch'))}`",
         "",
         "## Checks",
     ]
     for check in report.get("checks", []):
-        lines.append(f"- `{check['name']}`: **{check['status']}** — {check['detail']}")
+        lines.append(
+            f"- `{_markdown_text(check.get('name'))}`: **{_markdown_text(check.get('status'))}** — {_markdown_text(check.get('detail'))}"
+        )
     lines.extend(["", "## Matches"])
     matches = report.get("matches", [])
     if not matches:
-        lines.append("- None");
+        lines.append("- None")
     else:
         for match in matches:
             route = match.get("canonical_url") or match.get("url") or match.get("number") or "no route"
             lines.append(
-                f"- `{match.get('relationship', 'unknown')}` `{route}` — {match.get('title', '<untitled>')}"
+                f"- `{_markdown_text(match.get('relationship', 'unknown'))}` `{_markdown_text(route)}` — {_markdown_text(match.get('title', '<untitled>'))}"
             )
     if report.get("blockers"):
         lines.extend(["", "## Blockers"])
-        lines.extend(f"- `{item['code']}`: {item['detail']}" for item in report["blockers"])
+        lines.extend(
+            f"- `{_markdown_text(item.get('code'))}`: {_markdown_text(item.get('detail'))}"
+            for item in report["blockers"]
+        )
     if report.get("redaction", {}).get("findings"):
         lines.extend(["", "## Redaction"])
         lines.append("- Unsafe values were redacted from the evidence; the gate is fail-closed until the public wording is corrected.")
@@ -264,7 +284,7 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
     for key in ("host", "owner", "name", "visibility", "revision", "branch"):
         if not safe_repository.get(key):
             blockers.append(_issue(f"missing_repository_{key}", f"repository.{key} is required"))
-    if visibility not in {"public", "private"}:
+    if not isinstance(visibility, str) or visibility not in {"public", "private"}:
         blockers.append(_issue("visibility_unknown", "repository visibility must be explicitly public or private"))
 
     title = _require_string(intent, "title", blockers, "intent")
@@ -286,7 +306,11 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
         "behavior_names": [_safe_text(v, findings, "intent.behavior_names") for v in behavior_raw],
     }
 
-    if intent.get("not_applicable"):
+    not_applicable = intent.get("not_applicable", False)
+    if not isinstance(not_applicable, bool):
+        blockers.append(_issue("invalid_not_applicable", "intent.not_applicable must be a boolean"))
+        not_applicable = False
+    if not_applicable:
         reason = _safe_text(intent.get("not_applicable_reason"), findings, "intent.not_applicable_reason")
         if not reason:
             blockers.append(_issue("missing_not_applicable_reason", "not-applicable requires a reason"))
@@ -418,7 +442,7 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
                 blockers.append(_issue("invalid_search_item_relationship", f"search.sources[{source_index}].items[{item_index}].relationship must be one of the supported relationship values"))
                 continue
             safe_item, hit = _classify_item(
-                item, intent_terms, _normalise(title), findings,
+                item, intent_terms, _normalise(title), str(source.get("kind")), findings,
                 f"search.sources[{source_index}].items[{item_index}]",
             )
             # Keep all explicit matches and only retain deterministic inferred
