@@ -57,6 +57,15 @@ def _tokens(value: str) -> set[str]:
     return {token for token in _normalise(value).split() if len(token) > 1}
 
 
+def _safe_finding_field(field: Any) -> str:
+    label = str(field)
+    for _, pattern, replacement in _REDACTION_PATTERNS:
+        label = pattern.sub(replacement, label)
+    label = re.sub(r"(\.query\.)[^.]+", r"\1<key>", label)
+    label = re.sub(r"(required_source_kinds\.)[^.]+", r"\1<kind>", label)
+    return label[:200]
+
+
 def _redact_text(value: Any, findings: list[dict[str, str]], field: str) -> str:
     if value is None:
         return ""
@@ -64,7 +73,7 @@ def _redact_text(value: Any, findings: list[dict[str, str]], field: str) -> str:
     redacted = text
     for kind, pattern, replacement in _REDACTION_PATTERNS:
         if pattern.search(redacted):
-            findings.append({"field": field, "kind": kind})
+            findings.append({"field": _safe_finding_field(field), "kind": kind})
             redacted = pattern.sub(replacement, redacted)
     return redacted
 

@@ -355,6 +355,14 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertNotIn("synthetic@example.invalid", encoded)
 
+    def test_redaction_finding_labels_do_not_echo_sensitive_source_kind(self) -> None:
+        payload = base_payload()
+        payload["search"]["required_source_kinds"] = ["api_key=do-not-echo"]
+        report = self.module.build_report(payload)
+        encoded = json.dumps(report)
+        self.assertEqual(report["status"], "blocked")
+        self.assertNotIn("do-not-echo", encoded)
+
     def test_openclaw_continuation_fixture_routes_issue_106704(self) -> None:
         payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
         report = self.module.build_report(payload)
