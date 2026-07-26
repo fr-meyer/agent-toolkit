@@ -72,18 +72,32 @@ def _redact_text(value: Any, findings: list[dict[str, str]], field: str) -> str:
 def _redact_url(value: Any, findings: list[dict[str, str]], field: str) -> str:
     if not value:
         return ""
-    url = str(value)
-    parts = urlsplit(url)
-    if parts.query:
-        safe_query: list[tuple[str, str]] = []
-        for key, val in parse_qsl(parts.query, keep_blank_values=True):
-            if _SECRET_KEY_RE.search(key):
-                findings.append({"field": field, "kind": "secret_query_parameter"})
-                safe_query.append((key, "<redacted>"))
-            else:
-                safe_query.append((key, val))
-        url = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(safe_query), ""))
-    return url
+    raw_url = str(value)
+    try:
+        parts = urlsplit(raw_url)
+    except ValueError:
+        return _redact_text(raw_url, findings, field)
+
+    # Never preserve URL userinfo. It is credential material even when the
+    # username/password does not use a recognised query-parameter name.
+    netloc = parts.hostname or ""
+    try:
+        if parts.port is not None:
+            netloc = f"{netloc}:{parts.port}"
+    except ValueError:
+        findings.append({"field": field, "kind": "url_userinfo"})
+    if parts.username is not None or parts.password is not None:
+        findings.append({"field": field, "kind": "url_userinfo"})
+
+    safe_path = _redact_text(parts.path, findings, f"{field}.path")
+    safe_query: list[tuple[str, str]] = []
+    for key, val in parse_qsl(parts.query, keep_blank_values=True):
+        if _SECRET_KEY_RE.search(key):
+            findings.append({"field": field, "kind": "secret_query_parameter"})
+            safe_query.append((key, "<redacted>"))
+        else:
+            safe_query.append((key, _redact_text(val, findings, f"{field}.query.{key}")))
+    return urlunsplit((parts.scheme, netloc, safe_path, urlencode(safe_query), ""))
 
 
 def _safe_text(value: Any, findings: list[dict[str, str]], field: str) -> str:
@@ -254,6 +268,8 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
             checks.append({"name": "applicability", "status": "passed", "detail": reason})
             if findings:
                 blockers.append(_issue("unsafe_public_evidence", "private or secret-like values were found in public evidence fields"))
+            if external_write:
+                blockers.append(_issue("external_write_not_allowed", "external writes require a clean pass and cannot bypass not-applicable status"))
             if not blockers:
                 return {
                     "schema_version": SCHEMA_VERSION,
@@ -338,6 +354,8 @@ def build_report(payload: dict[str, Any], *, external_write: bool = False) -> di
     matches: list[dict[str, Any]] = []
     relationship_hits: list[str] = []
     for source_index, source in enumerate(source_list):
+        if not isinstance(source, dict):
+            continue
         for item_index, item in enumerate(source.get("items", []) or []):
             if not isinstance(item, dict):
                 blockers.append(_issue("invalid_search_item", f"search.sources[{source_index}].items[{item_index}] must be an object"))

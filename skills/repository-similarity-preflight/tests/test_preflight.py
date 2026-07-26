@@ -195,6 +195,41 @@ class RepositorySimilarityPreflightTests(unittest.TestCase):
         report = self.module.build_report(payload)
         self.assertEqual(report["status"], "not-applicable")
 
+    def test_not_applicable_cannot_authorize_external_write(self) -> None:
+        payload = base_payload()
+        payload["intent"]["not_applicable"] = True
+        payload["intent"]["not_applicable_reason"] = "No repository issue, PR, or code change is involved."
+        payload["external_write"] = {"approval": {"authorized": True, "scope": "create a pull request"}}
+        report = self.module.build_report(payload, external_write=True)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["external_write"]["allowed"])
+        self.assertTrue(any(item["code"] == "external_write_not_allowed" for item in report["blockers"]))
+
+    def test_url_redaction_covers_userinfo_path_and_innocuous_query_values(self) -> None:
+        payload = base_payload()
+        raw_token = "ghp_123456789012345678901234567890"
+        raw_bearer = "Bearer abcdefghijklmnop"
+        payload["search"]["sources"][0]["items"] = [{
+            "number": 11,
+            "url": f"https://user:password@github.com/example/project/{raw_token}?q={raw_bearer}",
+            "state": "open",
+            "title": "Unsafe URL evidence",
+            "relationship": "unrelated",
+        }]
+        report = self.module.build_report(payload)
+        encoded = json.dumps(report)
+        self.assertEqual(report["status"], "blocked")
+        self.assertNotIn("password", encoded)
+        self.assertNotIn(raw_token, encoded)
+        self.assertNotIn(raw_bearer, encoded)
+
+    def test_malformed_source_entry_is_structured_blocked_report(self) -> None:
+        payload = base_payload()
+        payload["search"]["sources"] = [None]
+        report = self.module.build_report(payload)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(any(item["code"] == "invalid_search_source" for item in report["blockers"]))
+
     def test_openclaw_continuation_fixture_routes_issue_106704(self) -> None:
         payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
         report = self.module.build_report(payload)
