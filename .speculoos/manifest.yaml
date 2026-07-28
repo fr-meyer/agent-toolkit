@@ -57,7 +57,7 @@ surfaces:
     base_branch: dev
     default_branch: main
     head_branch: chore/pr-080-agent-toolkit-review-gate-closeout
-    head_sha: merge-plan-exact-head
+    head_sha: 986ca6e2998ec9e678367ad5100a940a00f4e7d6
     merge_commit: null
 gates:
   before_publish:
