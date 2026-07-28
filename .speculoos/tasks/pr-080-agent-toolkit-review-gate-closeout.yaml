@@ -10,13 +10,13 @@ github:
   pull_request_project_item: unavailable
   project_item: unavailable
   project_status: In Progress
-  head_sha: 986ca6e2998ec9e678367ad5100a940a00f4e7d6
+  head_sha: abc2c0892b7d4384fde2738a8fa3454db61bde95
   url: https://github.com/fr-meyer/agent-toolkit/pull/84
 post_merge_expected:
   pull_request: 84
   base_branch: dev
   head_branch: chore/pr-080-agent-toolkit-review-gate-closeout
-  head_sha: merge-plan-exact-head
+  head_sha: abc2c0892b7d4384fde2738a8fa3454db61bde95
   merge_actor: mergeguez_dev_merge
   delete_branch_after_merge: false
 scope:
