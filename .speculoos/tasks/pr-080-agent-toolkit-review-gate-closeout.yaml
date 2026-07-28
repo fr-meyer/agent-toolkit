@@ -1,0 +1,43 @@
+id: pr-080-agent-toolkit-review-gate-closeout
+title: Close PR #81 agent-toolkit review-policy metadata
+status: self_finalizing_closeout
+branch: chore/pr-080-agent-toolkit-review-gate-closeout
+base_branch: dev
+github:
+  issue: null
+  pull_request: null
+  issue_project_item: null
+  pull_request_project_item: unavailable
+  project_item: unavailable
+  project_status: In Progress
+  head_sha: null
+scope:
+  - record PR #81 as merged in the canonical task and manifest metadata
+  - record the exact reviewed head, Mergeguez approval, checks observation, and merge commit
+  - return the active manifest task surface to the closeout lifecycle without changing runtime behavior
+non_goals:
+  - changing application code or runtime behavior
+  - changing Mergeguez policy, credentials, branch protection, or repository authority
+  - deleting the retained PR #81 feature branch
+  - making GitHub Project mutations when no Project item is available
+acceptance:
+  - the original PR #81 task records merged status, exact head, review URL, and merge commit
+  - manifest and review-evidence metadata record the merged PR #81 state
+  - this task remains self_finalizing_closeout rather than ordinary implementation
+  - no credentials, host paths, or runtime changes are committed
+  - Speculoos validation and publish-check pass
+  - exact-head Mergeguez review is requested for this closeout PR before merge
+publication_boundary:
+  statement: "Repository workflow metadata only: close out the merged PR #81 review-policy record. No credentials, provider calls, application code, deployment, release, main-branch change, or approval bypass."
+documentation_impact:
+  status: none
+  rationale: Closeout metadata only; product behavior and user-facing documentation are unchanged.
+validation:
+  - "git diff --check origin/dev...HEAD"
+  - "speculoos validate --repo . --repo-slug fr-meyer/agent-toolkit --base dev --task pr-080-agent-toolkit-review-gate-closeout --validation \"git diff --check origin/dev...HEAD\" --json"
+  - "speculoos publish-check --base origin/dev --task pr-080-agent-toolkit-review-gate-closeout --json"
+private_data_scan: required
+publish_authority: Active feature-to-dev metadata closeout publication; stable-branch promotion and live operations remain excluded.
+notes:
+  - PR #81 merged into dev with merge commit 7f059a5169e05bc665620df1df814504ce9a8118.
+  - The closeout task is intentionally self-finalizing to avoid ordinary metadata-closeout residue.

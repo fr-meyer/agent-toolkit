@@ -53,9 +53,12 @@ surfaces:
     authority: canonical
   github_pull_request:
     enabled: true
-    status: active
+    status: merged
     base_branch: dev
     default_branch: main
+    head_branch: feat/pr-080-agent-toolkit-review-gate-user
+    head_sha: f6a34ddae9adf340cc00897c2966da66371d76a3
+    merge_commit: 7f059a5169e05bc665620df1df814504ce9a8118
 gates:
   before_publish:
     - human-approval
@@ -66,5 +69,5 @@ gates:
   after_publish:
     - exact-head-mergeguez-review-requested
     - exact-head-review-and-check-evidence
-current_task: pr-080-agent-toolkit-review-gate
-current_task_metadata: .speculoos/tasks/pr-080-agent-toolkit-review-gate.yaml
+current_task: pr-080-agent-toolkit-review-gate-closeout
+current_task_metadata: .speculoos/tasks/pr-080-agent-toolkit-review-gate-closeout.yaml

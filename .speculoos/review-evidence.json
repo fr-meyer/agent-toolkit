@@ -26,10 +26,10 @@
     },
     "github_checks": {
       "kind": "github_checks",
-      "status": "pending-live-read",
-      "summary": "Live GitHub checks must be read through the broker before merge execution.",
-      "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pr-080-agent-toolkit-review-gate"
+      "status": "observed",
+      "summary": "Broker readback for merged PR #81 recorded a successful Mergeguez review check, skipped legacy jobs, and no failing check; the combined status was pending because no status contexts were reported.",
+      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/81",
+      "updated_at": "2026-07-28T03:34:47Z"
     },
     "self_managed": {
       "kind": "self_managed",
@@ -40,10 +40,15 @@
     },
     "mergeguez_review": {
       "kind": "mergeguez_review",
-      "status": "pending-live-read",
-      "summary": "Live @mergeguez review evidence is required for the exact PR head.",
-      "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pr-080-agent-toolkit-review-gate"
+      "status": "approved",
+      "summary": "Complete exact-head Mergeguez review approved the declarative review-policy metadata with 0 findings and 0 blockers.",
+      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/81#pullrequestreview-4780943036",
+      "review_url": "https://github.com/fr-meyer/agent-toolkit/pull/81#pullrequestreview-4780943036",
+      "reviewed_head_sha": "f6a34ddae9adf340cc00897c2966da66371d76a3",
+      "findings_count": 0,
+      "blocking_findings_count": 0,
+      "run_id": "mergeguez-review-81-0a27f88c0fcb-f6a34ddae9ad",
+      "updated_at": "2026-07-28T03:34:47Z"
     }
   }
 }
