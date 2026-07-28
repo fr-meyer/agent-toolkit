@@ -5,12 +5,20 @@ branch: chore/pr-080-agent-toolkit-review-gate-closeout
 base_branch: dev
 github:
   issue: null
-  pull_request: null
+  pull_request: 84
   issue_project_item: null
   pull_request_project_item: unavailable
   project_item: unavailable
   project_status: In Progress
   head_sha: null
+  url: https://github.com/fr-meyer/agent-toolkit/pull/84
+post_merge_expected:
+  pull_request: 84
+  base_branch: dev
+  head_branch: chore/pr-080-agent-toolkit-review-gate-closeout
+  head_sha: merge-plan-exact-head
+  merge_actor: mergeguez_dev_merge
+  delete_branch_after_merge: false
 scope:
   - record PR #81 as merged in the canonical task and manifest metadata
   - record the exact reviewed head, Mergeguez approval, checks observation, and merge commit

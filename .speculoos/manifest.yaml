@@ -7,7 +7,7 @@ repository:
   base_branch: dev
   default_branch: main
 status:
-  phase: active
+  phase: in_review
   blocker_summary: []
 publication_policy:
   repository_visibility: shared-repository
@@ -53,12 +53,12 @@ surfaces:
     authority: canonical
   github_pull_request:
     enabled: true
-    status: merged
+    status: open
     base_branch: dev
     default_branch: main
-    head_branch: feat/pr-080-agent-toolkit-review-gate-user
-    head_sha: f6a34ddae9adf340cc00897c2966da66371d76a3
-    merge_commit: 7f059a5169e05bc665620df1df814504ce9a8118
+    head_branch: chore/pr-080-agent-toolkit-review-gate-closeout
+    head_sha: merge-plan-exact-head
+    merge_commit: null
 gates:
   before_publish:
     - human-approval
