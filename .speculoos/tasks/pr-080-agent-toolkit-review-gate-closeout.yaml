@@ -10,13 +10,14 @@ github:
   pull_request_project_item: unavailable
   project_item: unavailable
   project_status: In Progress
-  head_sha: abc2c0892b7d4384fde2738a8fa3454db61bde95
+  head_sha: null
+  head_sha_source: Live PR #84 exact-head readback is supplied to review and merge gates; no self-referential SHA is committed
   url: https://github.com/fr-meyer/agent-toolkit/pull/84
 post_merge_expected:
   pull_request: 84
   base_branch: dev
   head_branch: chore/pr-080-agent-toolkit-review-gate-closeout
-  head_sha: abc2c0892b7d4384fde2738a8fa3454db61bde95
+  head_sha: merge-plan-exact-head
   merge_actor: mergeguez_dev_merge
   delete_branch_after_merge: false
 scope:

@@ -57,7 +57,8 @@ surfaces:
     base_branch: dev
     default_branch: main
     head_branch: chore/pr-080-agent-toolkit-review-gate-closeout
-    head_sha: 986ca6e2998ec9e678367ad5100a940a00f4e7d6
+    head_sha: null
+    head_sha_source: Live PR #84 exact-head readback is supplied to review and merge gates; no self-referential SHA is committed
     merge_commit: null
 gates:
   before_publish:
