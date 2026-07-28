@@ -1,0 +1,49 @@
+{
+  "schema_version": "0.1",
+  "requirements": {
+    "required_sources": ["local_validation", "github_checks", "mergeguez_review"],
+    "optional_sources": ["self_managed"],
+    "reviewers": {
+      "self_managed": {"policy": "optional"},
+      "mergeguez_review": {"policy": "required"}
+    },
+    "reviewer_groups": {
+      "required_pr_review": {
+        "policy": "required",
+        "primary": ["mergeguez_review"],
+        "summary": "Mergeguez review evidence is the primary required PR-review source.",
+        "fallback_summary": "Self-managed evidence is not accepted for normal closeout; hosted Mergeguez review is mandatory."
+      }
+    }
+  },
+  "sources": {
+    "local_validation": {
+      "kind": "local_validation",
+      "status": "passed",
+      "summary": "Metadata parse, Speculoos validate, publish-check, request-review dry-run, and git diff check passed for the review-policy metadata bootstrap.",
+      "evidence_ref": ".speculoos/tasks/pr-080-agent-toolkit-review-gate.yaml",
+      "updated_at": "pr-080-agent-toolkit-review-gate"
+    },
+    "github_checks": {
+      "kind": "github_checks",
+      "status": "pending-live-read",
+      "summary": "Live GitHub checks must be read through the broker before merge execution.",
+      "evidence_ref": "broker:mergeguez pr-state --json",
+      "updated_at": "pr-080-agent-toolkit-review-gate"
+    },
+    "self_managed": {
+      "kind": "self_managed",
+      "status": "pending",
+      "summary": "Emergency fallback only; not the normal review lane.",
+      "evidence_ref": ".speculoos/reviews/self-managed-review.json",
+      "updated_at": "pr-080-agent-toolkit-review-gate"
+    },
+    "mergeguez_review": {
+      "kind": "mergeguez_review",
+      "status": "pending-live-read",
+      "summary": "Live @mergeguez review evidence is required for the exact PR head.",
+      "evidence_ref": "broker:mergeguez pr-state --json",
+      "updated_at": "pr-080-agent-toolkit-review-gate"
+    }
+  }
+}

@@ -1,0 +1,70 @@
+schema_version: 0.1
+changed_files:
+  required: true
+  headings:
+    - Changed Files
+    - Changed Files For Publish
+release_flow:
+  canonical_phrases:
+    - "feature PRs target `dev`"
+    - "release/promotion PRs target `main`"
+  forbidden_phrases:
+    - "release PRs promote `dev` to `main`"
+    - "release PRs into main"
+publication_boundary:
+  required_terms:
+    - Publication Boundary
+    - credential
+    - release
+    - approval
+actor_policy:
+  required_files:
+    - .speculoos/actors.json
+  required_profiles:
+    - human_approved_agent_assisted
+    - mergeguez_branch_broker
+    - franck_user_pr_author
+    - mergeguez_review
+    - user_api
+  required_branch_policy:
+    base_branch: dev
+    head_patterns:
+      - feat/*
+      - fix/*
+      - docs/*
+      - test/*
+      - chore/*
+  merge_requirements:
+    - exact_pr_number
+    - exact_base_branch
+    - exact_head_branch
+    - exact_head_sha
+    - exact_head_mergeguez_review
+    - live_github_checks
+    - branch_policy_merge_actor
+  branch_merge_actor_requirements:
+    - name: feature_to_dev
+      base_branch: dev
+      head_patterns:
+        - feat/*
+        - fix/*
+        - docs/*
+        - test/*
+        - chore/*
+      merge_actor: mergeguez_dev_merge
+    - name: dev_to_stable
+      base_branches:
+        - main
+        - master
+      head_refs:
+        - dev
+      merge_actor: user_api
+planning_only:
+  markers:
+    - Planning/docs/metadata only
+    - spec/audit only
+scrub_patterns:
+  - name: bearer-token
+    regex: "Bearer\\s+[A-Za-z0-9._~+/-]{8,}"
+  - name: raw-secret-looking-token
+    regex: "(?i)(api[_-]?key|secret|password)\\s*[:=]\\s*[^\\s]+"

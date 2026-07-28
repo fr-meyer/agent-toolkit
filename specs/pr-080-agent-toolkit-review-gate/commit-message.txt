@@ -1,0 +1,4 @@
+feat: establish agent-toolkit Speculoos review policy
+
+Task: pr-080-agent-toolkit-review-gate
+Add repo-local Mergeguez-primary review metadata and fail-closed publication requirements without changing runtime code or legacy reviewer workflows.
