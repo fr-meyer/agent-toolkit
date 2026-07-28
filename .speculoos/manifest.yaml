@@ -7,7 +7,7 @@ repository:
   base_branch: dev
   default_branch: main
 status:
-  phase: active
+  phase: in_review
   blocker_summary: []
 publication_policy:
   repository_visibility: shared-repository
@@ -53,9 +53,13 @@ surfaces:
     authority: canonical
   github_pull_request:
     enabled: true
-    status: active
+    status: open
     base_branch: dev
     default_branch: main
+    head_branch: chore/pr-080-agent-toolkit-review-gate-closeout
+    head_sha: null
+    head_sha_source: Live PR #84 exact-head readback is supplied to review and merge gates; no self-referential SHA is committed
+    merge_commit: null
 gates:
   before_publish:
     - human-approval
@@ -66,5 +70,5 @@ gates:
   after_publish:
     - exact-head-mergeguez-review-requested
     - exact-head-review-and-check-evidence
-current_task: pr-080-agent-toolkit-review-gate
-current_task_metadata: .speculoos/tasks/pr-080-agent-toolkit-review-gate.yaml
+current_task: pr-080-agent-toolkit-review-gate-closeout
+current_task_metadata: .speculoos/tasks/pr-080-agent-toolkit-review-gate-closeout.yaml

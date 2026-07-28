@@ -1,6 +1,6 @@
 id: pr-080-agent-toolkit-review-gate
 title: Establish fail-closed Speculoos review policy for agent-toolkit
-status: local-implementation
+status: merged
 branch: feat/pr-080-agent-toolkit-review-gate-user
 base_branch: dev
 write_paths:
@@ -49,10 +49,20 @@ private_data_scan: required
 publish_authority: Active feature-to-dev publication; stable-branch promotion and live operations remain excluded.
 github:
   issue: null
-  pull_request: null
+  pull_request: 81
   issue_project_item: null
   project_item: unavailable
-  project_status: In Progress
-  url: null
-  head_sha: null
-  merge_commit: null
+  project_status: unavailable
+  url: https://github.com/fr-meyer/agent-toolkit/pull/81
+  head_sha: f6a34ddae9adf340cc00897c2966da66371d76a3
+  merge_commit: 7f059a5169e05bc665620df1df814504ce9a8118
+  mergeguez_review: https://github.com/fr-meyer/agent-toolkit/pull/81#pullrequestreview-4780943036
+
+evidence:
+  - PR #81 merged into dev through the guarded Mergeguez lane with merge commit 7f059a5169e05bc665620df1df814504ce9a8118.
+  - Exact-head Mergeguez review approved f6a34ddae9adf340cc00897c2966da66371d76a3 with 0 findings and 0 blockers.
+  - Live broker readback recorded Mergeguez review check success; legacy CodeRabbit and context-resolution jobs were skipped; no failing check was reported.
+  - The feature branch was intentionally retained; no remote or local branch deletion was performed.
+
+notes:
+  - Project surface was unavailable for this repository; no GitHub Project mutation was performed.

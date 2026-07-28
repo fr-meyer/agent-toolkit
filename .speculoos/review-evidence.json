@@ -27,9 +27,9 @@
     "github_checks": {
       "kind": "github_checks",
       "status": "pending-live-read",
-      "summary": "Live GitHub checks must be read through the broker before merge execution.",
+      "summary": "The active closeout PR #84 has no completed check evidence yet; read live checks through the broker before merge.",
       "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pr-080-agent-toolkit-review-gate"
+      "updated_at": "pr-080-agent-toolkit-review-gate-closeout"
     },
     "self_managed": {
       "kind": "self_managed",
@@ -41,9 +41,9 @@
     "mergeguez_review": {
       "kind": "mergeguez_review",
       "status": "pending-live-read",
-      "summary": "Live @mergeguez review evidence is required for the exact PR head.",
+      "summary": "The active closeout PR #84 requires a fresh exact-head Mergeguez review; historical PR #81 approval is recorded in the completed task metadata, not this active gate.",
       "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pr-080-agent-toolkit-review-gate"
+      "updated_at": "pr-080-agent-toolkit-review-gate-closeout"
     }
   }
 }
