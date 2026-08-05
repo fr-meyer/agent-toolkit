@@ -20,16 +20,16 @@
     "local_validation": {
       "kind": "local_validation",
       "status": "passed",
-      "summary": "Metadata parse, Speculoos validate, publish-check, request-review dry-run, and git diff check passed for the review-policy metadata bootstrap.",
-      "evidence_ref": ".speculoos/tasks/pr-080-agent-toolkit-review-gate.yaml",
-      "updated_at": "pr-080-agent-toolkit-review-gate"
+      "summary": "Current-base cleanup validation, metadata parsing, retained syntax and tests, manifest checks, active-path scans, public-safety scans, Speculoos validate, and publish-check passed before publication.",
+      "evidence_ref": ".speculoos/tasks/pr-085-retire-legacy-workflow-assets.yaml",
+      "updated_at": "pr-085-retire-legacy-workflow-assets"
     },
     "github_checks": {
       "kind": "github_checks",
       "status": "pending-live-read",
-      "summary": "The active closeout PR #84 has no completed check evidence yet; read live checks through the broker before merge.",
+      "summary": "The replacement cleanup PR is not created yet; read live checks through the broker after publication and before merge.",
       "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pr-080-agent-toolkit-review-gate-closeout"
+      "updated_at": "pr-085-retire-legacy-workflow-assets"
     },
     "self_managed": {
       "kind": "self_managed",
@@ -41,9 +41,9 @@
     "mergeguez_review": {
       "kind": "mergeguez_review",
       "status": "pending-live-read",
-      "summary": "The active closeout PR #84 requires a fresh exact-head Mergeguez review; historical PR #81 approval is recorded in the completed task metadata, not this active gate.",
+      "summary": "The replacement cleanup PR requires a fresh exact-head Mergeguez review after guarded publication.",
       "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pr-080-agent-toolkit-review-gate-closeout"
+      "updated_at": "pr-085-retire-legacy-workflow-assets"
     }
   }
 }

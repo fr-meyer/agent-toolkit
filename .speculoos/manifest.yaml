@@ -7,7 +7,7 @@ repository:
   base_branch: dev
   default_branch: main
 status:
-  phase: in_review
+  phase: local_implementation
   blocker_summary: []
 publication_policy:
   repository_visibility: shared-repository
@@ -53,12 +53,12 @@ surfaces:
     authority: canonical
   github_pull_request:
     enabled: true
-    status: open
+    status: not-created
     base_branch: dev
     default_branch: main
-    head_branch: chore/pr-080-agent-toolkit-review-gate-closeout
+    head_branch: chore/retire-legacy-workflow-assets
     head_sha: null
-    head_sha_source: Live PR #84 exact-head readback is supplied to review and merge gates; no self-referential SHA is committed
+    head_sha_source: Live replacement PR exact-head readback will supply the published head; no self-referential SHA is committed
     merge_commit: null
 gates:
   before_publish:
@@ -70,5 +70,5 @@ gates:
   after_publish:
     - exact-head-mergeguez-review-requested
     - exact-head-review-and-check-evidence
-current_task: pr-080-agent-toolkit-review-gate-closeout
-current_task_metadata: .speculoos/tasks/pr-080-agent-toolkit-review-gate-closeout.yaml
+current_task: pr-085-retire-legacy-workflow-assets
+current_task_metadata: .speculoos/tasks/pr-085-retire-legacy-workflow-assets.yaml

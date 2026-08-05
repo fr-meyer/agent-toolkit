@@ -1,0 +1,93 @@
+id: pr-085-retire-legacy-workflow-assets
+title: Retire obsolete CodeRabbit workflow assets
+summary: Remove retired CodeRabbit workflow entrypoints, templates, helper scripts, and distribution bindings while preserving unrelated compatibility skills and historical records.
+status: local-implementation
+branch: chore/retire-legacy-workflow-assets
+base_branch: dev
+github:
+  issue: null
+  pull_request: null
+  issue_project_item: null
+  pull_request_project_item: unavailable
+  project_item: unavailable
+  project_status: unavailable
+  head_sha: null
+  head_sha_source: Live replacement PR exact-head readback will supply the published head; no self-referential SHA is committed.
+  url: null
+delivery_policy:
+  mode: stop_after_review
+  reason: Branch publication, replacement PR creation, and exact-head Mergeguez review request are approved; merge and closure of the predecessor PR remain separate gates.
+scope:
+  - remove obsolete active CodeRabbit workflow entrypoints and canonical templates
+  - remove retired scripts/coderabbit automation helpers
+  - remove retired assets from workflow materialization, distribution, and ref-sync manifests
+  - update workflow documentation and maintenance entrypoints to describe only active assets
+  - preserve unrelated compatibility skills and historical records outside active workflow surfaces
+non_goals:
+  - changing Mergeguez behavior, reviewer authority, credentials, branch protection, or deployment
+  - reactivating CodeRabbit or Pullfrog
+  - merging to dev or main, publishing a release, or closing predecessor PR #79
+  - deleting unrelated compatibility skills or historical audit material
+acceptance:
+  - no deleted CodeRabbit workflow or scripts/coderabbit path remains in active workflow, script, template, or manifest surfaces
+  - retained manifest paths resolve and changed YAML/JSON parse
+  - retained shell and Python checks pass
+  - targeted unit and regression fixture tests pass
+  - public PR title, body, diff, and commit-message safety scans pass
+  - exact-head Mergeguez review is requested after guarded publication
+write_paths:
+  - .github/workflows/coderabbit-pr-automation.yml
+  - .github/workflows/coderabbit-pr-comment-trigger.yml
+  - .github/workflows/sync-starter-workflow-template-refs-trigger.yml
+  - .speculoos/manifest.yaml
+  - .speculoos/review-evidence.json
+  - .speculoos/tasks/pr-085-retire-legacy-workflow-assets.yaml
+  - README.md
+  - docs/cross-repo-workflow-distribution-spec.md
+  - docs/cross-repo-workflow-updater-contract.md
+  - docs/github-actions-template-catalog.md
+  - docs/workflow-asset-library-layout.md
+  - docs/workflow-authoring-rules.md
+  - scripts/coderabbit/README.md
+  - scripts/coderabbit/fetch_threads.sh
+  - scripts/coderabbit/normalize_threads.py
+  - scripts/coderabbit/orchestrate.sh
+  - scripts/coderabbit/orchestrate_core.py
+  - scripts/coderabbit/preflight.sh
+  - scripts/coderabbit/preflight_core.py
+  - scripts/coderabbit/prepare_agent_context.sh
+  - scripts/coderabbit/run_agent_pass.sh
+  - scripts/coderabbit/run_agent_pass_core.py
+  - scripts/coderabbit/run_commit_pass.sh
+  - scripts/coderabbit/run_commit_pass_core.py
+  - scripts/coderabbit/run_validation.sh
+  - scripts/coderabbit/run_validation_core.py
+  - scripts/coderabbit/setup_agent_runtime.sh
+  - scripts/coderabbit/setup_coderabbit_cli.sh
+  - templates/cross-repo-workflow-distribution-manifest.json
+  - templates/repo-workflow-materialization-manifest.json
+  - templates/reusable-workflows/coderabbit-pr-automation.yml
+  - templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml
+  - templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml
+  - templates/starter-workflows/coderabbit-pr-comment-trigger.yml
+  - templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml
+  - templates/workflow-ref-sync-manifest.json
+validation:
+  - git diff --check origin/dev...HEAD
+  - parse changed YAML and JSON workflow and manifest files
+  - run retained shell syntax and Python compile checks
+  - run targeted unit and regression fixture tests
+  - validate workflow manifest target paths and retired active-path references
+  - run the public PR safety scan over title, body, diff, and commit messages
+  - run Speculoos validate and publish-check for this task
+publication_boundary:
+  statement: Repository workflow assets, manifests, documentation, and task metadata only. No credential, deployment, branch-protection, review-authority, release, stable-branch, or approval-bypass change.
+documentation_impact:
+  status: required
+  rationale: Workflow catalog, authoring, distribution, updater, and layout documentation must stop presenting retired CodeRabbit assets as supported.
+branch_plan: Publish the current-base chore branch through Mergeguez, open a replacement PR to dev, request exact-head Mergeguez review, and stop before merge.
+executor: OpenClaw main session
+private_data_scan: required
+publish_authority: Explicit operator approval covers guarded branch publication, replacement PR creation, and exact-head Mergeguez review request. Merge, predecessor-PR closure, branch cleanup, stable promotion, release, deployment, credentials, and policy changes remain excluded.
+tracking:
+  workboard_card: f86d3e37-a0f0-4b0f-82cf-0f12a13f4b63
