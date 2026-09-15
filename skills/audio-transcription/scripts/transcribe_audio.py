@@ -11,24 +11,37 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import difflib
+import email.utils
 import hashlib
+import http.client
 import json
 import mimetypes
 import os
+import random
 import re
 import shutil
+import socket
+import ssl
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterator
 from urllib import request, error
 from zoneinfo import ZoneInfo
 
 MISTRAL_ENDPOINT = "https://api.mistral.ai/v1/audio/transcriptions"
 DEFAULT_MODEL = "voxtral-mini-latest"
 DEFAULT_MAX_DIRECT_DURATION_SECONDS = 3 * 60 * 60
+DEFAULT_MAX_ATTEMPTS = 3
+DEFAULT_RETRY_BACKOFF_SECONDS = 2.0
+DEFAULT_MAX_RETRY_DELAY_SECONDS = 60.0
+DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024 * 1024
+DEFAULT_IO_CHUNK_BYTES = 1024 * 1024
+DEFAULT_CHUNK_SECONDS = 45 * 60
+DEFAULT_CHUNK_OVERLAP_SECONDS = 2.0
 DEFAULT_TIMEZONE = "UTC"
 DEFAULT_ARCHIVE_ROOT = "memory"
 DEFAULT_SEMINAR_COLLECTION = "seminars"
@@ -87,7 +100,11 @@ def inspect_media(path: Path, record_source_path: bool = False) -> dict[str, Any
 def normalize_audio(input_path: Path, out_dir: Path, fmt: str = "mp3", sample_rate: int = 16000) -> tuple[Path, list[str]]:
     fmt = fmt.lower().lstrip(".")
     out_path = out_dir / f"normalized.{fmt}"
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(input_path), "-vn", "-ac", "1", "-ar", str(sample_rate)]
+    cmd = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(input_path),
+        "-map", "0:a:0", "-vn", "-map_metadata", "-1", "-map_chapters", "-1",
+        "-ac", "1", "-ar", str(sample_rate),
+    ]
     if fmt == "mp3":
         cmd += ["-b:a", "64k", str(out_path)]
     elif fmt == "m4a":
@@ -103,7 +120,11 @@ def normalize_audio(input_path: Path, out_dir: Path, fmt: str = "mp3", sample_ra
 
 
 def redacted_ffmpeg_command(fmt: str, sample_rate: int) -> list[str]:
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", "<source>", "-vn", "-ac", "1", "-ar", str(sample_rate)]
+    cmd = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", "<source>",
+        "-map", "0:a:0", "-vn", "-map_metadata", "-1", "-map_chapters", "-1",
+        "-ac", "1", "-ar", str(sample_rate),
+    ]
     if fmt == "mp3":
         cmd += ["-b:a", "64k", "<normalized.mp3>"]
     elif fmt == "m4a":
@@ -113,12 +134,258 @@ def redacted_ffmpeg_command(fmt: str, sample_rate: int) -> list[str]:
     return cmd
 
 
+class AudioChunkPlan:
+    def __init__(
+        self,
+        index: int,
+        media_start: float,
+        media_end: float,
+        ownership_start: float,
+        ownership_end: float,
+        is_last: bool = False,
+    ) -> None:
+        self.index = index
+        self.media_start = media_start
+        self.media_end = media_end
+        self.ownership_start = ownership_start
+        self.ownership_end = ownership_end
+        self.is_last = is_last
+        self.path: Path | None = None
+
+    @property
+    def duration(self) -> float:
+        return self.media_end - self.media_start
+
+
+def plan_audio_chunks(
+    duration: float,
+    *,
+    chunk_seconds: float = DEFAULT_CHUNK_SECONDS,
+    overlap_seconds: float = DEFAULT_CHUNK_OVERLAP_SECONDS,
+) -> list[AudioChunkPlan]:
+    if duration <= 0:
+        raise ValueError("Audio duration must be positive for chunk fallback.")
+    if chunk_seconds <= 0 or overlap_seconds < 0 or overlap_seconds * 2 >= chunk_seconds:
+        raise ValueError("Chunk duration/overlap values are invalid.")
+    plans: list[AudioChunkPlan] = []
+    ownership_start = 0.0
+    index = 1
+    while ownership_start < duration:
+        ownership_end = min(duration, ownership_start + chunk_seconds)
+        media_start = max(0.0, ownership_start - overlap_seconds)
+        media_end = min(duration, ownership_end + overlap_seconds)
+        plans.append(
+            AudioChunkPlan(
+                index,
+                media_start,
+                media_end,
+                ownership_start,
+                ownership_end,
+                is_last=ownership_end >= duration,
+            )
+        )
+        ownership_start = ownership_end
+        index += 1
+    return plans
+
+
+def split_audio_chunks(
+    input_path: Path,
+    out_dir: Path,
+    duration: float,
+    *,
+    fmt: str,
+    sample_rate: int,
+    chunk_seconds: float,
+    overlap_seconds: float,
+) -> list[AudioChunkPlan]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    plans = plan_audio_chunks(duration, chunk_seconds=chunk_seconds, overlap_seconds=overlap_seconds)
+    for plan in plans:
+        out_path = out_dir / f"chunk-{plan.index:04d}.{fmt}"
+        cmd = [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-ss", f"{plan.media_start:.6f}", "-i", str(input_path),
+            "-t", f"{plan.duration:.6f}", "-map", "0:a:0", "-vn",
+            "-map_metadata", "-1", "-map_chapters", "-1", "-ac", "1", "-ar", str(sample_rate),
+        ]
+        if fmt == "mp3":
+            cmd += ["-b:a", "64k", str(out_path)]
+        elif fmt == "m4a":
+            cmd += ["-c:a", "aac", "-b:a", "64k", str(out_path)]
+        elif fmt == "wav":
+            cmd += ["-c:a", "pcm_s16le", str(out_path)]
+        else:
+            raise ValueError("Unsupported chunk format.")
+        proc = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffmpeg chunk creation failed ({proc.returncode}):\n{proc.stderr.strip()}")
+        plan.path = out_path
+    return plans
+
+
+def _numeric_time(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _shift_chunk_item(item: dict[str, Any], plan: AudioChunkPlan) -> dict[str, Any] | None:
+    start = _numeric_time(segment_start(item)) + plan.media_start
+    local_end = segment_end(item)
+    end = _numeric_time(local_end, _numeric_time(segment_start(item))) + plan.media_start
+    midpoint = (start + end) / 2
+    if midpoint < plan.ownership_start or (not plan.is_last and midpoint >= plan.ownership_end):
+        return None
+    shifted = dict(item)
+    shifted["start"] = start
+    shifted["end"] = end
+    shifted["timestamp"] = [start, end]
+    speaker = segment_speaker(item)
+    if speaker != "Unknown speaker":
+        shifted["speaker"] = f"Chunk {plan.index:04d} / {speaker}"
+    shifted["_chunk_index"] = plan.index
+    return shifted
+
+
+def _dedupe_adjacent_segments(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    for segment in sorted(segments, key=lambda item: (_numeric_time(segment_start(item)), _numeric_time(segment_end(item)))):
+        text_key = re.sub(r"\W+", " ", segment_text(segment).casefold()).strip()
+        if deduped:
+            previous = deduped[-1]
+            previous_key = re.sub(r"\W+", " ", segment_text(previous).casefold()).strip()
+            close = _numeric_time(segment_start(segment)) <= _numeric_time(segment_end(previous)) + 1.0
+            if text_key and text_key == previous_key and close:
+                continue
+        deduped.append(segment)
+    return deduped
+
+
+def _sum_usage(responses: list[dict[str, Any]]) -> dict[str, Any]:
+    totals: dict[str, Any] = {}
+    for response in responses:
+        for key, value in (response.get("usage") or {}).items():
+            if isinstance(value, (int, float)):
+                totals[key] = totals.get(key, 0) + value
+    return totals
+
+
+def stitch_chunk_responses(
+    parts: list[tuple[AudioChunkPlan, dict[str, Any]]],
+    *,
+    duration: float,
+    diarized: bool = True,
+) -> dict[str, Any]:
+    segments: list[dict[str, Any]] = []
+    words: list[dict[str, Any]] = []
+    responses = [response for _plan, response in parts]
+    for plan, response in parts:
+        for item in get_segments(response, plan.duration):
+            shifted = _shift_chunk_item(item, plan)
+            if shifted is not None:
+                segments.append(shifted)
+        for item in response.get("words") or response.get("word_timestamps") or []:
+            if isinstance(item, dict):
+                shifted = _shift_chunk_item(item, plan)
+                if shifted is not None:
+                    words.append(shifted)
+    segments = _dedupe_adjacent_segments(segments)
+    words = _dedupe_adjacent_segments(words)
+    aggregate: dict[str, Any] = {
+        "model": next((response.get("model") for response in responses if response.get("model")), None),
+        "language": next((response.get("language") for response in responses if response.get("language")), None),
+        "text": " ".join(segment_text(segment) for segment in segments if segment_text(segment)),
+        "segments": segments,
+        "usage": _sum_usage(responses),
+        "_openclaw_transcription": {
+            "strategy": "chunked_diarized" if diarized else "chunked",
+            "derived_aggregate": True,
+            "chunk_count": len(parts),
+            "duration_seconds": duration,
+            "speaker_labels_namespaced_per_chunk": True,
+        },
+    }
+    if words:
+        aggregate["words"] = words
+    return aggregate
+
+
 def guess_mime(path: Path) -> str:
     return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
-def multipart_body(fields: list[tuple[str, str]], file_field: str, file_path: Path) -> tuple[bytes, str]:
-    boundary = f"----agent-skill-{uuid.uuid4().hex}"
+class MultipartStream:
+    """Replayable multipart body that never loads the source file into memory."""
+
+    def __init__(
+        self,
+        *,
+        prefix: bytes,
+        file_path: Path,
+        suffix: bytes,
+        content_type: str,
+        chunk_size: int = DEFAULT_IO_CHUNK_BYTES,
+    ) -> None:
+        self.prefix = prefix
+        self.file_path = file_path
+        self.suffix = suffix
+        self.content_type = content_type
+        self.chunk_size = chunk_size
+
+    @property
+    def content_length(self) -> int:
+        return len(self.prefix) + self.file_path.stat().st_size + len(self.suffix)
+
+    def __iter__(self) -> Iterator[bytes]:
+        yield self.prefix
+        with self.file_path.open("rb") as source:
+            while chunk := source.read(self.chunk_size):
+                yield chunk
+        yield self.suffix
+
+
+class MistralRequestError(RuntimeError):
+    """Safe, typed request failure used by retry policy and workflow circuits."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        category: str,
+        retryable: bool,
+        status: int | None = None,
+        attempts: int = 1,
+        retry_after_seconds: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.category = category
+        self.retryable = retryable
+        self.status = status
+        self.attempts = attempts
+        self.retry_after_seconds = retry_after_seconds
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "category": self.category,
+            "retryable": self.retryable,
+            "status": self.status,
+            "attempts": self.attempts,
+            "retry_after_seconds": self.retry_after_seconds,
+            "message": str(self),
+        }
+
+
+def multipart_stream(
+    fields: list[tuple[str, str]],
+    file_field: str,
+    file_path: Path,
+    *,
+    boundary: str | None = None,
+    chunk_size: int = DEFAULT_IO_CHUNK_BYTES,
+) -> MultipartStream:
+    boundary = boundary or f"----agent-skill-{uuid.uuid4().hex}"
     chunks: list[bytes] = []
     for name, value in fields:
         chunks.append(f"--{boundary}\r\n".encode())
@@ -130,10 +397,135 @@ def multipart_body(fields: list[tuple[str, str]], file_field: str, file_path: Pa
         f'Content-Disposition: form-data; name="{file_field}"; filename="{file_path.name}"\r\n'.encode()
     )
     chunks.append(f"Content-Type: {guess_mime(file_path)}\r\n\r\n".encode())
-    chunks.append(file_path.read_bytes())
-    chunks.append(b"\r\n")
-    chunks.append(f"--{boundary}--\r\n".encode())
-    return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+    return MultipartStream(
+        prefix=b"".join(chunks),
+        file_path=file_path,
+        suffix=b"\r\n" + f"--{boundary}--\r\n".encode(),
+        content_type=f"multipart/form-data; boundary={boundary}",
+        chunk_size=chunk_size,
+    )
+
+
+def multipart_body(fields: list[tuple[str, str]], file_field: str, file_path: Path) -> tuple[bytes, str]:
+    """Compatibility helper for small tests; production calls use multipart_stream()."""
+    stream = multipart_stream(fields, file_field, file_path)
+    return b"".join(stream), stream.content_type
+
+
+def parse_retry_after(value: str | None, *, now: float | None = None) -> float | None:
+    if not value:
+        return None
+    raw = value.strip()
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        pass
+    try:
+        parsed = email.utils.parsedate_to_datetime(raw)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.timezone.utc)
+        return max(0.0, parsed.timestamp() - (time.time() if now is None else now))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def is_retryable_transport_error(exc: BaseException) -> bool:
+    reason = exc.reason if isinstance(exc, error.URLError) else exc
+    if isinstance(
+        reason,
+        (
+            TimeoutError,
+            socket.timeout,
+            ConnectionResetError,
+            ConnectionAbortedError,
+            BrokenPipeError,
+            http.client.RemoteDisconnected,
+            http.client.IncompleteRead,
+            ssl.SSLEOFError,
+        ),
+    ):
+        return True
+    message = str(reason).lower()
+    return any(
+        marker in message
+        for marker in (
+            "eof occurred in violation of protocol",
+            "remote end closed connection",
+            "connection reset",
+            "connection aborted",
+            "broken pipe",
+            "timed out",
+        )
+    )
+
+
+def read_response_bytes(
+    response: Any,
+    *,
+    max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
+    chunk_size: int = DEFAULT_IO_CHUNK_BYTES,
+) -> bytes:
+    """Capture a complete bounded response through a temporary file."""
+    content_length_raw = response.headers.get("Content-Length") if response.headers else None
+    expected: int | None = None
+    if content_length_raw:
+        try:
+            expected = int(content_length_raw)
+        except (TypeError, ValueError):
+            expected = None
+    if expected is not None and expected > max_response_bytes:
+        raise MistralRequestError(
+            f"Mistral response exceeds configured limit ({expected} > {max_response_bytes} bytes)",
+            category="response_too_large",
+            retryable=False,
+        )
+
+    total = 0
+    with tempfile.TemporaryFile(prefix="agent-stt-response-") as captured:
+        while True:
+            try:
+                chunk = response.read(chunk_size)
+            except http.client.IncompleteRead as exc:
+                if exc.partial:
+                    captured.write(exc.partial)
+                    total += len(exc.partial)
+                raise MistralRequestError(
+                    f"Mistral response body truncated after {total} bytes",
+                    category="incomplete_response",
+                    retryable=True,
+                ) from exc
+            if not chunk:
+                break
+            captured.write(chunk)
+            total += len(chunk)
+            if total > max_response_bytes:
+                raise MistralRequestError(
+                    f"Mistral response exceeds configured limit ({total} > {max_response_bytes} bytes)",
+                    category="response_too_large",
+                    retryable=False,
+                )
+        if expected is not None and total != expected:
+            raise MistralRequestError(
+                f"Mistral response body truncated ({total} of {expected} bytes)",
+                category="incomplete_response",
+                retryable=True,
+            )
+        captured.seek(0)
+        return captured.read()
+
+
+def retry_delay_seconds(
+    attempt: int,
+    *,
+    retry_after_seconds: float | None,
+    backoff_seconds: float,
+    max_delay_seconds: float,
+    random_value: float,
+) -> float:
+    base = backoff_seconds * (2 ** max(0, attempt - 1))
+    requested = max(base, retry_after_seconds or 0.0)
+    jitter = min(1.0, requested * 0.25) * max(0.0, min(1.0, random_value))
+    return min(max_delay_seconds, requested + jitter)
 
 
 def call_mistral(
@@ -147,7 +539,21 @@ def call_mistral(
     temperature: float | None,
     timeout: int,
     multipart_array_style: str,
+    *,
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    retry_backoff_seconds: float = DEFAULT_RETRY_BACKOFF_SECONDS,
+    max_retry_delay_seconds: float = DEFAULT_MAX_RETRY_DELAY_SECONDS,
+    max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
+    urlopen_fn: Callable[..., Any] | None = None,
+    sleep_fn: Callable[[float], None] | None = None,
+    random_fn: Callable[[], float] | None = None,
 ) -> tuple[dict[str, Any], bytes]:
+    if max_attempts < 1 or max_attempts > DEFAULT_MAX_ATTEMPTS:
+        raise ValueError(f"max_attempts must be between 1 and {DEFAULT_MAX_ATTEMPTS}")
+    urlopen_fn = urlopen_fn or request.urlopen
+    sleep_fn = sleep_fn or time.sleep
+    random_fn = random_fn or random.random
+
     fields: list[tuple[str, str]] = [("model", model), ("diarize", "true" if diarize else "false")]
     # Mistral docs note timestamp_granularities is not compatible with language. Prefer timestamps.
     add_array_fields(fields, "timestamp_granularities", timestamp_granularities, multipart_array_style)
@@ -162,24 +568,81 @@ def call_mistral(
     if temperature is not None:
         fields.append(("temperature", str(temperature)))
 
-    body, content_type = multipart_body(fields, "file", audio_path)
-    req = request.Request(MISTRAL_ENDPOINT, data=body, method="POST")
-    req.add_header("Authorization", f"Bearer {api_key}")
-    req.add_header("Content-Type", content_type)
-    req.add_header("Content-Length", str(len(body)))
-    try:
-        with request.urlopen(req, timeout=timeout) as resp:
-            # Decode provider JSON strictly. Replacement-character artifacts in
-            # transcript text should be treated as provider/output quality data,
-            # not silently introduced by the capture layer.
-            raw_bytes = resp.read()
-            raw = raw_bytes.decode("utf-8")
-            return json.loads(raw), raw_bytes
-    except error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Mistral API HTTP {exc.code}: {raw[:2000]}") from exc
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("Mistral API did not return JSON") from exc
+    body = multipart_stream(fields, "file", audio_path)
+    last_error: MistralRequestError | None = None
+    for attempt in range(1, max_attempts + 1):
+        req = request.Request(MISTRAL_ENDPOINT, data=body, method="POST")
+        req.add_header("Authorization", f"Bearer {api_key}")
+        req.add_header("Content-Type", body.content_type)
+        req.add_header("Content-Length", str(body.content_length))
+        try:
+            with urlopen_fn(req, timeout=timeout) as resp:
+                raw_bytes = read_response_bytes(resp, max_response_bytes=max_response_bytes)
+        except error.HTTPError as exc:
+            try:
+                error_body = exc.read(65536)
+            except http.client.IncompleteRead as body_exc:
+                error_body = body_exc.partial or b""
+            except Exception:
+                error_body = b""
+            raw = error_body.decode("utf-8", errors="replace")
+            retryable = exc.code == 429 or 500 <= exc.code <= 599
+            last_error = MistralRequestError(
+                f"Mistral API HTTP {exc.code}: {raw[:2000]}",
+                category=f"http_{exc.code}",
+                retryable=retryable,
+                status=exc.code,
+                attempts=attempt,
+                retry_after_seconds=parse_retry_after(exc.headers.get("Retry-After") if exc.headers else None),
+            )
+        except MistralRequestError as exc:
+            exc.attempts = attempt
+            last_error = exc
+        except Exception as exc:
+            last_error = MistralRequestError(
+                f"Mistral transport failure: {type(exc).__name__}: {exc}",
+                category="transport",
+                retryable=is_retryable_transport_error(exc),
+                attempts=attempt,
+            )
+        else:
+            try:
+                raw = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise MistralRequestError(
+                    "Mistral API response was not valid UTF-8",
+                    category="invalid_utf8",
+                    retryable=False,
+                    attempts=attempt,
+                ) from exc
+            try:
+                return json.loads(raw), raw_bytes
+            except json.JSONDecodeError as exc:
+                raise MistralRequestError(
+                    "Mistral API did not return complete JSON",
+                    category="invalid_json",
+                    retryable=False,
+                    attempts=attempt,
+                ) from exc
+
+        assert last_error is not None
+        if not last_error.retryable or attempt >= max_attempts:
+            raise last_error
+        delay = retry_delay_seconds(
+            attempt,
+            retry_after_seconds=last_error.retry_after_seconds,
+            backoff_seconds=retry_backoff_seconds,
+            max_delay_seconds=max_retry_delay_seconds,
+            random_value=random_fn(),
+        )
+        eprint(
+            f"RETRY_MISTRAL attempt={attempt + 1}/{max_attempts} "
+            f"category={last_error.category} delay_seconds={delay:.3f}"
+        )
+        sleep_fn(delay)
+
+    assert last_error is not None
+    raise last_error
 
 
 def add_array_fields(fields: list[tuple[str, str]], name: str, values: list[str], style: str) -> None:
@@ -233,7 +696,7 @@ def segment_end(seg: dict[str, Any]) -> Any:
 
 
 def segment_text(seg: dict[str, Any]) -> str:
-    return str(seg.get("text") or seg.get("transcript") or seg.get("content") or "").strip()
+    return str(seg.get("text") or seg.get("word") or seg.get("transcript") or seg.get("content") or "").strip()
 
 
 def normalize_speaker(value: Any) -> str:
@@ -488,6 +951,33 @@ def write_json(path: Path, obj: Any) -> None:
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def safe_failure_record(exc: BaseException) -> dict[str, Any]:
+    if isinstance(exc, MistralRequestError):
+        record = exc.as_dict()
+    else:
+        record = {
+            "category": "unexpected",
+            "retryable": False,
+            "status": None,
+            "attempts": 1,
+            "retry_after_seconds": None,
+            "message": f"{type(exc).__name__}: {exc}",
+        }
+    record["message"] = re.sub(
+        r"https?://[^/@\s]+@",
+        "https://<redacted>@",
+        str(record.get("message") or ""),
+    )[:4000]
+    return record
+
+
+def write_failure_report(path: Path, exc: BaseException) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    write_json(tmp, {"status": "failed", "failure": safe_failure_record(exc)})
+    tmp.replace(path)
+
+
 def duration_hms(seconds: float | None) -> str:
     if seconds is None:
         return "unknown"
@@ -622,6 +1112,8 @@ def save_archive(
     source_info: dict[str, Any],
     normalize_info: dict[str, Any],
     provider_raw_bytes: bytes | None = None,
+    provider_raw_chunks: list[tuple[str, bytes]] | None = None,
+    transcription_strategy: dict[str, Any] | None = None,
 ) -> Path:
     tz = ZoneInfo(args.timezone)
     now = dt.datetime.now(tz)
@@ -662,6 +1154,15 @@ def save_archive(
             repaired_transcript = render_repaired_transcript(title, repaired_segments, speaker_names, alignment_ratio)
         else:
             quality_flags.append("repaired_transcript_alignment_below_threshold")
+    raw_chunks = provider_raw_chunks or []
+    raw_chunk_manifest = [
+        {
+            "path": f"provider-responses.raw/{name}",
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "size_bytes": len(raw),
+        }
+        for name, raw in raw_chunks
+    ]
     metadata = {
         "title": title,
         "date": args.date or now.date().isoformat(),
@@ -689,11 +1190,14 @@ def save_archive(
             "unicode_replacement_characters_in_segments": segment_replacement_count,
         },
         "provider_raw_response": {
-            "preserved": bool(provider_raw_bytes is not None),
+            "preserved": bool(provider_raw_bytes is not None or raw_chunks),
             "path": "provider-response.raw.json" if provider_raw_bytes is not None else None,
             "sha256": hashlib.sha256(provider_raw_bytes).hexdigest() if provider_raw_bytes is not None else None,
             "size_bytes": len(provider_raw_bytes) if provider_raw_bytes is not None else None,
+            "aggregate_is_derived": bool(raw_chunks),
+            "chunks": raw_chunk_manifest,
         },
+        "transcription_strategy": transcription_strategy or {"name": "direct", "chunk_count": 0},
         "repair": repair_info,
         "quality_flags": quality_flags,
         "related": args.related or [],
@@ -719,6 +1223,11 @@ def save_archive(
     write_json(archive_dir / "source-info.json", {"source": source_info, "normalization": normalize_info})
     if provider_raw_bytes is not None:
         (archive_dir / "provider-response.raw.json").write_bytes(provider_raw_bytes)
+    if raw_chunks:
+        raw_dir = archive_dir / "provider-responses.raw"
+        raw_dir.mkdir(exist_ok=True)
+        for name, raw in raw_chunks:
+            (raw_dir / name).write_bytes(raw)
     write_json(archive_dir / "provider-response.json", response)
     if segments:
         write_json(archive_dir / "segments.json", segments)
@@ -771,6 +1280,142 @@ def infer_quality_flags(args: argparse.Namespace, segments: list[dict[str, Any]]
     return out
 
 
+class TranscriptionResult:
+    def __init__(
+        self,
+        response: dict[str, Any],
+        *,
+        raw_bytes: bytes | None,
+        raw_chunks: list[tuple[str, bytes]],
+        effective_diarize: bool,
+        strategy: dict[str, Any],
+        quality_flags: list[str],
+    ) -> None:
+        self.response = response
+        self.raw_bytes = raw_bytes
+        self.raw_chunks = raw_chunks
+        self.effective_diarize = effective_diarize
+        self.strategy = strategy
+        self.quality_flags = quality_flags
+
+
+def call_mistral_for_args(
+    audio_path: Path,
+    args: argparse.Namespace,
+    context_bias: list[str],
+    *,
+    diarize: bool,
+) -> tuple[dict[str, Any], bytes]:
+    return call_mistral(
+        audio_path,
+        os.environ[args.api_key_env],
+        args.model,
+        diarize,
+        args.timestamp_granularities,
+        args.language,
+        context_bias,
+        args.temperature,
+        args.timeout,
+        args.multipart_array_style,
+        max_attempts=args.max_attempts,
+        retry_backoff_seconds=args.retry_backoff_seconds,
+        max_retry_delay_seconds=args.max_retry_delay_seconds,
+        max_response_bytes=args.max_response_bytes,
+    )
+
+
+def transcribe_with_fallback(
+    request_audio: Path,
+    args: argparse.Namespace,
+    *,
+    duration: float,
+    temp_dir: Path,
+    context_bias: list[str],
+) -> TranscriptionResult:
+    try:
+        response, raw = call_mistral_for_args(request_audio, args, context_bias, diarize=args.diarize)
+        return TranscriptionResult(
+            response,
+            raw_bytes=raw,
+            raw_chunks=[],
+            effective_diarize=args.diarize,
+            strategy={"name": "direct", "chunk_count": 0},
+            quality_flags=[],
+        )
+    except MistralRequestError as direct_error:
+        if not args.chunk_on_failure or not direct_error.retryable:
+            raise
+        direct_failure = direct_error
+
+    try:
+        plans = split_audio_chunks(
+            request_audio,
+            temp_dir / "chunks",
+            duration,
+            fmt=args.normalize_format,
+            sample_rate=args.sample_rate,
+            chunk_seconds=args.chunk_seconds,
+            overlap_seconds=args.chunk_overlap_seconds,
+        )
+        parts: list[tuple[AudioChunkPlan, dict[str, Any]]] = []
+        raw_chunks: list[tuple[str, bytes]] = []
+        for plan in plans:
+            assert plan.path is not None
+            response, raw = call_mistral_for_args(plan.path, args, context_bias, diarize=args.diarize)
+            parts.append((plan, response))
+            raw_chunks.append((f"chunk-{plan.index:04d}.raw.json", raw))
+        response = stitch_chunk_responses(parts, duration=duration, diarized=args.diarize)
+        return TranscriptionResult(
+            response,
+            raw_bytes=None,
+            raw_chunks=raw_chunks,
+            effective_diarize=args.diarize,
+            strategy={
+                "name": "chunked_diarized" if args.diarize else "chunked",
+                "chunk_count": len(plans),
+                "chunk_seconds": args.chunk_seconds,
+                "chunk_overlap_seconds": args.chunk_overlap_seconds,
+                "direct_failure": safe_failure_record(direct_failure),
+            },
+            quality_flags=(
+                ["chunked_transcription", "cross_chunk_speaker_labels_unreconciled"]
+                if args.diarize
+                else ["chunked_transcription"]
+            ),
+        )
+    except MistralRequestError as chunk_error:
+        if not args.allow_non_diarized_fallback or not chunk_error.retryable:
+            raise
+        chunk_failure = chunk_error
+
+    response, raw = call_mistral_for_args(request_audio, args, context_bias, diarize=False)
+    return TranscriptionResult(
+        response,
+        raw_bytes=raw,
+        raw_chunks=[],
+        effective_diarize=False,
+        strategy={
+            "name": "explicit_non_diarized_fallback",
+            "chunk_count": 0,
+            "direct_failure": safe_failure_record(direct_failure),
+            "chunk_failure": safe_failure_record(chunk_failure),
+        },
+        quality_flags=["diarization_disabled_after_explicit_fallback"],
+    )
+
+
+def fallback_policy_error(args: argparse.Namespace) -> str | None:
+    if args.chunk_on_failure and args.no_normalize:
+        return "--chunk-on-failure requires normalization; remove --no-normalize."
+    if args.allow_non_diarized_fallback and not args.chunk_on_failure:
+        return "--allow-non-diarized-fallback requires --chunk-on-failure."
+    if args.chunk_seconds <= 0:
+        return "--chunk-seconds must be positive."
+    if args.chunk_overlap_seconds < 0 or args.chunk_overlap_seconds * 2 >= args.chunk_seconds:
+        return "--chunk-overlap-seconds must be non-negative and less than half the chunk duration."
+    return None
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Transcribe audio/video and optionally create a seminar archive.")
     parser.add_argument("input", help="Audio/video file path")
@@ -817,6 +1462,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repair-from-clean-transcript", default=None, help="Path to a cleaner untimed transcript to align onto timed provider segments; writes transcript.repaired.md and segments.repaired.json when alignment is good enough.")
     parser.add_argument("--repair-alignment-threshold", type=float, default=0.85, help="Minimum alignment ratio required to write transcript.repaired.md.")
     parser.add_argument("--timeout", type=int, default=600)
+    parser.add_argument("--max-attempts", type=int, default=DEFAULT_MAX_ATTEMPTS, help="Total attempts for one equivalent Mistral request; hard-capped at 3.")
+    parser.add_argument("--retry-backoff-seconds", type=float, default=DEFAULT_RETRY_BACKOFF_SECONDS)
+    parser.add_argument("--max-retry-delay-seconds", type=float, default=DEFAULT_MAX_RETRY_DELAY_SECONDS)
+    parser.add_argument("--max-response-bytes", type=int, default=DEFAULT_MAX_RESPONSE_BYTES)
+    parser.add_argument("--failure-report", default=None, help="Optional path for a safe machine-readable failure record.")
+    parser.add_argument("--chunk-on-failure", action="store_true", help="After normalized direct retries exhaust, retry as overlapping diarized chunks.")
+    parser.add_argument("--chunk-seconds", type=float, default=DEFAULT_CHUNK_SECONDS)
+    parser.add_argument("--chunk-overlap-seconds", type=float, default=DEFAULT_CHUNK_OVERLAP_SECONDS)
+    parser.add_argument("--allow-non-diarized-fallback", action="store_true", help="Explicitly permit a final non-diarized pass after chunked diarization also fails.")
     args = parser.parse_args()
     args.archive_root_defaulted = args.archive_root is None
     args.seminar_collection_defaulted = args.seminar_collection is None
@@ -838,6 +1492,19 @@ def main() -> int:
 
     if args.delete_staged_input_after_archive and not args.staged_input:
         eprint("Refusing to delete input unless --staged-input is also set.")
+        return 2
+    if not 1 <= args.max_attempts <= DEFAULT_MAX_ATTEMPTS:
+        eprint(f"--max-attempts must be between 1 and {DEFAULT_MAX_ATTEMPTS}.")
+        return 2
+    if args.retry_backoff_seconds < 0 or args.max_retry_delay_seconds < 0:
+        eprint("Retry delays must be non-negative.")
+        return 2
+    if args.max_response_bytes < 1:
+        eprint("--max-response-bytes must be positive.")
+        return 2
+    policy_error = fallback_policy_error(args)
+    if policy_error:
+        eprint(policy_error)
         return 2
 
     if args.mode != "quick" and not args.allow_default_destination:
@@ -881,6 +1548,19 @@ def main() -> int:
                 "timestamp_granularities": args.timestamp_granularities,
                 "multipart_array_style": args.multipart_array_style,
                 "language_will_be_sent": bool(args.language and not args.timestamp_granularities),
+                "normalization": "disabled" if args.no_normalize else {
+                    "format": args.normalize_format,
+                    "sample_rate": args.sample_rate,
+                    "channels": 1,
+                    "bit_rate": "64k" if args.normalize_format in {"mp3", "m4a"} else None,
+                    "non_audio_streams_removed": True,
+                },
+                "fallback_policy": {
+                    "chunk_on_failure": args.chunk_on_failure,
+                    "chunk_seconds": args.chunk_seconds,
+                    "chunk_overlap_seconds": args.chunk_overlap_seconds,
+                    "allow_non_diarized_fallback": args.allow_non_diarized_fallback,
+                },
                 "archive_dir": str(create_archive_dir(args, args.title or input_path.stem, ZoneInfo(args.timezone))) if args.mode != "quick" else None,
                 "cloud_upload": False,
                 "warnings": [long_audio_warning] if long_audio_warning else [],
@@ -904,6 +1584,8 @@ def main() -> int:
 
         normalize_info: dict[str, Any] = {"normalized": False}
         provider_raw_bytes: bytes | None = None
+        provider_raw_chunks: list[tuple[str, bytes]] = []
+        transcription_strategy: dict[str, Any] = {"name": "mock" if args.mock_response else "direct", "chunk_count": 0}
         with tempfile.TemporaryDirectory(prefix="agent-stt-") as td:
             request_audio = input_path
             if not args.no_normalize:
@@ -923,24 +1605,33 @@ def main() -> int:
             else:
                 if args.language and args.timestamp_granularities:
                     eprint("Note: Mistral docs say timestamp_granularities is not compatible with language; omitting language hint.")
-                response, provider_raw_bytes = call_mistral(
+                result = transcribe_with_fallback(
                     request_audio,
-                    os.environ[args.api_key_env],
-                    args.model,
-                    args.diarize,
-                    args.timestamp_granularities,
-                    args.language,
-                    collect_context_bias(args, parse_speaker_mappings(args.speaker or [])),
-                    args.temperature,
-                    args.timeout,
-                    args.multipart_array_style,
+                    args,
+                    duration=float(duration or 0),
+                    temp_dir=Path(td),
+                    context_bias=collect_context_bias(args, parse_speaker_mappings(args.speaker or [])),
                 )
+                response = result.response
+                provider_raw_bytes = result.raw_bytes
+                provider_raw_chunks = result.raw_chunks
+                transcription_strategy = result.strategy
+                args.diarize = result.effective_diarize
+                args.quality_flag.extend(result.quality_flags)
 
         if args.mode == "quick":
             print(response.get("text") or render_transcript(args.title or input_path.stem, get_segments(response, source_info.get("duration_seconds")), parse_speaker_mappings(args.speaker or [])))
             return 0
 
-        archive_dir = save_archive(args, response, source_info, normalize_info, provider_raw_bytes)
+        archive_dir = save_archive(
+            args,
+            response,
+            source_info,
+            normalize_info,
+            provider_raw_bytes,
+            provider_raw_chunks=provider_raw_chunks,
+            transcription_strategy=transcription_strategy,
+        )
         staged_input_deleted = False
         if args.delete_staged_input_after_archive:
             input_path.unlink()
@@ -955,6 +1646,11 @@ def main() -> int:
         }, ensure_ascii=False, indent=2))
         return 0
     except Exception as exc:
+        if args.failure_report:
+            try:
+                write_failure_report(Path(args.failure_report), exc)
+            except Exception as report_exc:
+                eprint(f"Warning: could not write failure report: {report_exc}")
         eprint(f"ERROR: {exc}")
         return 1
 
