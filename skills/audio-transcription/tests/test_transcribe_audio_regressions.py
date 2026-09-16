@@ -190,6 +190,73 @@ class AudioTranscriptionRegressionTests(unittest.TestCase):
             self.assertEqual(response["text"], "ok")
             self.assertEqual(raw, response_raw)
 
+    def test_truncated_json_without_content_length_retries(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            audio = Path(td) / "sample.mp3"
+            audio.write_bytes(b"audio-fixture")
+            complete = b'{"text":"ok","segments":[]}'
+            calls = 0
+
+            def fake_urlopen(_req: object, timeout: int) -> FakeResponse:
+                nonlocal calls
+                calls += 1
+                self.assertEqual(timeout, 30)
+                if calls == 1:
+                    return FakeResponse(b'{"text":"unterminated')
+                return FakeResponse(complete)
+
+            delays: list[float] = []
+            response, raw = transcribe_audio.call_mistral(
+                audio,
+                "not-a-real-key",
+                "voxtral-mini-latest",
+                True,
+                ["segment"],
+                None,
+                [],
+                None,
+                30,
+                "repeated",
+                urlopen_fn=fake_urlopen,
+                sleep_fn=delays.append,
+                random_fn=lambda: 0.0,
+            )
+            self.assertEqual(calls, 2)
+            self.assertEqual(delays, [2.0])
+            self.assertEqual(response["text"], "ok")
+            self.assertEqual(raw, complete)
+
+    def test_complete_malformed_json_without_content_length_does_not_retry(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            audio = Path(td) / "sample.mp3"
+            audio.write_bytes(b"audio-fixture")
+            calls = 0
+
+            def fake_urlopen(_req: object, timeout: int) -> FakeResponse:
+                nonlocal calls
+                calls += 1
+                self.assertEqual(timeout, 30)
+                return FakeResponse(b'{"text": invalid}')
+
+            with self.assertRaises(transcribe_audio.MistralRequestError) as failure:
+                transcribe_audio.call_mistral(
+                    audio,
+                    "not-a-real-key",
+                    "voxtral-mini-latest",
+                    True,
+                    ["segment"],
+                    None,
+                    [],
+                    None,
+                    30,
+                    "repeated",
+                    urlopen_fn=fake_urlopen,
+                    sleep_fn=lambda _delay: self.fail("must not sleep"),
+                )
+            self.assertEqual(calls, 1)
+            self.assertEqual(failure.exception.category, "invalid_json")
+            self.assertFalse(failure.exception.retryable)
+
     def test_retryable_transport_failure_stops_after_three_attempts(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             audio = Path(td) / "sample.mp3"

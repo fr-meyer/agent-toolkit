@@ -514,6 +514,16 @@ def read_response_bytes(
         return captured.read()
 
 
+def json_decode_looks_incomplete(raw: str, exc: json.JSONDecodeError) -> bool:
+    """Return true only for decode failures shaped like premature EOF."""
+    stripped = raw.rstrip()
+    if not stripped:
+        return True
+    if exc.msg.startswith("Unterminated string"):
+        return True
+    return exc.pos >= len(stripped)
+
+
 def retry_delay_seconds(
     attempt: int,
     *,
@@ -618,12 +628,19 @@ def call_mistral(
             try:
                 return json.loads(raw), raw_bytes
             except json.JSONDecodeError as exc:
-                raise MistralRequestError(
-                    "Mistral API did not return complete JSON",
-                    category="invalid_json",
-                    retryable=False,
+                incomplete = json_decode_looks_incomplete(raw, exc)
+                last_error = MistralRequestError(
+                    (
+                        "Mistral API response ended before complete JSON"
+                        if incomplete
+                        else "Mistral API returned malformed JSON"
+                    ),
+                    category="incomplete_response" if incomplete else "invalid_json",
+                    retryable=incomplete,
                     attempts=attempt,
-                ) from exc
+                )
+                if not incomplete:
+                    raise last_error from exc
 
         assert last_error is not None
         if not last_error.retryable or attempt >= max_attempts:
