@@ -9,10 +9,7 @@ description: Reusable audio and video speech-to-text workflow. Use when the user
 
 Transcribe audio/video into readable text and, when requested, archive complete timecoded transcripts with metadata, speaker labels, summaries, and searchable cards.
 
-Example archive layouts (not canonical defaults):
-
-- `memory/audio-transcripts/<year>/<YYYY-MM-DD>-<slug>/` for ordinary archives.
-- `memory/seminars/<year>/<YYYY-MM-DD>-<slug>/` for seminar/meeting archives.
+Example layouts: `memory/audio-transcripts/<year>/<date>-<slug>/` or `memory/seminars/<year>/<date>-<slug>/`; neither is a canonical default.
 
 For durable archives, pass an explicit `--output-dir` or a destination resolved from the current workspace's routing policy. Keep workspace-specific routing rules outside this shared skill, then pass the resolved destination into the helper with `--output-dir`, `--archive-root`, or `--seminar-collection`. The helper refuses durable archive modes without an explicit destination unless `--allow-default-destination` is passed intentionally.
 
@@ -75,64 +72,26 @@ Use `--staged-input --delete-staged-input-after-archive` only for temporary dupl
 
 ## Helper script
 
-Use the bundled script for deterministic inspect/normalize/transcribe/archive work:
+Run the bundled deterministic helper with an explicit durable destination:
 
 ```bash
-python3 scripts/transcribe_audio.py recording.wav \
-  --mode seminar \
-  --title "Recording title" \
-  --date YYYY-MM-DD \
-  --output-dir path/to/archive-folder \
-  --cloud-ok \
-  --model voxtral-mini-latest
+python3 scripts/transcribe_audio.py recording.wav --mode seminar \
+  --title "Recording title" --date YYYY-MM-DD \
+  --output-dir path/to/archive-folder --cloud-ok
 ```
 
-Collection-routed seminar folder:
+Add `--access-level sensitive --confirm-sensitive-cloud` for an approved sensitive/private upload. Use `--dry-run` to inspect without upload and `--mock-response response.json` for offline archive tests.
 
-```bash
-python3 scripts/transcribe_audio.py recording.wav \
-  --mode seminar \
-  --archive-root path/to/archive-root \
-  --seminar-collection event_transcripts \
-  --title "Recording title" \
-  --cloud-ok
-```
+Key controls:
 
-For sensitive/private audio sent to Mistral, the command must also include:
+- metadata/routing: `--title`, `--date`, `--speaker`, `--keyword`, `--related`, `--output-dir`;
+- request: `--timestamp-granularities`, `--context-bias`, `--multipart-array-style`;
+- safety: `--max-direct-duration-seconds`, `--allow-long-audio`, `--staged-input`, `--delete-staged-input-after-archive`;
+- retries: `--max-attempts` (hard maximum 3), bounded backoff/response limits, and `--failure-report`;
+- diarization recovery: `--chunk-on-failure`, chunk duration/overlap controls, then `--allow-non-diarized-fallback` only after explicit approval;
+- provenance/repair: `--quality-flag`, `--repair-from-clean-transcript`, `--save-audio`.
 
-```bash
---access-level sensitive --confirm-sensitive-cloud
-```
-
-Dry-run without upload:
-
-```bash
-python3 scripts/transcribe_audio.py recording.wav --mode seminar --title "Title" --output-dir path/to/archive-folder --dry-run
-```
-
-Test/archive from a saved provider JSON without calling the API:
-
-```bash
-python3 scripts/transcribe_audio.py sample.wav --mode seminar --title "Test" --output-dir path/to/archive-folder --mock-response response.json
-```
-
-### Useful script options
-
-- `--mode quick|archive|seminar`
-- `--title`, `--date`, `--slug`, `--recorded-at`, `--main-speaker`
-- `--archive-root`, `--seminar-collection`, `--output-dir`, `--allow-default-destination`
-- `--speaker "Speaker 1=Name"` or repeat `--speaker "Name"`
-- `--keyword term` and `--related path-or-url`
-- `--context-bias term` or `--context-file terms.txt`; human-friendly phrases are split into provider-valid token-like terms before sending
-- `--timestamp-granularities segment word` for segment/word timestamps
-- `--multipart-array-style repeated|brackets|json` if provider multipart array encoding needs adjustment after a live smoke test
-- `--quality-flag flag` to add manual quality/provenance flags
-- `--max-direct-duration-seconds` and `--allow-long-audio` for long-recording guardrails
-- `--no-diarize` to disable speaker diarization
-- `--access-level public|internal|sensitive|private`
-- `--staged-input` and `--delete-staged-input-after-archive` for temporary duplicate media staged into the processing workspace
-- `--repair-from-clean-transcript path/to/clean.txt` and `--repair-alignment-threshold 0.85` to create `transcript.repaired.md` from clean untimed text plus timed noisy segments
-- `--save-audio` only when the user explicitly wants raw audio preserved
+Keep normalization and diarization enabled by default. `--no-normalize` and `--no-diarize` are explicit quality/safety changes, not routine optimizations.
 
 ## Mistral/Voxtral backend
 
@@ -142,13 +101,14 @@ Default model:
 
 Use diarization and segment timestamps by default for archives. Request word timestamps when alignment/search requires it. Use the underlying provider model id (for example `voxtral-mini-latest`) when calling Mistral directly; provider/model routing strings used by a wrapper are not necessarily the API model id.
 
-Important quirks:
+Important behavior:
 
-- Current docs say `timestamp_granularities` is not compatible with `language`; prefer timestamps and omit the language hint when both are requested.
-- Quick transcription wrappers can be useful smoke tests but may not expose `segments`, `words`, diarization, or raw provider provenance; use the full helper/API path for archive-grade output.
-- Diarization gives labels like `Speaker 1`; it does not reliably identify real names.
-- Context bias can improve names/technical terms; provide speaker names, project names, paper titles, and acronyms when known.
-- Long recordings should not be blindly uploaded as one request; the helper refuses cloud upload above the direct-duration guard unless `--allow-long-audio` is passed.
+- Normalization selects the first audio stream, removes cover art/video/source metadata, and emits mono 16 kHz audio (64 kbps for MP3/M4A).
+- Multipart upload and response capture are streamed; exact complete provider bytes are promoted only after size, length, UTF-8, and JSON checks.
+- Retry only classified transient transport failures, HTTP 429/5xx, and incomplete bodies, for at most three equivalent attempts.
+- `timestamp_granularities` is incompatible with `language`; the helper prefers timestamps.
+- Chunk fallback preserves diarization but namespaces speaker labels per chunk; reconcile identities manually. Non-diarized fallback requires its explicit flag and is quality-marked.
+- Diarization labels are provisional, not voice identity. Use context bias sparingly for names/terms.
 
 For more details, read `references/mistral-voxtral.md`.
 
