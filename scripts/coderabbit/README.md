@@ -31,15 +31,16 @@ Notes:
 - These files are committed in the shared repo.
 - Runtime checkout folders like `_shared/` and `target/` are temporary job-time paths and are not part of the repository tree.
 - The reusable workflow source asset exposes clean caller-facing inputs for:
-  - runner selection via `runner_labels_json`
+  - a fixed GitHub-hosted `ubuntu-latest` runner; callers cannot select a self-hosted runner through repository variables
   - runtime preparation via `agent_runtime`
-  - bounded agent execution via `agent_command_json` or `agent_command`
+  - bounded agent execution via `agent_command_json` or `agent_command`; the first executable is restricted to `agent` or `cursor-agent`
   - validation CLI override via `coderabbit_cli`
   - Cursor CLI override via `cursor_cli`
   - this repository's shared Agent Skills installation via `install_shared_skills`
   - shared Cursor rules installation via `install_cursor_rules`
   - agent context install mode via `shared_skills_install_mode`
-  - post-remediation autocommit via `auto_commit`
+  - post-remediation autocommit via `auto_commit` (requires `run_validation=true`)
+  - post-remediation push via `auto_push` (requires `run_validation=true` and `ELEVATED_GITHUB_TOKEN`)
   - commit strategy selection via `commit_strategy`
   - split-by-scope commit-count mode via `commit_count_mode`
   - fixed split-by-scope commit count via `fixed_commit_count`
@@ -53,8 +54,8 @@ Notes:
   - `docs/workflow-asset-library-layout.md`
 - Agent-pass runtime configuration is supplied to the scripts via environment variables:
   - `AGENT_RUNTIME` (`none`, `cursor`, `custom`, with room for future runtimes)
-  - `CODERABBIT_AGENT_COMMAND_JSON` (preferred, JSON array command template)
-  - `CODERABBIT_AGENT_COMMAND` (fallback string command template)
+  - `CODERABBIT_AGENT_COMMAND_JSON` (preferred, JSON array command template; first executable must be `agent` or `cursor-agent`)
+  - `CODERABBIT_AGENT_COMMAND` (fallback string command template; first executable must be `agent` or `cursor-agent`)
   - `CODERABBIT_CLI` (optional CodeRabbit CLI binary/path override)
   - `CURSOR_CLI` (optional Cursor CLI binary/path override)
 - Supported command-template placeholders: `{repo_path}`, `{shared_root}`, `{pr_number}`, `{artifact_path}`, `{prompt_path}`, `{validation_path}`, `{out_dir}`.
@@ -62,7 +63,6 @@ Notes:
 ## Consumer configuration contract
 
 Recommended repository or organization variables:
-- `CODERABBIT_RUNNER_LABELS_JSON`
 - `CODERABBIT_AGENT_RUNTIME`
 - `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
 - `CODERABBIT_CLI` (optional)
@@ -79,6 +79,7 @@ Recommended repository or organization variables:
 Required secrets by feature:
 - `CURSOR_API_KEY` when `agent_runtime=cursor`
 - `CODERABBIT_API_KEY` only when `run_validation=true`
+- `ELEVATED_GITHUB_TOKEN` when `auto_push=true`; the default `GITHUB_TOKEN` is read-only
 
 Recommended agent-context defaults:
 - install this repository's shared skills: `true`
@@ -87,6 +88,12 @@ Recommended agent-context defaults:
 
 Scope note:
 - `install_shared_skills` copies this repository's `skills/` directory only. It does not install the upstream `coderabbitai/skills` repository; provide those official CodeRabbit skills through the selected agent runtime or an additional setup step when `autofix` or `code-review` are required.
+
+Recommended validation/write defaults:
+- validation: `false` for advisory artifact-only mode
+- auto commit: `false`
+- auto push: `false`
+- enabling `auto_commit` or `auto_push` requires `run_validation=true`
 
 Recommended autocommit defaults:
 - auto commit: `false`
