@@ -30,10 +30,6 @@ For exact source-to-target bindings, also consult:
 
 | Name | Type | Canonical source | Live/runtime copy | Primary purpose |
 | --- | --- | --- | --- | --- |
-| CodeRabbit PR automation | Reusable | `templates/reusable-workflows/coderabbit-pr-automation.yml` | `.github/workflows/coderabbit-pr-automation.yml` | Shared remediation engine for CodeRabbit PR review issues |
-| CodeRabbit PR automation (PR trigger) | Starter | `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml` | none in this repo | Consumer-facing PR-event entrypoint wired to the reusable engine |
-| CodeRabbit PR automation (manual trigger) | Starter | `templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml` | none in this repo | Consumer-facing manual-dispatch entrypoint wired to the reusable engine |
-| CodeRabbit PR comment trigger | Starter | `templates/starter-workflows/coderabbit-pr-comment-trigger.yml` | `.github/workflows/coderabbit-pr-comment-trigger.yml` | Repo-local and consumer-facing comment-triggered entrypoint that resolves PR context, then calls the reusable engine |
 | Sync starter-workflow template refs (reusable) | Reusable | `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml` | `.github/workflows/sync-starter-workflow-template-refs-reusable.yml` | Deterministic maintenance workflow that materializes local workflow copies and syncs pinned reusable-workflow refs |
 | Cross-repo workflow updater (reusable) | Reusable | `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml` | `.github/workflows/cross-repo-workflow-updater-reusable.yml` | Shared engine that clones consumer repos, renders starter-template updates, and opens consumer PRs |
 | Sync starter-workflow template refs (trigger) | Starter | `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml` | `.github/workflows/sync-starter-workflow-template-refs-trigger.yml` | Repo-local trigger surface that calls the reusable maintenance workflow on push or manual dispatch |
@@ -44,205 +40,10 @@ For exact source-to-target bindings, also consult:
 
 ---
 
-## 1. CodeRabbit PR automation
-
-- **Type:** reusable workflow
-- **Canonical source:** `templates/reusable-workflows/coderabbit-pr-automation.yml`
-- **Published call shape:** `fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@<sha>`
-- **Live/runtime copy in this repo:** `.github/workflows/coderabbit-pr-automation.yml`
-- **Governed by:**
-  - ref-sync source in `templates/workflow-ref-sync-manifest.json`
-- **Purpose:**
-  - fetch CodeRabbit PR review-thread data
-  - normalize actionable issues
-  - prepare an agent runtime
-  - run bounded remediation against a target repository
-  - optionally validate, commit, and push the result
-
-### When to use
-Use this as the shared engine when a repository wants AI-assisted remediation for CodeRabbit PR comments or review threads.
-
-### Main inputs
-- PR and remediation controls:
-  - `pr_number`
-  - `run_validation`
-  - `working_tree_must_be_clean`
-  - `max_cycles`
-- checkout/source controls:
-  - `target_checkout_path`
-  - `shared_checkout_path`
-  - `shared_repository`
-  - `shared_repository_ref`
-- agent runtime controls:
-  - `agent_runtime`
-  - `agent_command_json`
-  - `agent_command`
-  - `cursor_cli`
-  - `coderabbit_cli`
-- shared-context installation controls:
-  - `install_shared_skills`
-  - `install_cursor_rules`
-  - `shared_skills_install_mode`
-- post-remediation Git controls:
-  - `auto_commit`
-  - `auto_push`
-  - `commit_strategy`
-  - `commit_count_mode`
-  - `fixed_commit_count`
-  - `stop_on_ambiguous_remainder`
-
-### Secrets expected
-- built-in by default:
-  - `GITHUB_TOKEN`
-- optional:
-  - `CURSOR_API_KEY`
-  - `CODERABBIT_API_KEY`
-  - `ELEVATED_GITHUB_TOKEN` when default GitHub permissions are not enough
-
-### Side effects
-- checks out the consumer repo and the shared repo
-- writes CodeRabbit artifacts under the target checkout
-- may install shared skills or Cursor rules into the target repo
-- may create and push remediation commits when enabled
-
-### Notes
-- This is the main reusable engine behind the three CodeRabbit starter workflows below.
-- The paired `shared_repository_ref` should stay aligned with the pinned `uses: ...@<sha>` ref in calling templates when present.
-
----
-
-## 2. CodeRabbit PR automation (PR trigger)
-
-- **Type:** starter workflow
-- **Canonical source:** `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml`
-- **Live/runtime copy in this repo:** none in this repo
-- **Governed by:**
-  - target in `templates/workflow-ref-sync-manifest.json`
-- **Purpose:**
-  - provide a consumer-facing entrypoint that runs the reusable CodeRabbit automation workflow on PR events
-
-### When to use
-Use this when a consumer repository wants automatic remediation on PR open, synchronize, or reopen events without hand-writing the reusable-workflow wiring.
-
-### Trigger shape
-- `pull_request` on `opened`, `synchronize`, `reopened`
-
-### Consumer setup expected
-Repository or organization variables may include:
-- `CODERABBIT_RUNNER_LABELS_JSON`
-- `CODERABBIT_AGENT_RUNTIME`
-- `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
-- `CODERABBIT_CLI`
-- `CURSOR_CLI`
-- `CODERABBIT_INSTALL_SHARED_SKILLS`
-- `CODERABBIT_INSTALL_CURSOR_RULES`
-- `CODERABBIT_SHARED_SKILLS_INSTALL_MODE`
-- `CODERABBIT_AUTO_COMMIT`
-- `CODERABBIT_AUTO_PUSH`
-- `CODERABBIT_COMMIT_STRATEGY`
-- `CODERABBIT_COMMIT_COUNT_MODE`
-- `CODERABBIT_FIXED_COMMIT_COUNT`
-- `CODERABBIT_STOP_ON_AMBIGUOUS_REMAINDER`
-
-Secrets may include:
-- `CURSOR_API_KEY`
-- `CODERABBIT_API_KEY`
-- `ELEVATED_GITHUB_TOKEN` when default GitHub permissions are not enough
-
-### Calls
-- `fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@<sha>`
-
-### Notes
-- This is a starter template, not a runtime workflow in this repo.
-- It should remain thin and consumer-facing, with heavy logic kept in the reusable workflow.
-
----
-
-## 3. CodeRabbit PR automation (manual trigger)
-
-- **Type:** starter workflow
-- **Canonical source:** `templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml`
-- **Live/runtime copy in this repo:** none currently materialized
-- **Governed by:**
-  - target in `templates/workflow-ref-sync-manifest.json`
-- **Purpose:**
-  - provide a consumer-facing manual-dispatch entrypoint that runs the reusable CodeRabbit automation workflow for a chosen PR number
-
-### When to use
-Use this when a consumer repository wants an explicit Run workflow button for CodeRabbit remediation without mixing that trigger surface into PR-event runs.
-
-### Trigger shape
-- `workflow_dispatch`
-
-### Consumer setup expected
-Repository or organization variables may include:
-- `CODERABBIT_RUNNER_LABELS_JSON`
-- `CODERABBIT_AGENT_RUNTIME`
-- `CODERABBIT_AGENT_COMMAND_JSON` or `CODERABBIT_AGENT_COMMAND`
-- `CODERABBIT_CLI`
-- `CURSOR_CLI`
-- `CODERABBIT_INSTALL_SHARED_SKILLS`
-- `CODERABBIT_INSTALL_CURSOR_RULES`
-- `CODERABBIT_SHARED_SKILLS_INSTALL_MODE`
-- `CODERABBIT_AUTO_COMMIT`
-- `CODERABBIT_AUTO_PUSH`
-- `CODERABBIT_COMMIT_STRATEGY`
-- `CODERABBIT_COMMIT_COUNT_MODE`
-- `CODERABBIT_FIXED_COMMIT_COUNT`
-- `CODERABBIT_STOP_ON_AMBIGUOUS_REMAINDER`
-
-Secrets may include:
-- `CURSOR_API_KEY`
-- `CODERABBIT_API_KEY`
-- `ELEVATED_GITHUB_TOKEN` when default GitHub permissions are not enough
-
-### Calls
-- `fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@<sha>`
-
-### Notes
-- This is a starter template, not a runtime workflow in this repo.
-- It should remain thin and consumer-facing, with heavy logic kept in the reusable workflow.
-
----
-
-## 4. CodeRabbit PR comment trigger
-
-- **Type:** starter workflow
-- **Canonical source:** `templates/starter-workflows/coderabbit-pr-comment-trigger.yml`
-- **Live/runtime copy in this repo:** `.github/workflows/coderabbit-pr-comment-trigger.yml`
-- **Governed by:**
-  - target in `templates/workflow-ref-sync-manifest.json`
-  - target in `templates/repo-workflow-materialization-manifest.json`
-- **Purpose:**
-  - react to CodeRabbit-authored PR comments, review comments, or review summaries
-  - resolve the PR number and reject fork cases
-  - call the shared CodeRabbit remediation engine only when the context is eligible
-
-### When to use
-Use this when a consumer repository or this repository itself wants remediation to start from CodeRabbit comment activity rather than directly from PR open/sync events.
-
-### Trigger shape
-- `issue_comment` created
-- `pull_request_review_comment` created
-- `pull_request_review` submitted
-
-### Special behavior
-- intentionally scoped to CodeRabbit-authored comments only
-- resolves PR context in a separate job before calling the reusable workflow
-- ignores review-summary events when the same review already contains inline review comments, to avoid duplicate runs
-- skips fork-based cases
-
-### Calls
-- `fr-meyer/agent-toolkit/.github/workflows/coderabbit-pr-automation.yml@<sha>`
-
-### Consumer setup expected
-Uses the same general variable and secret model as the split PR and manual trigger starters.
-
-### Notes
-- This starter is now materialized as a live repo-local workflow in `.github/workflows/`.
-- Keep the live copy aligned through both the materialization manifest and the ref-sync manifest.
-
----
+CodeRabbit remediation workflow assets are retired. Mergeguez review is
+requested through the approved broker/comment protocol, while Speculoos consumes
+exact-head evidence through `review-evidence` and `merge-plan`; no GitHub Actions
+workflow in this catalog invokes a reviewer or performs remediation.
 
 ## 5. Sync starter-workflow template refs (reusable)
 
@@ -439,7 +240,6 @@ Use this when you want an explicit Run workflow button for the cross-repo update
 ## Live runtime copies in this repo
 
 These files exist under `.github/workflows/` and should not be treated as the primary authoring location:
-- `.github/workflows/coderabbit-pr-automation.yml`
 - `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
 - `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
 - `.github/workflows/cross-repo-workflow-updater-reusable.yml`
@@ -447,7 +247,6 @@ These files exist under `.github/workflows/` and should not be treated as the pr
 - `.github/workflows/cross-repo-workflow-updater-manual-trigger.yml`
 
 Their canonical sources are:
-- `templates/reusable-workflows/coderabbit-pr-automation.yml`
 - `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
 - `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`
 - `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml`
