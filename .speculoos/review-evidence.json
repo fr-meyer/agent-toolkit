@@ -20,30 +20,30 @@
     "local_validation": {
       "kind": "local_validation",
       "status": "passed",
-      "summary": "Metadata parse, Speculoos validate, publish-check, request-review dry-run, and git diff check passed for the review-policy metadata bootstrap.",
-      "evidence_ref": ".speculoos/tasks/pr-080-agent-toolkit-review-gate.yaml",
-      "updated_at": "pr-080-agent-toolkit-review-gate"
+      "summary": "Frozen functional patch passed 21 author cases and 42 independent review cases; separately prepared task metadata still requires its own validation and review.",
+      "evidence_ref": ".speculoos/tasks/fix-container-preflight-failed-version-evidence.yaml",
+      "updated_at": "fix-container-preflight-failed-version-evidence"
     },
     "github_checks": {
       "kind": "github_checks",
-      "status": "pending-live-read",
-      "summary": "The active closeout PR #84 has no completed check evidence yet; read live checks through the broker before merge.",
+      "status": "not-published",
+      "summary": "No PR is published for this task. Fresh exact-head hosted evidence is required; historical PR #81/#84 evidence is not reused.",
       "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pr-080-agent-toolkit-review-gate-closeout"
+      "updated_at": "fix-container-preflight-failed-version-evidence"
     },
     "self_managed": {
       "kind": "self_managed",
       "status": "pending",
       "summary": "Emergency fallback only; not the normal review lane.",
       "evidence_ref": ".speculoos/reviews/self-managed-review.json",
-      "updated_at": "pr-080-agent-toolkit-review-gate"
+      "updated_at": "fix-container-preflight-failed-version-evidence"
     },
     "mergeguez_review": {
       "kind": "mergeguez_review",
-      "status": "pending-live-read",
-      "summary": "The active closeout PR #84 requires a fresh exact-head Mergeguez review; historical PR #81 approval is recorded in the completed task metadata, not this active gate.",
+      "status": "not-published",
+      "summary": "No PR is published for this task. Fresh exact-head hosted evidence is required; historical PR #81/#84 evidence is not reused.",
       "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pr-080-agent-toolkit-review-gate-closeout"
+      "updated_at": "fix-container-preflight-failed-version-evidence"
     }
   }
 }
