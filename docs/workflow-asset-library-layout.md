@@ -55,11 +55,11 @@ That path is a publication target shape, not a statement that the canonical sour
 
 Repo-local trigger entrypoints that are intended to be copied or adapted later should also live here as canonical starter sources, even if this repository materializes a live copy under `.github/workflows/` for its own runtime.
 
-### Retired CodeRabbit workflow assets
+### Retired CodeRabbit assets
 
-The CodeRabbit remediation workflows, templates, helper scripts, and active
-distribution bindings were removed. Historical skill directories are retained
-only as compatibility material and are not part of the workflow asset library.
+The CodeRabbit remediation workflows, templates, helper scripts, active
+distribution bindings, and CodeRabbit-specific skill directories were removed.
+Unrelated skills and historical audit records are preserved.
 
 ### `scripts/github/`
 Deterministic maintenance or publishing helpers for republishing, pinned-ref maintenance, and materializing repo-local workflow copies from canonical template sources.

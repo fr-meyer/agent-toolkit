@@ -23,9 +23,8 @@ Public shared toolkit for reusable agent skills, GitHub Actions workflow assets,
 - `pageindex-summarize-papers`
 - `summarize-research-papers`
 
-### Legacy reviewer compatibility
-- CodeRabbit workflow automation has been retired from this toolkit.
-- Historical CodeRabbit skill directories remain isolated for compatibility and are not wired into active workflows.
+### Retired reviewer assets
+- CodeRabbit workflows, templates, helper scripts, and skills have been retired from this toolkit.
 
 ### Repo maintenance and publication safety
 - `git-repo-sync`
