@@ -20,17 +20,47 @@ from typing import Any, Iterable
 TIMESTAMP_RE = re.compile(r"^(?P<start>\d{2}:\d{2}:\d{2}\.\d{3})\s+-->\s+(?P<end>\d{2}:\d{2}:\d{2}\.\d{3})")
 TAG_RE = re.compile(r"<[^>]+>")
 WS_RE = re.compile(r"\s+")
+CAPTION_CIRCUIT_MARKERS = {
+    "bot_check": ("confirm you’re not a bot", "confirm you're not a bot", "captcha", "unusual traffic"),
+    "rate_limited": ("http error 429", "too many requests", "rate limit"),
+    "auth_required": ("login required", "authentication required"),
+}
+CAPTION_CIRCUIT_DIAGNOSTICS = {
+    "bot_check": "bot_check; CAPTCHA or sign in to confirm you're not a bot",
+    "rate_limited": "rate_limited; HTTP Error 429",
+    "auth_required": "auth_required; authentication required",
+}
+
+
+class YtDlpProcessInterrupted(RuntimeError):
+    """Sanitized fatal process state; helper fallbacks must propagate it."""
+
+
+class YtDlpCircuitBlocked(RuntimeError):
+    """A fresh shared source circuit cannot be repaired by another caption track."""
+
+    def __init__(self, failure_class: str, detail: str) -> None:
+        self.failure_class = failure_class
+        super().__init__(detail)
 
 
 def run(cmd: list[str], *, capture: bool = True, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE if capture else None,
-        stderr=subprocess.PIPE if capture else None,
-    )
+    try:
+        return subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE if capture else None,
+            stderr=subprocess.PIPE if capture else None,
+        )
+    except subprocess.CalledProcessError as exc:
+        if caption_process_interrupted(exc):
+            raise YtDlpProcessInterrupted(caption_error_summary(exc)) from None
+        circuit_class = caption_circuit_class(exc)
+        if circuit_class:
+            raise YtDlpCircuitBlocked(circuit_class, caption_error_summary(exc)) from None
+        raise
 
 
 def safe_write(path: Path, text: str) -> None:
@@ -46,6 +76,8 @@ def load_json_from_yt_dlp(yt_dlp: str, url: str) -> dict[str, Any]:
 def yt_dlp_version(yt_dlp: str) -> str:
     try:
         return run([yt_dlp, "--version"]).stdout.strip()
+    except (YtDlpProcessInterrupted, YtDlpCircuitBlocked):
+        raise
     except Exception:
         return "unknown"
 
@@ -151,19 +183,77 @@ def list_subs(yt_dlp: str, url: str) -> str:
         cp = run([yt_dlp, "--list-subs", url])
         return cp.stdout + (cp.stderr or "")
     except subprocess.CalledProcessError as exc:
-        return (exc.stdout or "") + (exc.stderr or "")
+        return sanitize_caption_error(caption_exception_detail(exc))
+
+
+def caption_exception_detail(exc: subprocess.CalledProcessError | RuntimeError) -> str:
+    values = [getattr(exc, "stderr", None), getattr(exc, "stdout", None)]
+    if not isinstance(exc, subprocess.CalledProcessError):
+        values.insert(0, str(exc))
+    return "\n".join(value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value) for value in values if value)
+
+
+def caption_process_interrupted(exc: subprocess.CalledProcessError | RuntimeError) -> bool:
+    """Session logoff invalidates every caption candidate in this process."""
+    if isinstance(exc, YtDlpProcessInterrupted):
+        return True
+    if isinstance(exc, subprocess.CalledProcessError) and type(exc.returncode) is int and exc.returncode & 0xFFFFFFFF == 0xC000026B:
+        return True
+    detail = caption_exception_detail(exc).casefold()
+    return bool(re.search(r"(?<![A-Za-z0-9_])(?:0xc000026b|3221226091|-1073741205)(?![A-Za-z0-9_])", detail)) or any(marker in detail for marker in (
+        "status_dll_init_failed_logoff", "window station is shutting down",
+    ))
+
+
+def caption_circuit_class(exc: subprocess.CalledProcessError | RuntimeError) -> str | None:
+    if isinstance(exc, YtDlpCircuitBlocked):
+        return exc.failure_class
+    detail = caption_exception_detail(exc).casefold()
+    for failure_class, markers in CAPTION_CIRCUIT_MARKERS.items():
+        if any(marker in detail for marker in markers):
+            return failure_class
+    return None
+
+
+def sanitize_caption_error(detail: str) -> str:
+    # Redact complete fields before applying any public diagnostic bound.
+    detail = re.sub(r"""(?im)\b(?:authorization|proxy-authorization|set-cookie|cookie)["']?\s*[:=]\s*[^\r\n]+""", "[redacted sensitive header]", detail)
+    detail = re.sub(r"(?i)\b(?:bearer|basic)\s+[A-Za-z0-9_./+=-]+", "[redacted authentication]", detail)
+    detail = re.sub(r"(?i)(--(?:password|username|video-password|cookies(?:-from-browser)?|netrc(?:-location|-cmd)?|add-header|proxy))(?:\s+|=)(?:\"[^\"]*\"|'[^']*'|\S+)", r"\1 [redacted]", detail)
+    detail = re.sub(r"""(?im)\b([A-Za-z0-9_]*(?:token|secret|password|credential|api[_-]?key)[A-Za-z0-9_]*)(["']?\s*[:=]\s*)[^\r\n]+""", r"\1\2[redacted]", detail)
+    detail = re.sub(r"(?i)(https?://)[^\s/@]+:[^\s/@]+@", r"\1[redacted]@", detail)
+    detail = re.sub(r"(?i)https?://[^\s\"'<>]+", lambda match: match.group(0).split("?")[0].split("#")[0] + ("?[redacted query]" if "?" in match.group(0) else ""), detail)
+    detail = re.sub(r"(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,})", "[redacted credential]", detail)
+    detail = re.sub(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b", "[redacted JWT]", detail)
+    return "".join(char for char in detail if ord(char) >= 32 or char in "\n\r\t")
 
 
 def caption_error_summary(exc: subprocess.CalledProcessError | RuntimeError) -> str:
+    captured = caption_exception_detail(exc).strip()
+    interrupted = caption_process_interrupted(exc)
+    circuit_class = None if interrupted else caption_circuit_class(exc)
+    fatal_lines = [line.strip() for line in captured.splitlines() if line.strip().casefold().startswith("error:")]
+    priority_lines = [line for line in fatal_lines if (
+        caption_process_interrupted(RuntimeError(line)) if interrupted else circuit_class and caption_circuit_class(RuntimeError(line)) == circuit_class
+    )]
+    detail = " ".join(priority_lines or fatal_lines) if fatal_lines else captured
     if isinstance(exc, subprocess.CalledProcessError):
-        detail = (exc.stderr or exc.stdout or "").strip()
-        detail = detail or f"yt-dlp exited with status {exc.returncode}"
+        status = f"yt-dlp exited with status {exc.returncode}"
     else:
-        detail = str(exc).strip()
-    detail = WS_RE.sub(" ", detail)
-    if len(detail) > 500:
-        detail = detail[:497].rstrip() + "..."
-    return detail
+        status = ""
+    if interrupted:
+        status += " (0xC000026B; STATUS_DLL_INIT_FAILED_LOGOFF)"
+    elif circuit_class:
+        status += f" ({CAPTION_CIRCUIT_DIAGNOSTICS[circuit_class]})"
+    status = status.strip()
+    detail = WS_RE.sub(" ", sanitize_caption_error(detail)).strip()
+    prefix = status + (": " if detail and status else "")
+    available = 500 - len(prefix)
+    if len(detail) > available:
+        # Root process/circuit evidence remains in the closed prefix. Keep the
+        # diagnostic tail so a late fatal error survives long wrapper output.
+        detail = "..." + detail[-(available - 3):] if interrupted or circuit_class else detail[:available - 3].rstrip() + "..."
+    return prefix + detail
 
 
 def download_caption_vtt(yt_dlp: str, url: str, video_id: str, lang: str, source: str, video_dir: Path) -> Path:
@@ -205,8 +295,15 @@ def select_caption_vtt(
         except (subprocess.CalledProcessError, RuntimeError) as exc:
             summary = caption_error_summary(exc)
             attempt_errors.append(f"{lang} ({source}): {summary}")
+            if caption_process_interrupted(exc):
+                # Session shutdown invalidates every candidate; retain only
+                # the sanitized root diagnostic in the public traceback.
+                raise YtDlpProcessInterrupted(f"Caption download interrupted for {lang} ({source}): {summary}") from None
+            circuit_class = caption_circuit_class(exc)
+            if circuit_class:
+                raise YtDlpCircuitBlocked(circuit_class, f"Caption download stopped for {lang} ({source}): {summary}") from None
             if requested != "best" or no_caption_fallback:
-                raise RuntimeError(f"Caption download failed for {lang} ({source}): {summary}") from exc
+                raise RuntimeError(f"Caption download failed for {lang} ({source}): {summary}") from None
 
     details = "\n".join(f"- {error}" for error in attempt_errors)
     raise RuntimeError(f"Caption download failed for all selected caption candidates:\n{details}")
