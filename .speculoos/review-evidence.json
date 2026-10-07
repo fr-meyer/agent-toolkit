@@ -1,16 +1,28 @@
 {
   "schema_version": "0.1",
   "requirements": {
-    "required_sources": ["local_validation", "github_checks", "mergeguez_review"],
-    "optional_sources": ["self_managed"],
+    "required_sources": [
+      "local_validation",
+      "github_checks",
+      "mergeguez_review"
+    ],
+    "optional_sources": [
+      "self_managed"
+    ],
     "reviewers": {
-      "self_managed": {"policy": "optional"},
-      "mergeguez_review": {"policy": "required"}
+      "self_managed": {
+        "policy": "optional"
+      },
+      "mergeguez_review": {
+        "policy": "required"
+      }
     },
     "reviewer_groups": {
       "required_pr_review": {
         "policy": "required",
-        "primary": ["mergeguez_review"],
+        "primary": [
+          "mergeguez_review"
+        ],
         "summary": "Mergeguez review evidence is the primary required PR-review source.",
         "fallback_summary": "Self-managed evidence is not accepted for normal closeout; hosted Mergeguez review is mandatory."
       }
@@ -19,17 +31,17 @@
   "sources": {
     "local_validation": {
       "kind": "local_validation",
-      "status": "passed",
-      "summary": "Metadata parse, Speculoos validate, publish-check, request-review dry-run, and git diff check passed for the review-policy metadata bootstrap.",
-      "evidence_ref": ".speculoos/tasks/pr-080-agent-toolkit-review-gate.yaml",
-      "updated_at": "pr-080-agent-toolkit-review-gate"
+      "status": "pending",
+      "summary": "Validate this source successor and Speculoos publish-check before guarded publication. docs/evidence/pr-086-consumer-retirement.json records a dated read-only consumer inventory; it does not replace hosted review or CI.",
+      "evidence_ref": ".speculoos/tasks/pr-085-retire-legacy-workflow-assets.yaml",
+      "updated_at": "pr-085-retire-legacy-workflow-assets"
     },
     "github_checks": {
       "kind": "github_checks",
-      "status": "pending-live-read",
-      "summary": "The active closeout PR #84 has no completed check evidence yet; read live checks through the broker before merge.",
+      "status": "pending-new-head-live-read",
+      "summary": "Fresh required checks on the exact published successor remain unverified. The historical reviewed head had no passing CI evidence established; empty checks are not passing evidence.",
       "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pr-080-agent-toolkit-review-gate-closeout"
+      "updated_at": "pr-085-retire-legacy-workflow-assets"
     },
     "self_managed": {
       "kind": "self_managed",
@@ -40,10 +52,10 @@
     },
     "mergeguez_review": {
       "kind": "mergeguez_review",
-      "status": "pending-live-read",
-      "summary": "The active closeout PR #84 requires a fresh exact-head Mergeguez review; historical PR #81 approval is recorded in the completed task metadata, not this active gate.",
+      "status": "pending-new-head-live-read",
+      "summary": "Historical PR86 review 5439985613 requested changes on head 233dd5b1848d20685b53860a7cdc85b42a279082: 36/36 files, 2/2 chunks, 2 blocking findings. This unpublished successor requires fresh exact-head full-coverage Mergeguez review and conveys no approval.",
       "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pr-080-agent-toolkit-review-gate-closeout"
+      "updated_at": "pr-085-retire-legacy-workflow-assets"
     }
   }
 }

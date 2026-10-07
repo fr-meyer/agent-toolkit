@@ -21,7 +21,7 @@ Use `ELEVATED_GITHUB_TOKEN` as the single explicit override when the built-in to
 
 When a workflow can run with default auth but may occasionally need stronger auth, code it to fall back from `ELEVATED_GITHUB_TOKEN` to `secrets.GITHUB_TOKEN`.
 
-Keep third-party secrets product-scoped, for example `CURSOR_API_KEY` and `CODERABBIT_API_KEY`, and keep workflow variables namespaced by workflow family, for example `CODERABBIT_*`.
+Keep third-party secrets product-scoped and keep workflow variables namespaced by workflow family.
 
 Important GitHub nuance:
 - the built-in `GITHUB_TOKEN` is provided by Actions

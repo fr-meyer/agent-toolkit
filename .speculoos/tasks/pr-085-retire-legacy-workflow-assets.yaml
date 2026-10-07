@@ -1,0 +1,118 @@
+id: pr-085-retire-legacy-workflow-assets
+title: Retire obsolete CodeRabbit workflow assets
+summary: Remove retired CodeRabbit workflow entrypoints, templates, helper scripts, distribution bindings, and the remaining CodeRabbit-only skills while preserving unrelated skills and historical records.
+status: in-progress
+branch: chore/retire-legacy-workflow-assets
+base_branch: dev
+github:
+  issue: null
+  pull_request: 86
+  issue_project_item: null
+  pull_request_project_item: unavailable
+  project_item: unavailable
+  project_status: unavailable
+  head_sha: null
+  head_sha_source: Exact committed head and live publication readback bind the final gate; no self-referential SHA is committed.
+  url: https://github.com/fr-meyer/agent-toolkit/pull/86
+delivery_policy:
+  mode: stop_after_review
+  reason: PR86 is open and its historical hosted head received changes requested. The approved fix loop covers isolated remediation; guarded publication and a fresh provider review retain their separate admission gates. Stop before merge.
+scope:
+- remove obsolete active CodeRabbit workflow entrypoints and canonical templates
+- remove retired scripts/coderabbit automation helpers
+- remove retired assets from workflow materialization, distribution, and ref-sync manifests
+- update workflow documentation and maintenance entrypoints to describe only active assets
+- remove the remaining CodeRabbit-only skill directories and their references/assets
+- preserve unrelated skills and historical audit records outside the CodeRabbit retirement scope
+- record a dated complete-tree inventory of the former consumer targets before removing distribution registration
+non_goals:
+- changing Mergeguez behavior, reviewer authority, credentials, branch protection, or deployment
+- reactivating CodeRabbit or Pullfrog
+- merging to dev or main, publishing a release, or closing predecessor PR
+- deleting unrelated compatibility skills or historical audit material
+acceptance:
+- no deleted CodeRabbit workflow or scripts/coderabbit path remains in active workflow, script, template, or manifest surfaces
+- retained manifest paths resolve and changed YAML/JSON parse
+- retained shell and Python checks pass
+- targeted unit and regression fixture tests pass
+- public PR title, body, diff, and commit-message safety scans pass
+- exact-head Mergeguez review is requested after guarded publication
+- No CodeRabbit-only skill directory or executable asset remains; unrelated skills and historical records are preserved
+write_paths:
+- .github/workflows/coderabbit-pr-automation.yml
+- .github/workflows/coderabbit-pr-comment-trigger.yml
+- .github/workflows/sync-starter-workflow-template-refs-trigger.yml
+- .speculoos/manifest.yaml
+- .speculoos/review-evidence.json
+- .speculoos/tasks/pr-085-retire-legacy-workflow-assets.yaml
+- README.md
+- docs/cross-repo-workflow-distribution-spec.md
+- docs/cross-repo-workflow-updater-contract.md
+- docs/github-actions-template-catalog.md
+- docs/evidence/pr-086-consumer-retirement.json
+- docs/workflow-asset-library-layout.md
+- docs/workflow-authoring-rules.md
+- scripts/coderabbit/README.md
+- scripts/coderabbit/fetch_threads.sh
+- scripts/coderabbit/normalize_threads.py
+- scripts/coderabbit/orchestrate.sh
+- scripts/coderabbit/orchestrate_core.py
+- scripts/coderabbit/preflight.sh
+- scripts/coderabbit/preflight_core.py
+- scripts/coderabbit/prepare_agent_context.sh
+- scripts/coderabbit/run_agent_pass.sh
+- scripts/coderabbit/run_agent_pass_core.py
+- scripts/coderabbit/run_commit_pass.sh
+- scripts/coderabbit/run_commit_pass_core.py
+- scripts/coderabbit/run_validation.sh
+- scripts/coderabbit/run_validation_core.py
+- scripts/coderabbit/setup_agent_runtime.sh
+- scripts/coderabbit/setup_coderabbit_cli.sh
+- templates/cross-repo-workflow-distribution-manifest.json
+- templates/repo-workflow-materialization-manifest.json
+- templates/reusable-workflows/coderabbit-pr-automation.yml
+- templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml
+- templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml
+- templates/starter-workflows/coderabbit-pr-comment-trigger.yml
+- templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml
+- templates/workflow-ref-sync-manifest.json
+- skills/coderabbit-pr-autofix/SKILL.md
+- skills/coderabbit-pr-automation/SKILL.md
+- skills/coderabbit-pr-automation/references/actionable-issues.sample.json
+- skills/coderabbit-pr-automation/references/eval-prompts.json
+- skills/coderabbit-pr-automation/references/github-action-integration.md
+- skills/coderabbit-pr-automation/references/issue-artifact-contract.md
+- skills/coderabbit-pr-automation/references/pipeline-stages-and-stop-rules.md
+- skills/coderabbit-pr-automation/references/validation-result.sample.json
+- skills/coderabbit-pr-automation/scripts/summarize-validation-result.py
+- skills/coderabbit-pr-automation/scripts/validate-issue-artifact.py
+validation:
+- git diff --check origin/dev...HEAD
+- parse changed YAML and JSON workflow and manifest files
+- run retained shell syntax and Python compile checks
+- run targeted unit and regression fixture tests
+- validate workflow manifest target paths and retired active-path references
+- run the public PR safety scan over title, body, diff, and commit messages
+- run Speculoos validate and publish-check for this task
+publication_boundary:
+  statement: Repository source, portable skill documentation, and task metadata only. Credential, review-authority, branch-protection, production, release, and approval-bypass changes are excluded.
+documentation_impact:
+  status: required
+  rationale: Workflow catalog, authoring, distribution, updater, and layout documentation must stop presenting retired CodeRabbit assets as supported. The README and workflow layout also record removal of the formerly retained CodeRabbit-only skill directories.
+branch_plan: Update the existing PR86 feature branch through the guarded actor lane after explicit publication approval; require fresh exact-head review under separate authority and stop before merge.
+executor: Codex task15; user-approved PR86 remediation
+private_data_scan: required
+publish_authority: The approved PR86 fix loop covers isolated source remediation. Publication requires the existing supported exact source, actor, base, and policy route; no permission is inferred from metadata. No new provider review, merge, deployment, credential, or policy change is authorized by this successor.
+tracking:
+  workboard_card: f86d3e37-a0f0-4b0f-82cf-0f12a13f4b63
+base_sha: 04b9d6e92842cb0abe9a7450e4fae72b383bcd4a
+publication_route:
+  strategy: update_existing_pull_request
+  pull_request: 86
+  declared_default_push_actor: franck_user_pr_author
+  selected_push_actor: mergeguez_branch_broker
+  selected_push_login: mergeguez[bot]
+  selected_pr_actor: franck_user_pr_author
+  selected_pr_login: fr-meyer
+  status: blocked_pending_supported_source_actor_and_base_readback
+  approval: Task-scoped registered App push selection is proposed for the exact final head. Repository defaults are unchanged; permission is not inferred from this metadata.

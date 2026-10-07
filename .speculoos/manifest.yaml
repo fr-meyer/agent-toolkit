@@ -1,14 +1,16 @@
 schema_version: 0.1
 project: agent-toolkit
 workflow: speculoos-v1
-canonical_task: pr-080-agent-toolkit-review-gate
+canonical_task: pr-085-retire-legacy-workflow-assets
 repository:
   upstream: fr-meyer/agent-toolkit
   base_branch: dev
   default_branch: main
 status:
   phase: in_review
-  blocker_summary: []
+  blocker_summary:
+  - Historical PR86 head received changes requested; successor requires guarded publication
+  - Fresh exact-head Mergeguez review and required checks remain blocking
 publication_policy:
   repository_visibility: shared-repository
   intended_public_visibility: public
@@ -36,7 +38,7 @@ review_policy:
   required_pr_review:
     policy: required
     primary:
-      - mergeguez_review
+    - mergeguez_review
     fallback_summary: self_managed evidence is not accepted for normal closeout; hosted Mergeguez review is mandatory.
 actor_policy:
   commit_actor: human_approved_agent_assisted
@@ -56,19 +58,19 @@ surfaces:
     status: open
     base_branch: dev
     default_branch: main
-    head_branch: chore/pr-080-agent-toolkit-review-gate-closeout
+    head_branch: chore/retire-legacy-workflow-assets
     head_sha: null
-    head_sha_source: Live PR #84 exact-head readback is supplied to review and merge gates; no self-referential SHA is committed
+    head_sha_source: Exact committed head and live PR readback bind publication/review gates; no self-referential SHA is committed
     merge_commit: null
 gates:
   before_publish:
-    - human-approval
-    - tests-pass
-    - private-data-check-pass
-    - review-policy-recorded
-    - review-request-dry-run-pass
+  - human-approval
+  - tests-pass
+  - private-data-check-pass
+  - review-policy-recorded
+  - review-request-dry-run-pass
   after_publish:
-    - exact-head-mergeguez-review-requested
-    - exact-head-review-and-check-evidence
-current_task: pr-080-agent-toolkit-review-gate-closeout
-current_task_metadata: .speculoos/tasks/pr-080-agent-toolkit-review-gate-closeout.yaml
+  - exact-head-mergeguez-review-requested
+  - exact-head-review-and-check-evidence
+current_task: pr-085-retire-legacy-workflow-assets
+current_task_metadata: .speculoos/tasks/pr-085-retire-legacy-workflow-assets.yaml
