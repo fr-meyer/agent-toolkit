@@ -7,9 +7,10 @@ repository:
   base_branch: dev
   default_branch: main
 status:
-  phase: local_implementation
+  phase: in_review
   blocker_summary:
-  - Explicit guarded public publication approval is pending
+  - Historical PR86 head received changes requested; successor requires guarded publication
+  - Fresh exact-head Mergeguez review and required checks remain blocking
 publication_policy:
   repository_visibility: shared-repository
   intended_public_visibility: public

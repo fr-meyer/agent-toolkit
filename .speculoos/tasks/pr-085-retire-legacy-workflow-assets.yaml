@@ -1,7 +1,7 @@
 id: pr-085-retire-legacy-workflow-assets
 title: Retire obsolete CodeRabbit workflow assets
 summary: Remove retired CodeRabbit workflow entrypoints, templates, helper scripts, distribution bindings, and the remaining CodeRabbit-only skills while preserving unrelated skills and historical records.
-status: local-implementation
+status: in-progress
 branch: chore/retire-legacy-workflow-assets
 base_branch: dev
 github:
@@ -16,7 +16,7 @@ github:
   url: https://github.com/fr-meyer/agent-toolkit/pull/86
 delivery_policy:
   mode: stop_after_review
-  reason: Local expanded retirement preparation is approved. Public publication and provider review require their respective explicit gates; stop after an authorized exact-head review.
+  reason: PR86 is open and its historical hosted head received changes requested. The approved fix loop covers isolated remediation; guarded publication and a fresh provider review retain their separate admission gates. Stop before merge.
 scope:
 - remove obsolete active CodeRabbit workflow entrypoints and canonical templates
 - remove retired scripts/coderabbit automation helpers
@@ -24,6 +24,7 @@ scope:
 - update workflow documentation and maintenance entrypoints to describe only active assets
 - remove the remaining CodeRabbit-only skill directories and their references/assets
 - preserve unrelated skills and historical audit records outside the CodeRabbit retirement scope
+- record a dated complete-tree inventory of the former consumer targets before removing distribution registration
 non_goals:
 - changing Mergeguez behavior, reviewer authority, credentials, branch protection, or deployment
 - reactivating CodeRabbit or Pullfrog
@@ -48,6 +49,7 @@ write_paths:
 - docs/cross-repo-workflow-distribution-spec.md
 - docs/cross-repo-workflow-updater-contract.md
 - docs/github-actions-template-catalog.md
+- docs/evidence/pr-086-consumer-retirement.json
 - docs/workflow-asset-library-layout.md
 - docs/workflow-authoring-rules.md
 - scripts/coderabbit/README.md
@@ -98,9 +100,9 @@ documentation_impact:
   status: required
   rationale: Workflow catalog, authoring, distribution, updater, and layout documentation must stop presenting retired CodeRabbit assets as supported. The README and workflow layout also record removal of the formerly retained CodeRabbit-only skill directories.
 branch_plan: Update the existing PR86 feature branch through the guarded actor lane after explicit publication approval; require fresh exact-head review under separate authority and stop before merge.
-executor: OpenClaw main session
+executor: Codex task15; user-approved PR86 remediation
 private_data_scan: required
-publish_authority: Current user instruction authorizes local isolated source and repository-metadata preparation. Public branch and PR updates require explicit approval naming the final head, scope, and task-scoped push actor; no provider review is currently authorized.
+publish_authority: The approved PR86 fix loop covers isolated source remediation. Publication requires the existing supported exact source, actor, base, and policy route; no permission is inferred from metadata. No new provider review, merge, deployment, credential, or policy change is authorized by this successor.
 tracking:
   workboard_card: f86d3e37-a0f0-4b0f-82cf-0f12a13f4b63
 base_sha: 04b9d6e92842cb0abe9a7450e4fae72b383bcd4a
@@ -112,5 +114,5 @@ publication_route:
   selected_push_login: mergeguez[bot]
   selected_pr_actor: franck_user_pr_author
   selected_pr_login: fr-meyer
-  status: awaiting_explicit_publication_approval
+  status: blocked_pending_supported_source_actor_and_base_readback
   approval: Task-scoped registered App push selection is proposed for the exact final head. Repository defaults are unchanged; permission is not inferred from this metadata.

@@ -31,15 +31,15 @@
   "sources": {
     "local_validation": {
       "kind": "local_validation",
-      "status": "passed",
-      "summary": "Frozen source checks and separate candidate metadata validation are recorded; fresh hosted review and checks remain required.",
+      "status": "pending",
+      "summary": "Validate this source successor and Speculoos publish-check before guarded publication. docs/evidence/pr-086-consumer-retirement.json records a dated read-only consumer inventory; it does not replace hosted review or CI.",
       "evidence_ref": ".speculoos/tasks/pr-085-retire-legacy-workflow-assets.yaml",
       "updated_at": "pr-085-retire-legacy-workflow-assets"
     },
     "github_checks": {
       "kind": "github_checks",
       "status": "pending-new-head-live-read",
-      "summary": "PR86 needs fresh exact-new-head evidence after authorized publication. Prior reviews are not reused.",
+      "summary": "Fresh required checks on the exact published successor remain unverified. The historical reviewed head had no passing CI evidence established; empty checks are not passing evidence.",
       "evidence_ref": "broker:mergeguez pr-state --json",
       "updated_at": "pr-085-retire-legacy-workflow-assets"
     },
@@ -53,7 +53,7 @@
     "mergeguez_review": {
       "kind": "mergeguez_review",
       "status": "pending-new-head-live-read",
-      "summary": "PR86 needs fresh exact-new-head evidence after authorized publication. Prior reviews are not reused.",
+      "summary": "Historical PR86 review 5439985613 requested changes on head 233dd5b1848d20685b53860a7cdc85b42a279082: 36/36 files, 2/2 chunks, 2 blocking findings. This unpublished successor requires fresh exact-head full-coverage Mergeguez review and conveys no approval.",
       "evidence_ref": "broker:mergeguez pr-state --json",
       "updated_at": "pr-085-retire-legacy-workflow-assets"
     }

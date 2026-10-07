@@ -1,0 +1,421 @@
+{
+  "schema": "agent-toolkit.consumer-workflow-retirement-evidence/v1",
+  "repositoryIdentity": {
+    "formerName": "fr-meyer/zotero-docai-pipeline",
+    "resolvedName": "fr-meyer/millefeuille",
+    "repositoryId": 1132589595,
+    "defaultBranch": "main"
+  },
+  "retiredRegistration": {
+    "sourceRepository": "fr-meyer/agent-toolkit",
+    "sourceCommit": "d650049b7dfcc353f33a098f919e297efba50b71",
+    "manifest": "templates/cross-repo-workflow-distribution-manifest.json",
+    "manifestGitBlobSha": "09d634ca1016478bff523af57a8f3cc434c3fd99",
+    "registeredBaseBranch": "dev",
+    "formerTargets": [
+      ".github/workflows/coderabbit-pr-automation-pr.yml",
+      ".github/workflows/coderabbit-pr-automation-manual.yml",
+      ".github/workflows/coderabbit-pr-comment-trigger.yml"
+    ]
+  },
+  "method": {
+    "readOnly": true,
+    "branchEndpoint": "https://api.github.com/repos/fr-meyer/millefeuille/branches?per_page=100",
+    "firstPageEntries": 52,
+    "secondPageEntries": 0,
+    "endReadbackUnchanged": true,
+    "distinctCommits": 50,
+    "commitToTreeJoinsVerified": true,
+    "allRecursiveTreesNotTruncated": true,
+    "allTreePathInventoriesUnique": true,
+    "allFormerTargetsAbsent": true,
+    "onlyWorkflowPath": ".github/workflows/ci.yml",
+    "workflowBlobsRead": [
+      {
+        "path": ".github/workflows/ci.yml",
+        "gitBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19",
+        "containsCodeRabbitOrPullfrogReference": false
+      },
+      {
+        "path": ".github/workflows/ci.yml",
+        "gitBlobSha": "5b0d02aabc51ddfad72f6caf311b7594320b0eda",
+        "containsCodeRabbitOrPullfrogReference": false
+      }
+    ]
+  },
+  "branches": [
+    {
+      "name": "chore/mf-completed-task-metadata-20260928",
+      "commit": "6d8a08f58d5e7ea6691581842b5bf61c3c00ac58",
+      "tree": "46364ec3359e5b3235deadc5343710f50091c17e",
+      "treeEntryCount": 608,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "dev",
+      "commit": "ad3a85a3317c804777792c8f001c6677ddc132b6",
+      "tree": "5e91c69a093319965ff65b1ab84305d029c2a58e",
+      "treeEntryCount": 623,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "docs/pr-mf-131-gpt-pilot-roadmap",
+      "commit": "6317da5f86665aab08ea00f113baaf8f84427d7b",
+      "tree": "998cc6331c65c17ab9225c83658898d06c425b8f",
+      "treeEntryCount": 516,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/gpt-published-summary-handoff",
+      "commit": "faa95797a54deebfc604c4b9c0b3d1ccfc92f8bd",
+      "tree": "4732cf7795bd8df22d8994739a1295657745ca30",
+      "treeEntryCount": 533,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/mf-gpt-pipeline-integration",
+      "commit": "caf9d633064ba13d81ef0d09c7e98849ec7845be",
+      "tree": "f745d741aaf3b7eeb7ba5f339ccc229aac55a431",
+      "treeEntryCount": 483,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/mf-openclaw-headless-executor",
+      "commit": "58e81270c2dccd0045cff4a8fad5c44dee5ce935",
+      "tree": "d3d9fe727ec72411874b739267b21a322c7a8b68",
+      "treeEntryCount": 466,
+      "workflowBlobSha": "5b0d02aabc51ddfad72f6caf311b7594320b0eda"
+    },
+    {
+      "name": "feat/pr-mf-108-provider-free-preparation",
+      "commit": "ca3a7aa05edf652844398b117da6f8a6f38a704e",
+      "tree": "2e7bd9b8360ac1b7f2b0971697bd59e45271c2ca",
+      "treeEntryCount": 465,
+      "workflowBlobSha": "5b0d02aabc51ddfad72f6caf311b7594320b0eda"
+    },
+    {
+      "name": "feat/pr-mf-109-model-executor-contract",
+      "commit": "3eeee31be7bb812df2759cacef54e5a6e58cebac",
+      "tree": "982166ca4defac654de6816f30670bdc4b4611d1",
+      "treeEntryCount": 463,
+      "workflowBlobSha": "5b0d02aabc51ddfad72f6caf311b7594320b0eda"
+    },
+    {
+      "name": "feat/pr-mf-112-openclaw-model-adapter",
+      "commit": "f3c8da5809179edb0dd1d176eddf4856c12f0d95",
+      "tree": "6ca861ec4ce68f1cab22ccfff8d356cc4f0bd980",
+      "treeEntryCount": 481,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-115-summary-dispatch",
+      "commit": "caf9d633064ba13d81ef0d09c7e98849ec7845be",
+      "tree": "f745d741aaf3b7eeb7ba5f339ccc229aac55a431",
+      "treeEntryCount": 483,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-116-summary-validation",
+      "commit": "3b4a0336a0953eb0fb64ab35ea39e0d7e520cb9e",
+      "tree": "5832076ca949923f4c02cb2eda6dcf1689d1e0c3",
+      "treeEntryCount": 485,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-118-summary-manifest",
+      "commit": "5b53313cf6549953290c517e887f3984914cdc73",
+      "tree": "67d9f62bbd3fbd6c2f7135e9024884258cfc5c86",
+      "treeEntryCount": 488,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-119-grounded-prompts",
+      "commit": "5d5a2a968ab5f7e7407727a1f60e7d9f2f19e16a",
+      "tree": "f26f6f98fbb37e8df7cb45741b3f8556aab0ab97",
+      "treeEntryCount": 488,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-120-grounded-batch-plan",
+      "commit": "087871b16b8aa31fa65f6f56fa78ce7f3cda0ed8",
+      "tree": "8c4ce7f8b3365538bc0ca90682cdd68dc2311752",
+      "treeEntryCount": 493,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-121-summary-approval-preview",
+      "commit": "e81076fe54f6705e9540d4140f11ba8f687d0156",
+      "tree": "7932a4b2cd979453844e485c059583badc8c7151",
+      "treeEntryCount": 496,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-122-summary-trusted-approval",
+      "commit": "24880caa2a832b5de210cc6d9201fd040b7bdf1e",
+      "tree": "383dc8bd6a405732e75536a18bca48de1e1f14a4",
+      "treeEntryCount": 499,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-123-summary-replay-reservation",
+      "commit": "960039ce24c787508436f89fae414dba55941f7a",
+      "tree": "291f6af5b500193527f9832552398c15921ed2e7",
+      "treeEntryCount": 502,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-124-summary-reservation-broker",
+      "commit": "833c2a1df3d5d7e6afa606b7366f6af017f53f37",
+      "tree": "88d38bad1204f78b2d5d3660c14c5cb3d05dfb2f",
+      "treeEntryCount": 505,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-125-gpt-summary-executor",
+      "commit": "6b8229d3310a5c5843c808335442c306bc551368",
+      "tree": "c15d53c5214b4727fd6ee0202ca505cb07ae18a8",
+      "treeEntryCount": 508,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-126-summary-output-plan",
+      "commit": "a744f3b215caf3c4586e5ed648916c6cf1f40b1e",
+      "tree": "c7fb3bd482a26b74a83683a26ea035ceec01c46c",
+      "treeEntryCount": 510,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-127-roadmap-refresh",
+      "commit": "644b285142862c38b2cc3974577517d98ea842d3",
+      "tree": "82d8bcf96bdb6b60411c1b91cdc43bb9f868602c",
+      "treeEntryCount": 510,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-128-gpt-usage",
+      "commit": "047bc02b495a820d84d3ad5481d8f1e71d0d99a9",
+      "tree": "313e632e16723a21384bbdcb6e1e4dae7909c06b",
+      "treeEntryCount": 510,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-129-summary-write-preview",
+      "commit": "178a671525bf804331bc2fd7033aed64a9b0824b",
+      "tree": "0088985f71aed40e8d0a7d86b6fc87abc8c40c1c",
+      "treeEntryCount": 512,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-130-summary-write-approval",
+      "commit": "1a3e0b13c4f6de93082f1e29eb3a315b86f7d4ec",
+      "tree": "a5a1a8b93ecb43752e9640e9a0f1ec2ce2ab2e50",
+      "treeEntryCount": 516,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-132-summary-provenance-plan",
+      "commit": "ffd98fe371c65115e01b2bd040c2cd8a06a6a6f0",
+      "tree": "c82f8fd846f0acf6dbc753ed6ec8a7fa53e75c51",
+      "treeEntryCount": 518,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-133-summary-write-usage-gate",
+      "commit": "821a3b6dc910819891f4075fa786472e5f4a541d",
+      "tree": "21eab7221a2877dfd08fd961c495cf63e476417f",
+      "treeEntryCount": 518,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-134-summary-source-snapshot",
+      "commit": "e8308450fa867089d23eec3dcc5cdc482879d2b5",
+      "tree": "98736d8d2615e4105e1545a42bc74f595989b012",
+      "treeEntryCount": 518,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-135-gpt-provenance-plan",
+      "commit": "3c7a91a9607120d6ef8b377ce79f0ff6ba4dcd00",
+      "tree": "797151f8d20406ed4f43f58cd9e994470a1f726f",
+      "treeEntryCount": 520,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-136-provenance-write-gate",
+      "commit": "0db908949dcce82c98a2f918ede2aaa49c0ef2ed",
+      "tree": "233e12c84d327de41fc62776100c3a56394df1ef",
+      "treeEntryCount": 520,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-137-gpt-publication-bundle",
+      "commit": "c254c86cbce428a8d0c306469fbb0852b3b242ce",
+      "tree": "5c36a6d912b9a591449105d34d2f36931258f691",
+      "treeEntryCount": 522,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-138-gpt-outcome-handoff",
+      "commit": "b22137a3bbc4d4649e26b4735c99306ba96679c6",
+      "tree": "1bb2635cd34d117a72c615183cfb57acf1d6bc53",
+      "treeEntryCount": 524,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-139-gpt-publication-writer",
+      "commit": "49c22e92203be364707b2c19f251eed0111f9695",
+      "tree": "a24f5c40c257933edb3860f2f3e2c3b1ffa4f714",
+      "treeEntryCount": 526,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-140-gpt-publication-broker",
+      "commit": "8991598f2779b73dbb70fe6bda5718c1c183613c",
+      "tree": "47171c649428c22be038ef2b6c98b002d3b64834",
+      "treeEntryCount": 528,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-141-gpt-publication-socket",
+      "commit": "ffa5ab51482880d506329f409f25586a6cd78c64",
+      "tree": "057b97efe27d713ec78e395b5e788120e1451d06",
+      "treeEntryCount": 530,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-142-gpt-reservation-socket-peer",
+      "commit": "9dae1bba62ef68155349fcc88a9f2fe854d7fd49",
+      "tree": "6915718fe8b39c570b74dcf25583e9cad237055e",
+      "treeEntryCount": 530,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-143-publication-integration-fixture",
+      "commit": "1bdd8feccc6a764f7d7be55c6e29611f4d6bbe73",
+      "tree": "d554909551f2506c7bc06b7763edb8e64dd324eb",
+      "treeEntryCount": 530,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-144-summary-source-root-preflight",
+      "commit": "7f6fb28c22b79aeb3f5bfe10085dec677c0942ab",
+      "tree": "08fe577501c640403c2c2b3371384f165da05faf",
+      "treeEntryCount": 530,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-146-published-summary-handoff",
+      "commit": "faa95797a54deebfc604c4b9c0b3d1ccfc92f8bd",
+      "tree": "4732cf7795bd8df22d8994739a1295657745ca30",
+      "treeEntryCount": 533,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-147-gpt-paper-card-plan",
+      "commit": "3e01eade0418b96e7b2ead6d4b5cd18e85deb88c",
+      "tree": "432627437b95ec2577b4b518cb6b22dc38b1b3f9",
+      "treeEntryCount": 534,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-148-gpt-card-inputs",
+      "commit": "f85f343eeddec749ac92ef5e2091d971e54d293a",
+      "tree": "71782da142a9d91e40faf18010711087a10615ad",
+      "treeEntryCount": 543,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-149-gpt-card-scope",
+      "commit": "4fbb93b705f79893077fc1156e8b330a0249f651",
+      "tree": "1355f76f8907a40e01022abc002fef74028176f1",
+      "treeEntryCount": 555,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-150-gpt-card-output-plan",
+      "commit": "d677d0b5eab1e399e733d09cc4d75a2819fe7a7b",
+      "tree": "44306b7aa21419c11e0522b6c1d2f22e3eb92637",
+      "treeEntryCount": 576,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-151-gpt-card-write-scope",
+      "commit": "3b64797eca040100c8a5ef395f1c111dea12b609",
+      "tree": "3727943171be9ec63d63620dec911ba64b690c71",
+      "treeEntryCount": 565,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-152-gpt-card-publication",
+      "commit": "c308d3ec118edfa85545aabacafafe02b0ffd768",
+      "tree": "3cb80ff34cdf8b2246112b8782435014f219503e",
+      "treeEntryCount": 575,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-classification-model-scope-20260927",
+      "commit": "a928b0de55818ba8e98e522326f217aa05dcd393",
+      "tree": "09a6a3a9cfc6e8b522aef341a3e70a22897d710c",
+      "treeEntryCount": 591,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-duplicate-review-20260927",
+      "commit": "aa1470621879ac745d9487a13539a059252d1d31",
+      "tree": "97e2ac2adff72c0171d91705db8926a8f01e5fdb",
+      "treeEntryCount": 586,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-multisource-handoff-20260929",
+      "commit": "6c444520e420a1b828cd5409d9e5b85f68ddfffc",
+      "tree": "b779c955a484a197c661fb68e51016da236f5e02",
+      "treeEntryCount": 619,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-multisource-package-v02-20260929",
+      "commit": "76ead660e999b5a7626be31fa92381d517446ee9",
+      "tree": "3ce704c31a321bc33ff9bdf70954e0cd4a43f8f6",
+      "treeEntryCount": 623,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "feat/pr-mf-published-summary-run-link",
+      "commit": "f27583a484cd90777752d0e90a2306a15e47b986",
+      "tree": "30a9c135b3c10a2159f2c59840bc45d27aaf8a8b",
+      "treeEntryCount": 581,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "fix/pr-mf-classification-summary-link-20260927",
+      "commit": "3b554263b91d2c3f8566d9f84b5c22993659c2f4",
+      "tree": "97e0fbfad2be6e4c275a81c4643f55801394ef91",
+      "treeEntryCount": 592,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "fix/pr-mf-research-gpt-default-20260927",
+      "commit": "948cf23848d0c74dd7e9c12505e55cba0a7836e9",
+      "tree": "4da35b6fd86f0892a5147786df004a168c89fe35",
+      "treeEntryCount": 593,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    },
+    {
+      "name": "main",
+      "commit": "e12e9ec30651d5cd403e541c7cdcc9058ead83a4",
+      "tree": "6e75739b34d8251b2b9968e618762cd30fc86800",
+      "treeEntryCount": 463,
+      "workflowBlobSha": "4d4d51cb2c221d0433f86de56791317f2a2bdb19"
+    }
+  ],
+  "conclusion": "The three former managed target paths are absent from the registered dev branch, default main branch, and every visible branch head in this dated stable snapshot. Removing this registration does not leave those target workflows orphaned at these observed refs. No consumer deletion, restoration, or workflow dispatch was performed.",
+  "limitations": [
+    "This proves current checked branch-tree absence, not that the workflows never existed or that a prior deletion occurred.",
+    "Tags, deleted branches, inaccessible refs, and historical commits were not exhaustively enumerated; they are not current registered distribution targets.",
+    "Future ref changes or restoration require fresh admission and evidence; this dated inventory cannot authorize future execution.",
+    "This is retirement evidence only. It provides no Mergeguez approval, CI success, merge authority, provider input certification, or policy waiver."
+  ],
+  "receiptCreatedUtc": "2026-10-07T10:59:58.872924+00:00",
+  "observationDateUtc": "2026-10-07"
+}

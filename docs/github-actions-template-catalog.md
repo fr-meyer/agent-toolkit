@@ -45,7 +45,7 @@ requested through the approved broker/comment protocol, while Speculoos consumes
 exact-head evidence through `review-evidence` and `merge-plan`; no GitHub Actions
 workflow in this catalog invokes a reviewer or performs remediation.
 
-## 5. Sync starter-workflow template refs (reusable)
+## 1. Sync starter-workflow template refs (reusable)
 
 - **Type:** reusable workflow
 - **Canonical source:** `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
@@ -85,7 +85,7 @@ Use this as the maintenance engine that keeps starter templates and linked live 
 
 ---
 
-## 6. Sync starter-workflow template refs (trigger)
+## 2. Sync starter-workflow template refs (trigger)
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`
@@ -121,7 +121,7 @@ Use this as the repo entrypoint that invokes maintenance whenever reusable workf
 
 ---
 
-## 7. Cross-repo workflow updater (reusable)
+## 3. Cross-repo workflow updater (reusable)
 
 - **Type:** reusable workflow
 - **Canonical source:** `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml`
@@ -170,7 +170,7 @@ Use this as the shared engine for distributing starter-workflow updates from thi
 
 ---
 
-## 8. Cross-repo workflow updater (push trigger)
+## 4. Cross-repo workflow updater (push trigger)
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/cross-repo-workflow-updater-push-trigger.yml`
@@ -199,7 +199,7 @@ Use this as the repository entrypoint that reacts automatically to starter-templ
 
 ---
 
-## 9. Cross-repo workflow updater (manual trigger)
+## 5. Cross-repo workflow updater (manual trigger)
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml`
@@ -260,3 +260,7 @@ When adding, renaming, or materially changing a workflow asset:
 2. update the relevant manifest(s)
 3. update this catalog so humans and agents can quickly understand the asset
 4. re-materialize and validate any linked live runtime copies
+
+## Retired consumer registration evidence
+
+The former `fr-meyer/zotero-docai-pipeline` consumer resolves to `fr-meyer/millefeuille` (repository ID 1132589595). [The dated consumer inventory](evidence/pr-086-consumer-retirement.json) joins all 52 visible branch heads to 50 complete immutable Git trees. The three former managed CodeRabbit targets are absent from every checked tree; the only workflow path is `ci.yml`, whose two distinct blobs do not reference CodeRabbit or Pullfrog. Removing the registration therefore does not orphan those targets in the checked snapshot. No consumer deletion or workflow execution was performed. Historical refs and future restoration remain outside this evidence; any future distribution change needs fresh ref readback and the normal review gates.
