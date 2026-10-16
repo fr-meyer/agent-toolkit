@@ -107,6 +107,23 @@ class PrAutomationDogfoodTests(unittest.TestCase):
                 )
                 self.assertIn(expected, receipt["blockers"])
 
+    def test_consecutive_hyphen_actor_labels_block(self):
+        for author_login, reviewer_login in [
+            ("pull--frog", "mergeguez"),
+            ("pullfrog", "merge--guez"),
+        ]:
+            with self.subTest(
+                author_login=author_login,
+                reviewer_login=reviewer_login,
+            ):
+                scenario = self.load("ready.json")
+                scenario["actors"]["author_login"] = author_login
+                scenario["actors"]["reviewer_login"] = reviewer_login
+                receipt = MODULE.evaluate_scenario(scenario)
+                self.assertEqual(receipt["status"], "blocked")
+                self.assertIn("invalid_actor_identity", receipt["blockers"])
+                self.assertFalse(receipt["actors"]["separated"])
+
     def test_provider_or_secret_exposure_blocks(self):
         scenario = self.load("ready.json")
         scenario["policy"]["provider_calls"] = True
@@ -182,26 +199,6 @@ class PrAutomationDogfoodTests(unittest.TestCase):
                 scenario["repository"]["head_ref"] = head_ref
                 receipt = MODULE.evaluate_scenario(scenario)
                 self.assertIn("invalid_head_ref", receipt["blockers"])
-
-    def test_malformed_repository_slugs_block(self):
-        invalid_slugs = [
-            "bad_owner/repository",
-            "-bad/repository",
-            "bad-/repository",
-            "bad--owner/repository",
-            ("a" * 40) + "/repository",
-            "owner/" + ("r" * 101),
-            "owner/..",
-        ]
-        for slug in invalid_slugs:
-            with self.subTest(slug=slug):
-                scenario = self.load("ready.json")
-                scenario["repository"]["slug"] = slug
-                scenario["run"]["claim_key"] = (
-                    slug + ":2222222222222222222222222222222222222222:1"
-                )
-                receipt = MODULE.evaluate_scenario(scenario)
-                self.assertIn("invalid_repository_slug", receipt["blockers"])
 
     def test_malformed_repository_slugs_block(self):
         invalid_slugs = [
