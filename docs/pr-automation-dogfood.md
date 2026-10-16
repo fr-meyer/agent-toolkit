@@ -16,6 +16,7 @@ The fixture identities are public GitHub login labels, not credentials.
 The evaluator blocks when:
 
 - repository, base, branch, or SHA identity is malformed;
+- GitHub owner/repository identity is malformed or claim deduplication differs only by case;
 - a protected branch is used as the head;
 - the same claim key was already consumed;
 - claim history is missing, malformed, duplicated, or contains a non-canonical claim key;

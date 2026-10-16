@@ -15,14 +15,13 @@ from typing import Any, Dict, List
 SCENARIO_SCHEMA = "pr-automation-dogfood.v1"
 RECEIPT_SCHEMA = "pr-automation-dogfood-receipt.v1"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+OWNER_RE = re.compile(r"^(?=.{1,39}$)(?!-)(?!.*--)[A-Za-z0-9-]+(?<!-)$")
+REPOSITORY_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 BRANCH_ALLOWED_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 ACTOR_LOGIN_RE = re.compile(
     r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?(?:\[bot\])?$"
 )
-CLAIM_KEY_RE = re.compile(
-    r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+:[0-9a-f]{40}:[1-9][0-9]*$"
-)
+CLAIM_CYCLE_RE = re.compile(r"^[1-9][0-9]*$")
 PROTECTED_HEAD_REFS = {"dev", "main", "master"}
 ALLOWED_WRITE_SCOPES = {"none", "fixture-only"}
 REQUIRED_CHECK_NAMES = frozenset({"dogfood-contract", "unit-tests"})
@@ -57,6 +56,18 @@ def _valid_branch_ref(value: str) -> bool:
     )
 
 
+def _canonical_repository_slug(value: str) -> str:
+    """Return a case-normalized GitHub owner/repository slug when valid."""
+    if value.count("/") != 1:
+        return ""
+    owner, repository = value.split("/", 1)
+    if not OWNER_RE.fullmatch(owner):
+        return ""
+    if not REPOSITORY_NAME_RE.fullmatch(repository) or repository in {".", ".."}:
+        return ""
+    return "{}/{}".format(owner.casefold(), repository.casefold())
+
+
 def _canonical_actor_login(value: str) -> str:
     """Return a normalized GitHub actor label, or empty text when malformed."""
     if not ACTOR_LOGIN_RE.fullmatch(value):
@@ -64,13 +75,18 @@ def _canonical_actor_login(value: str) -> str:
     return value.casefold()
 
 
-def _valid_claim_key(value: str) -> bool:
-    """Accept only the canonical repository:head-sha:cycle claim-key shape."""
-    if not CLAIM_KEY_RE.fullmatch(value):
-        return False
-    slug, _head_sha, cycle_text = value.rsplit(":", 2)
-    slug_parts = slug.split("/", 1)
-    return all(part not in {".", ".."} for part in slug_parts) and int(cycle_text) <= 2
+def _canonical_claim_key(value: str) -> str:
+    """Return a case-normalized repository:head-sha:cycle claim key when valid."""
+    parts = value.rsplit(":", 2)
+    if len(parts) != 3:
+        return ""
+    slug, head_sha, cycle_text = parts
+    canonical_slug = _canonical_repository_slug(slug)
+    if not canonical_slug or not SHA_RE.fullmatch(head_sha):
+        return ""
+    if not CLAIM_CYCLE_RE.fullmatch(cycle_text) or int(cycle_text) > 2:
+        return ""
+    return "{}:{}:{}".format(canonical_slug, head_sha, cycle_text)
 
 
 def _canonical_digest(scenario: Dict[str, Any]) -> str:
@@ -88,13 +104,13 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
 
     repository = _mapping(scenario.get("repository"))
     slug = _text(repository.get("slug"))
+    canonical_slug = _canonical_repository_slug(slug)
     base_ref = _text(repository.get("base_ref"))
     base_sha = _text(repository.get("base_sha"))
     head_ref = _text(repository.get("head_ref"))
     head_sha = _text(repository.get("head_sha"))
 
-    slug_parts = slug.split("/", 1)
-    if not SLUG_RE.fullmatch(slug) or any(part in {".", ".."} for part in slug_parts):
+    if not canonical_slug:
         blockers.append("invalid_repository_slug")
     if base_ref != "dev":
         blockers.append("invalid_base_ref")
@@ -128,6 +144,7 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
     claim_key = _text(run.get("claim_key"))
     prior_claim_keys_value = run.get("prior_claim_keys")
     prior_claim_keys: List[str] = []
+    canonical_prior_claim_keys: List[str] = []
     claim_history_valid = False
     if "prior_claim_keys" not in run:
         blockers.append("missing_claim_history")
@@ -135,9 +152,12 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
         blockers.append("invalid_claim_history")
     else:
         prior_claim_keys = [_text(item) for item in prior_claim_keys_value]
+        canonical_prior_claim_keys = [
+            _canonical_claim_key(item) for item in prior_claim_keys
+        ]
         claim_history_valid = (
-            all(_valid_claim_key(item) for item in prior_claim_keys)
-            and len(set(prior_claim_keys)) == len(prior_claim_keys)
+            all(canonical_prior_claim_keys)
+            and len(set(canonical_prior_claim_keys)) == len(canonical_prior_claim_keys)
         )
         if not claim_history_valid:
             blockers.append("invalid_claim_history")
@@ -149,10 +169,11 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(cycle, int) and isinstance(max_cycles, int) and cycle > max_cycles:
         blockers.append("cycle_limit_exceeded")
 
-    expected_claim_key = "{}:{}:{}".format(slug, head_sha, cycle)
-    if not claim_key or claim_key != expected_claim_key:
+    canonical_claim_key = _canonical_claim_key(claim_key)
+    expected_claim_key = "{}:{}:{}".format(canonical_slug, head_sha, cycle)
+    if not canonical_claim_key or canonical_claim_key != expected_claim_key:
         blockers.append("invalid_claim_key")
-    if claim_key and claim_key in prior_claim_keys:
+    if canonical_claim_key and canonical_claim_key in canonical_prior_claim_keys:
         blockers.append("duplicate_claim")
 
     evidence = _mapping(scenario.get("evidence"))
@@ -238,7 +259,10 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "max_cycles": max_cycles,
             "claim_key": claim_key,
             "claim_history_valid": claim_history_valid,
-            "duplicate": bool(claim_key and claim_key in prior_claim_keys),
+            "duplicate": bool(
+                canonical_claim_key
+                and canonical_claim_key in canonical_prior_claim_keys
+            ),
         },
         "evidence": {
             "reviewed_head_sha": reviewed_head_sha,

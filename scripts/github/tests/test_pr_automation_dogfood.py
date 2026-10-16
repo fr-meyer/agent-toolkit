@@ -58,6 +58,26 @@ class PrAutomationDogfoodTests(unittest.TestCase):
                 self.assertIn(blocker, receipt["blockers"])
                 self.assertFalse(receipt["run"]["claim_history_valid"])
 
+    def test_repository_case_is_normalized_for_claim_deduplication(self):
+        scenario = self.load("ready.json")
+        scenario["run"]["prior_claim_keys"] = [
+            "FR-MEYER/AGENT-TOOLKIT:2222222222222222222222222222222222222222:1"
+        ]
+        receipt = MODULE.evaluate_scenario(scenario)
+        self.assertIn("duplicate_claim", receipt["blockers"])
+        self.assertTrue(receipt["run"]["claim_history_valid"])
+        self.assertTrue(receipt["run"]["duplicate"])
+
+    def test_case_variant_claim_history_duplicates_are_invalid(self):
+        scenario = self.load("ready.json")
+        scenario["run"]["prior_claim_keys"] = [
+            "fr-meyer/agent-toolkit:3333333333333333333333333333333333333333:1",
+            "FR-MEYER/AGENT-TOOLKIT:3333333333333333333333333333333333333333:1",
+        ]
+        receipt = MODULE.evaluate_scenario(scenario)
+        self.assertIn("invalid_claim_history", receipt["blockers"])
+        self.assertFalse(receipt["run"]["claim_history_valid"])
+
     def test_actor_overlap_blocks(self):
         receipt = MODULE.evaluate_scenario(self.load("actor-overlap.json"))
         self.assertEqual(receipt["status"], "blocked")
@@ -162,6 +182,46 @@ class PrAutomationDogfoodTests(unittest.TestCase):
                 scenario["repository"]["head_ref"] = head_ref
                 receipt = MODULE.evaluate_scenario(scenario)
                 self.assertIn("invalid_head_ref", receipt["blockers"])
+
+    def test_malformed_repository_slugs_block(self):
+        invalid_slugs = [
+            "bad_owner/repository",
+            "-bad/repository",
+            "bad-/repository",
+            "bad--owner/repository",
+            ("a" * 40) + "/repository",
+            "owner/" + ("r" * 101),
+            "owner/..",
+        ]
+        for slug in invalid_slugs:
+            with self.subTest(slug=slug):
+                scenario = self.load("ready.json")
+                scenario["repository"]["slug"] = slug
+                scenario["run"]["claim_key"] = (
+                    slug + ":2222222222222222222222222222222222222222:1"
+                )
+                receipt = MODULE.evaluate_scenario(scenario)
+                self.assertIn("invalid_repository_slug", receipt["blockers"])
+
+    def test_malformed_repository_slugs_block(self):
+        invalid_slugs = [
+            "bad_owner/repository",
+            "-bad/repository",
+            "bad-/repository",
+            "bad--owner/repository",
+            ("a" * 40) + "/repository",
+            "owner/" + ("r" * 101),
+            "owner/..",
+        ]
+        for slug in invalid_slugs:
+            with self.subTest(slug=slug):
+                scenario = self.load("ready.json")
+                scenario["repository"]["slug"] = slug
+                scenario["run"]["claim_key"] = (
+                    slug + ":2222222222222222222222222222222222222222:1"
+                )
+                receipt = MODULE.evaluate_scenario(scenario)
+                self.assertIn("invalid_repository_slug", receipt["blockers"])
 
     def test_receipt_digest_ignores_expectation_metadata(self):
         scenario = self.load("ready.json")
