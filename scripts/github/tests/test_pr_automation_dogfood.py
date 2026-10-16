@@ -39,11 +39,53 @@ class PrAutomationDogfoodTests(unittest.TestCase):
         self.assertIn("duplicate_claim", receipt["blockers"])
         self.assertTrue(receipt["run"]["duplicate"])
 
+    def test_missing_wrong_type_or_malformed_claim_history_blocks(self):
+        variants = [
+            ("missing", None, "missing_claim_history"),
+            ("wrong-type", "not-a-list", "invalid_claim_history"),
+            ("malformed", ["not-a-canonical-claim-key"], "invalid_claim_history"),
+            ("non-string", [7], "invalid_claim_history"),
+        ]
+        for name, value, blocker in variants:
+            with self.subTest(name=name):
+                scenario = self.load("ready.json")
+                if name == "missing":
+                    del scenario["run"]["prior_claim_keys"]
+                else:
+                    scenario["run"]["prior_claim_keys"] = value
+                receipt = MODULE.evaluate_scenario(scenario)
+                self.assertEqual(receipt["status"], "blocked")
+                self.assertIn(blocker, receipt["blockers"])
+                self.assertFalse(receipt["run"]["claim_history_valid"])
+
     def test_actor_overlap_blocks(self):
         receipt = MODULE.evaluate_scenario(self.load("actor-overlap.json"))
         self.assertEqual(receipt["status"], "blocked")
         self.assertIn("actor_identity_overlap", receipt["blockers"])
         self.assertFalse(receipt["actors"]["separated"])
+
+    def test_malformed_or_whitespace_variant_actor_labels_block(self):
+        for author_login, reviewer_login in [
+            ("mergeguez[bot]", "mergeguez[bot] "),
+            ("pullfrog[bot]", "bad_login"),
+            ("mergeguez[bot]", "Mergeguez[bot]"),
+        ]:
+            with self.subTest(
+                author_login=author_login,
+                reviewer_login=reviewer_login,
+            ):
+                scenario = self.load("ready.json")
+                scenario["actors"]["author_login"] = author_login
+                scenario["actors"]["reviewer_login"] = reviewer_login
+                receipt = MODULE.evaluate_scenario(scenario)
+                self.assertEqual(receipt["status"], "blocked")
+                self.assertFalse(receipt["actors"]["separated"])
+                expected = (
+                    "actor_identity_overlap"
+                    if author_login.casefold() == reviewer_login.casefold()
+                    else "invalid_actor_identity"
+                )
+                self.assertIn(expected, receipt["blockers"])
 
     def test_provider_or_secret_exposure_blocks(self):
         scenario = self.load("ready.json")

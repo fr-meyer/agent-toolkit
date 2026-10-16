@@ -17,6 +17,12 @@ RECEIPT_SCHEMA = "pr-automation-dogfood-receipt.v1"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 BRANCH_ALLOWED_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+ACTOR_LOGIN_RE = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?(?:\[bot\])?$"
+)
+CLAIM_KEY_RE = re.compile(
+    r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+:[0-9a-f]{40}:[1-9][0-9]*$"
+)
 PROTECTED_HEAD_REFS = {"dev", "main", "master"}
 ALLOWED_WRITE_SCOPES = {"none", "fixture-only"}
 REQUIRED_CHECK_NAMES = frozenset({"dogfood-contract", "unit-tests"})
@@ -49,6 +55,22 @@ def _valid_branch_ref(value: str) -> bool:
         and not component.endswith(".lock")
         for component in components
     )
+
+
+def _canonical_actor_login(value: str) -> str:
+    """Return a normalized GitHub actor label, or empty text when malformed."""
+    if not ACTOR_LOGIN_RE.fullmatch(value):
+        return ""
+    return value.casefold()
+
+
+def _valid_claim_key(value: str) -> bool:
+    """Accept only the canonical repository:head-sha:cycle claim-key shape."""
+    if not CLAIM_KEY_RE.fullmatch(value):
+        return False
+    slug, _head_sha, cycle_text = value.rsplit(":", 2)
+    slug_parts = slug.split("/", 1)
+    return all(part not in {".", ".."} for part in slug_parts) and int(cycle_text) <= 2
 
 
 def _canonical_digest(scenario: Dict[str, Any]) -> str:
@@ -91,16 +113,34 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
     actors = _mapping(scenario.get("actors"))
     author_login = _text(actors.get("author_login"))
     reviewer_login = _text(actors.get("reviewer_login"))
+    canonical_author_login = _canonical_actor_login(author_login)
+    canonical_reviewer_login = _canonical_actor_login(reviewer_login)
     if not author_login or not reviewer_login:
         blockers.append("missing_actor_identity")
-    elif author_login.casefold() == reviewer_login.casefold():
+    elif not canonical_author_login or not canonical_reviewer_login:
+        blockers.append("invalid_actor_identity")
+    elif canonical_author_login == canonical_reviewer_login:
         blockers.append("actor_identity_overlap")
 
     run = _mapping(scenario.get("run"))
     cycle = run.get("cycle")
     max_cycles = run.get("max_cycles")
     claim_key = _text(run.get("claim_key"))
-    prior_claim_keys = [_text(item) for item in _list(run.get("prior_claim_keys"))]
+    prior_claim_keys_value = run.get("prior_claim_keys")
+    prior_claim_keys: List[str] = []
+    claim_history_valid = False
+    if "prior_claim_keys" not in run:
+        blockers.append("missing_claim_history")
+    elif not isinstance(prior_claim_keys_value, list):
+        blockers.append("invalid_claim_history")
+    else:
+        prior_claim_keys = [_text(item) for item in prior_claim_keys_value]
+        claim_history_valid = (
+            all(_valid_claim_key(item) for item in prior_claim_keys)
+            and len(set(prior_claim_keys)) == len(prior_claim_keys)
+        )
+        if not claim_history_valid:
+            blockers.append("invalid_claim_history")
 
     if not isinstance(cycle, int) or isinstance(cycle, bool) or cycle < 1:
         blockers.append("invalid_cycle")
@@ -190,13 +230,14 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
         "actors": {
             "author_login": author_login,
             "reviewer_login": reviewer_login,
-            "separated": bool(author_login and reviewer_login)
-            and author_login.casefold() != reviewer_login.casefold(),
+            "separated": bool(canonical_author_login and canonical_reviewer_login)
+            and canonical_author_login != canonical_reviewer_login,
         },
         "run": {
             "cycle": cycle,
             "max_cycles": max_cycles,
             "claim_key": claim_key,
+            "claim_history_valid": claim_history_valid,
             "duplicate": bool(claim_key and claim_key in prior_claim_keys),
         },
         "evidence": {

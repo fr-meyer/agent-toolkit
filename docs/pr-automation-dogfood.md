@@ -18,7 +18,8 @@ The evaluator blocks when:
 - repository, base, branch, or SHA identity is malformed;
 - a protected branch is used as the head;
 - the same claim key was already consumed;
-- the author and reviewer identities overlap;
+- claim history is missing, malformed, duplicated, or contains a non-canonical claim key;
+- author or reviewer labels are malformed, or the canonical identities overlap;
 - review evidence belongs to an older head;
 - either authoritative required check (`dogfood-contract` and `unit-tests`)
   is missing, duplicated, unnamed, replaced by an unknown name, or not successful;
