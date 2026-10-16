@@ -33,6 +33,14 @@
     {
       "source": "templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml",
       "target": ".github/workflows/cross-repo-workflow-updater-manual-trigger.yml"
+    },
+    {
+      "source": "templates/reusable-workflows/pr-automation-dogfood-reusable.yml",
+      "target": ".github/workflows/pr-automation-dogfood-reusable.yml"
+    },
+    {
+      "source": "templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml",
+      "target": ".github/workflows/pr-automation-dogfood-pr-trigger.yml"
     }
   ]
 }

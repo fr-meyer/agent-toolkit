@@ -1,0 +1,38 @@
+{
+  "schema": "pr-automation-dogfood.v1",
+  "repository": {
+    "slug": "fr-meyer/agent-toolkit",
+    "base_ref": "dev",
+    "base_sha": "1111111111111111111111111111111111111111",
+    "head_ref": "feat/pr-automation-dogfood-harness-20261016",
+    "head_sha": "2222222222222222222222222222222222222222"
+  },
+  "actors": {
+    "author_login": "pullfrog[bot]",
+    "reviewer_login": "mergeguez[bot]"
+  },
+  "run": {
+    "cycle": 1,
+    "max_cycles": 2,
+    "claim_key": "fr-meyer/agent-toolkit:2222222222222222222222222222222222222222:1",
+    "prior_claim_keys": []
+  },
+  "evidence": {
+    "reviewed_head_sha": "2222222222222222222222222222222222222222",
+    "required_checks": [
+      {"name": "dogfood-contract", "status": "success"},
+      {"name": "unit-tests", "status": "success"}
+    ]
+  },
+  "policy": {
+    "provider_calls": false,
+    "secrets_exposed": false,
+    "write_scope": "none",
+    "merge_mode": "human",
+    "auto_merge": false
+  },
+  "expected": {
+    "status": "ready_for_human_merge",
+    "blockers": []
+  }
+}
