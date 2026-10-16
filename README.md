@@ -55,7 +55,8 @@ agent-toolkit/
 │       ├── sync-starter-workflow-template-refs-trigger.yml
 │       ├── cross-repo-workflow-updater-reusable.yml
 │       ├── cross-repo-workflow-updater-push-trigger.yml
-│       └── cross-repo-workflow-updater-manual-trigger.yml
+│       ├── cross-repo-workflow-updater-manual-trigger.yml
+│       └── repository-similarity-preflight-ci.yml
 ├── templates/
 │   ├── reusable-workflows/
 │   │   ├── coderabbit-pr-automation.yml
@@ -67,7 +68,8 @@ agent-toolkit/
 │   │   ├── coderabbit-pr-comment-trigger.yml
 │   │   ├── sync-starter-workflow-template-refs-trigger.yml
 │   │   ├── cross-repo-workflow-updater-push-trigger.yml
-│   │   └── cross-repo-workflow-updater-manual-trigger.yml
+│   │   ├── cross-repo-workflow-updater-manual-trigger.yml
+│   │   └── repository-similarity-preflight-ci.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
 ├── skills/
@@ -113,6 +115,7 @@ This repository now treats GitHub Actions files as **source assets**, not as act
 - **Reusable workflow source:** `templates/reusable-workflows/coderabbit-pr-automation.yml`
 - **Reusable maintenance workflow source:** `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
 - **Starter workflow sources:** `templates/starter-workflows/`, including `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`
+- **Repository similarity preflight CI source:** `templates/starter-workflows/repository-similarity-preflight-ci.yml`
 - **CodeRabbit split-trigger starter sources:** `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml` and `templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml`
 - **Ref-sync manifest:** `templates/workflow-ref-sync-manifest.json`
 - **Repo-workflow materialization manifest:** `templates/repo-workflow-materialization-manifest.json`

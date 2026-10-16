@@ -34,6 +34,7 @@ For exact source-to-target bindings, also consult:
 | CodeRabbit PR automation (PR trigger) | Starter | `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml` | none in this repo | Consumer-facing PR-event entrypoint wired to the reusable engine |
 | CodeRabbit PR automation (manual trigger) | Starter | `templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml` | none in this repo | Consumer-facing manual-dispatch entrypoint wired to the reusable engine |
 | CodeRabbit PR comment trigger | Starter | `templates/starter-workflows/coderabbit-pr-comment-trigger.yml` | `.github/workflows/coderabbit-pr-comment-trigger.yml` | Repo-local and consumer-facing comment-triggered entrypoint that resolves PR context, then calls the reusable engine |
+| Repository similarity preflight CI | Starter | `templates/starter-workflows/repository-similarity-preflight-ci.yml` | `.github/workflows/repository-similarity-preflight-ci.yml` | Repo-local validation entrypoint for the repository-similarity-preflight skill |
 | Sync starter-workflow template refs (reusable) | Reusable | `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml` | `.github/workflows/sync-starter-workflow-template-refs-reusable.yml` | Deterministic maintenance workflow that materializes local workflow copies and syncs pinned reusable-workflow refs |
 | Cross-repo workflow updater (reusable) | Reusable | `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml` | `.github/workflows/cross-repo-workflow-updater-reusable.yml` | Shared engine that clones consumer repos, renders starter-template updates, and opens consumer PRs |
 | Sync starter-workflow template refs (trigger) | Starter | `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml` | `.github/workflows/sync-starter-workflow-template-refs-trigger.yml` | Repo-local trigger surface that calls the reusable maintenance workflow on push or manual dispatch |
@@ -436,6 +437,35 @@ Use this when you want an explicit Run workflow button for the cross-repo update
 - This asset exists separately from the push trigger to keep the Actions UI clean and avoid irrelevant skipped sibling jobs.
 - Default divergence delivery is a managed PR comment on the update PR. Legacy committed review docs are fallback-only behavior.
 
+---
+
+## 10. Repository similarity preflight CI
+
+- **Type:** starter workflow
+- **Canonical source:** `templates/starter-workflows/repository-similarity-preflight-ci.yml`
+- **Live/runtime copy in this repo:** `.github/workflows/repository-similarity-preflight-ci.yml`
+- **Governed by:**
+  - source in `templates/repo-workflow-materialization-manifest.json`
+- **Purpose:**
+  - run the repository-similarity-preflight unit tests
+  - compile the Python helper
+  - validate the Agent Skill package
+  - reject whitespace errors in pull-request or manual-dispatch checks
+
+### When to use
+Use this as the repo-local validation entrypoint when the repository-similarity-preflight skill or its CI definition changes.
+
+### Trigger shape
+- `pull_request` for changes under:
+  - `skills/repository-similarity-preflight/**`
+  - `templates/starter-workflows/repository-similarity-preflight-ci.yml`
+  - `.github/workflows/repository-similarity-preflight-ci.yml`
+- `workflow_dispatch`
+
+### Notes
+- This is a standalone CI entrypoint rather than a callable `workflow_call` engine, so its canonical source belongs under `templates/starter-workflows/`.
+- It does not call an in-repo reusable workflow and therefore does not need a `templates/workflow-ref-sync-manifest.json` binding.
+
 ## Live runtime copies in this repo
 
 These files exist under `.github/workflows/` and should not be treated as the primary authoring location:
@@ -445,6 +475,7 @@ These files exist under `.github/workflows/` and should not be treated as the pr
 - `.github/workflows/cross-repo-workflow-updater-reusable.yml`
 - `.github/workflows/cross-repo-workflow-updater-push-trigger.yml`
 - `.github/workflows/cross-repo-workflow-updater-manual-trigger.yml`
+- `.github/workflows/repository-similarity-preflight-ci.yml`
 
 Their canonical sources are:
 - `templates/reusable-workflows/coderabbit-pr-automation.yml`
@@ -453,6 +484,7 @@ Their canonical sources are:
 - `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml`
 - `templates/starter-workflows/cross-repo-workflow-updater-push-trigger.yml`
 - `templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml`
+- `templates/starter-workflows/repository-similarity-preflight-ci.yml`
 
 ## Maintenance rule for this catalog
 
