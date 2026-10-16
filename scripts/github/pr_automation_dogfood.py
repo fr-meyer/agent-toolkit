@@ -16,9 +16,10 @@ SCENARIO_SCHEMA = "pr-automation-dogfood.v1"
 RECEIPT_SCHEMA = "pr-automation-dogfood-receipt.v1"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+BRANCH_ALLOWED_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 PROTECTED_HEAD_REFS = {"dev", "main", "master"}
 ALLOWED_WRITE_SCOPES = {"none", "fixture-only"}
+REQUIRED_CHECK_NAMES = frozenset({"dogfood-contract", "unit-tests"})
 
 
 def _mapping(value: Any) -> Dict[str, Any]:
@@ -31,6 +32,23 @@ def _list(value: Any) -> List[Any]:
 
 def _text(value: Any) -> str:
     return value if isinstance(value, str) else ""
+
+
+def _valid_branch_ref(value: str) -> bool:
+    """Apply the relevant fail-closed `git check-ref-format --branch` rules."""
+    if not value or not BRANCH_ALLOWED_RE.fullmatch(value):
+        return False
+    if value.startswith(("-", "/")) or value.endswith(("/", ".")):
+        return False
+    if value == "@" or "@{" in value or ".." in value or "//" in value:
+        return False
+    components = value.split("/")
+    return all(
+        component
+        and not component.startswith(".")
+        and not component.endswith(".lock")
+        for component in components
+    )
 
 
 def _canonical_digest(scenario: Dict[str, Any]) -> str:
@@ -60,7 +78,7 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
         blockers.append("invalid_base_ref")
     if not SHA_RE.fullmatch(base_sha):
         blockers.append("invalid_base_sha")
-    if not REF_RE.fullmatch(head_ref) or head_ref.startswith("/") or ".." in head_ref:
+    if not _valid_branch_ref(head_ref):
         blockers.append("invalid_head_ref")
     protected_head = head_ref.removeprefix("refs/heads/")
     if protected_head in PROTECTED_HEAD_REFS:
@@ -105,12 +123,27 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
         blockers.append("stale_review_head")
 
     checks = _list(evidence.get("required_checks"))
+    check_names: List[str] = []
+    missing_required_check_names = set(REQUIRED_CHECK_NAMES)
+    unexpected_required_check_names = set()
+    check_names_valid = False
     if not checks:
         blockers.append("missing_required_checks")
     else:
         check_names = [_text(_mapping(check).get("name")) for check in checks]
-        if any(not name for name in check_names) or len(set(check_names)) != len(check_names):
+        check_names_valid = (
+            bool(check_names)
+            and all(check_names)
+            and len(set(check_names)) == len(check_names)
+        )
+        if not check_names_valid:
             blockers.append("invalid_required_check")
+        missing_required_check_names = REQUIRED_CHECK_NAMES - set(check_names)
+        if missing_required_check_names:
+            blockers.append("missing_required_check")
+        unexpected_required_check_names = set(check_names) - REQUIRED_CHECK_NAMES
+        if unexpected_required_check_names:
+            blockers.append("unexpected_required_check")
         if any(_text(_mapping(check).get("status")) != "success" for check in checks):
             blockers.append("required_check_not_success")
 
@@ -134,8 +167,12 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
 
     blockers = sorted(set(blockers))
     status = "ready_for_human_merge" if not blockers else "blocked"
-    checks_green = bool(checks) and all(
-        _text(_mapping(check).get("status")) == "success" for check in checks
+    checks_green = (
+        bool(checks)
+        and check_names_valid
+        and not missing_required_check_names
+        and not unexpected_required_check_names
+        and all(_text(_mapping(check).get("status")) == "success" for check in checks)
     )
 
     return {
@@ -166,6 +203,10 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "reviewed_head_sha": reviewed_head_sha,
             "reviewed_head_matches": bool(reviewed_head_sha and reviewed_head_sha == head_sha),
             "checks_green": checks_green,
+            "required_check_names": sorted(REQUIRED_CHECK_NAMES),
+            "observed_check_names": sorted(set(check_names)),
+            "missing_required_check_names": sorted(missing_required_check_names),
+            "unexpected_required_check_names": sorted(unexpected_required_check_names),
         },
         "policy": {
             "provider_free": provider_calls is False,

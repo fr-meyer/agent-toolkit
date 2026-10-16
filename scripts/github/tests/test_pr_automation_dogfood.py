@@ -82,6 +82,45 @@ class PrAutomationDogfoodTests(unittest.TestCase):
         self.assertIn("protected_head_ref", receipt["blockers"])
         self.assertIn("invalid_required_check", receipt["blockers"])
 
+    def test_missing_authoritative_required_check_blocks(self):
+        scenario = self.load("ready.json")
+        scenario["evidence"]["required_checks"] = [
+            {"name": "dogfood-contract", "status": "success"},
+        ]
+        receipt = MODULE.evaluate_scenario(scenario)
+        self.assertIn("missing_required_check", receipt["blockers"])
+        self.assertEqual(receipt["evidence"]["missing_required_check_names"], ["unit-tests"])
+        self.assertFalse(receipt["evidence"]["checks_green"])
+
+    def test_unknown_check_blocks_even_when_required_checks_are_present(self):
+        scenario = self.load("ready.json")
+        scenario["evidence"]["required_checks"].append(
+            {"name": "arbitrary-success", "status": "success"}
+        )
+        receipt = MODULE.evaluate_scenario(scenario)
+        self.assertIn("unexpected_required_check", receipt["blockers"])
+        self.assertEqual(
+            receipt["evidence"]["unexpected_required_check_names"],
+            ["arbitrary-success"],
+        )
+        self.assertFalse(receipt["evidence"]["checks_green"])
+
+    def test_malformed_git_branch_refs_block(self):
+        invalid_refs = [
+            "feature/",
+            "feature//name",
+            ".hidden",
+            "feature.lock",
+            "feature/@{1}",
+            "-dash",
+        ]
+        for head_ref in invalid_refs:
+            with self.subTest(head_ref=head_ref):
+                scenario = self.load("ready.json")
+                scenario["repository"]["head_ref"] = head_ref
+                receipt = MODULE.evaluate_scenario(scenario)
+                self.assertIn("invalid_head_ref", receipt["blockers"])
+
     def test_receipt_digest_ignores_expectation_metadata(self):
         scenario = self.load("ready.json")
         first = MODULE.evaluate_scenario(scenario)["input_digest"]

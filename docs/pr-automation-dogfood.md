@@ -20,7 +20,8 @@ The evaluator blocks when:
 - the same claim key was already consumed;
 - the author and reviewer identities overlap;
 - review evidence belongs to an older head;
-- a required check is missing or not successful;
+- either authoritative required check (`dogfood-contract` and `unit-tests`)
+  is missing, duplicated, unnamed, replaced by an unknown name, or not successful;
 - cycle bounds are invalid or exhausted;
 - provider calls or secret exposure are declared;
 - write scope is broader than the provider-free fixture permits;

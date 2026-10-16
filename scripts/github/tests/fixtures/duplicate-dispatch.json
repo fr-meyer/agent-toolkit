@@ -22,7 +22,8 @@
   "evidence": {
     "reviewed_head_sha": "2222222222222222222222222222222222222222",
     "required_checks": [
-      {"name": "dogfood-contract", "status": "success"}
+      {"name": "dogfood-contract", "status": "success"},
+      {"name": "unit-tests", "status": "success"}
     ]
   },
   "policy": {
