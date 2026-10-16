@@ -19,7 +19,8 @@ agent-toolkit/
 │       ├── sync-starter-workflow-template-refs-reusable.yml
 │       ├── cross-repo-workflow-updater-reusable.yml
 │       ├── cross-repo-workflow-updater-push-trigger.yml
-│       └── cross-repo-workflow-updater-manual-trigger.yml
+│       ├── cross-repo-workflow-updater-manual-trigger.yml
+│       └── repository-similarity-preflight-ci.yml
 ├── templates/
 │   ├── reusable-workflows/
 │   │   ├── coderabbit-pr-automation.yml
@@ -31,7 +32,8 @@ agent-toolkit/
 │   │   ├── coderabbit-pr-comment-trigger.yml
 │   │   ├── sync-starter-workflow-template-refs-trigger.yml
 │   │   ├── cross-repo-workflow-updater-push-trigger.yml
-│   │   └── cross-repo-workflow-updater-manual-trigger.yml
+│   │   ├── cross-repo-workflow-updater-manual-trigger.yml
+│   │   └── repository-similarity-preflight-ci.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
 ├── scripts/
@@ -144,5 +146,7 @@ This repository is **not** currently using:
 For the current maintenance flow, the canonical reusable implementation lives in `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`, gets materialized to `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`, and is called by the live trigger entrypoint `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`, whose canonical source lives in `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`.
 
 The cross-repo updater follows the same layout pattern: its canonical reusable engine lives in `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml`, its canonical push trigger wrapper lives in `templates/starter-workflows/cross-repo-workflow-updater-push-trigger.yml`, its canonical manual trigger wrapper lives in `templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml`, and all three materialize to matching live copies under `.github/workflows/`.
+
+The repository-similarity preflight CI is a standalone repo-local entrypoint. Its canonical source lives in `templates/starter-workflows/repository-similarity-preflight-ci.yml` and materializes to `.github/workflows/repository-similarity-preflight-ci.yml`; it does not participate in reusable-workflow ref diffusion.
 
 Under the current policy, workflow-maintenance automation creates PR branches from `dev`, cross-repo divergence review is delivered on the update PR as a managed comment by default rather than as committed review-doc files, and cross-repo updater runs that need to clone, branch, or open PRs in consumer repositories should be configured with `ELEVATED_GITHUB_TOKEN` rather than relying on the built-in `GITHUB_TOKEN`.
