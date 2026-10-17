@@ -5,7 +5,14 @@
     "base_ref": "dev",
     "base_sha": "1111111111111111111111111111111111111111",
     "head_ref": "feat/pr-automation-dogfood-harness-20261016",
-    "head_sha": "2222222222222222222222222222222222222222"
+    "head_sha": "2222222222222222222222222222222222222222",
+    "protected_head_refs": [
+      "dev",
+      "main",
+      "master",
+      "release",
+      "production"
+    ]
   },
   "actors": {
     "author_login": "mergeguez[bot]",
@@ -20,8 +27,8 @@
   "evidence": {
     "reviewed_head_sha": "2222222222222222222222222222222222222222",
     "required_checks": [
-      {"name": "dogfood-contract", "status": "success"},
-      {"name": "unit-tests", "status": "success"}
+      {"name": "dogfood-contract", "status": "success", "head_sha": "2222222222222222222222222222222222222222"},
+      {"name": "unit-tests", "status": "success", "head_sha": "2222222222222222222222222222222222222222"}
     ]
   },
   "policy": {

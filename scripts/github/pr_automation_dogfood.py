@@ -22,7 +22,6 @@ ACTOR_LOGIN_RE = re.compile(
     r"^(?!.*--)[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?(?:\[bot\])?$"
 )
 CLAIM_CYCLE_RE = re.compile(r"^[1-9][0-9]*$")
-PROTECTED_HEAD_REFS = {"dev", "main", "master"}
 ALLOWED_WRITE_SCOPES = {"none", "fixture-only"}
 REQUIRED_CHECK_NAMES = frozenset({"dogfood-contract", "unit-tests"})
 
@@ -109,6 +108,9 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
     base_sha = _text(repository.get("base_sha"))
     head_ref = _text(repository.get("head_ref"))
     head_sha = _text(repository.get("head_sha"))
+    protected_head_refs_value = repository.get("protected_head_refs")
+    protected_head_refs: List[str] = []
+    protected_head_refs_valid = False
 
     if not canonical_slug:
         blockers.append("invalid_repository_slug")
@@ -118,8 +120,22 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
         blockers.append("invalid_base_sha")
     if not _valid_branch_ref(head_ref):
         blockers.append("invalid_head_ref")
+    if not isinstance(protected_head_refs_value, list):
+        blockers.append("invalid_protected_head_refs")
+    else:
+        protected_head_refs = [_text(item) for item in protected_head_refs_value]
+        protected_head_refs_valid = (
+            bool(protected_head_refs)
+            and all(
+                _valid_branch_ref(item) and not item.startswith("refs/heads/")
+                for item in protected_head_refs
+            )
+            and len(set(protected_head_refs)) == len(protected_head_refs)
+        )
+        if not protected_head_refs_valid:
+            blockers.append("invalid_protected_head_refs")
     protected_head = head_ref.removeprefix("refs/heads/")
-    if protected_head in PROTECTED_HEAD_REFS:
+    if protected_head_refs_valid and protected_head in protected_head_refs:
         blockers.append("protected_head_ref")
     if not SHA_RE.fullmatch(head_sha):
         blockers.append("invalid_head_sha")
@@ -185,13 +201,19 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
 
     checks = _list(evidence.get("required_checks"))
     check_names: List[str] = []
+    check_head_shas: List[str] = []
     missing_required_check_names = set(REQUIRED_CHECK_NAMES)
     unexpected_required_check_names = set()
     check_names_valid = False
+    check_head_shas_valid = False
+    checks_bound_to_head = False
     if not checks:
         blockers.append("missing_required_checks")
     else:
         check_names = [_text(_mapping(check).get("name")) for check in checks]
+        check_head_shas = [
+            _text(_mapping(check).get("head_sha")) for check in checks
+        ]
         check_names_valid = (
             bool(check_names)
             and all(check_names)
@@ -205,6 +227,17 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
         unexpected_required_check_names = set(check_names) - REQUIRED_CHECK_NAMES
         if unexpected_required_check_names:
             blockers.append("unexpected_required_check")
+        check_head_shas_valid = all(
+            SHA_RE.fullmatch(check_head_sha) for check_head_sha in check_head_shas
+        )
+        if not check_head_shas_valid:
+            blockers.append("invalid_required_check_head_sha")
+        checks_bound_to_head = (
+            check_head_shas_valid
+            and all(check_head_sha == head_sha for check_head_sha in check_head_shas)
+        )
+        if check_head_shas_valid and not checks_bound_to_head:
+            blockers.append("stale_required_check_head")
         if any(_text(_mapping(check).get("status")) != "success" for check in checks):
             blockers.append("required_check_not_success")
 
@@ -231,6 +264,8 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
     checks_green = (
         bool(checks)
         and check_names_valid
+        and check_head_shas_valid
+        and checks_bound_to_head
         and not missing_required_check_names
         and not unexpected_required_check_names
         and all(_text(_mapping(check).get("status")) == "success" for check in checks)
@@ -247,6 +282,8 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "base_sha": base_sha,
             "head_ref": head_ref,
             "head_sha": head_sha,
+            "protected_head_refs": protected_head_refs,
+            "protected_head_refs_valid": protected_head_refs_valid,
         },
         "actors": {
             "author_login": author_login,
@@ -268,6 +305,7 @@ def evaluate_scenario(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "reviewed_head_sha": reviewed_head_sha,
             "reviewed_head_matches": bool(reviewed_head_sha and reviewed_head_sha == head_sha),
             "checks_green": checks_green,
+            "checks_bound_to_head": checks_bound_to_head,
             "required_check_names": sorted(REQUIRED_CHECK_NAMES),
             "observed_check_names": sorted(set(check_names)),
             "missing_required_check_names": sorted(missing_required_check_names),

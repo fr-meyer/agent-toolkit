@@ -17,11 +17,13 @@ The evaluator blocks when:
 
 - repository, base, branch, or SHA identity is malformed;
 - GitHub owner/repository identity is malformed or claim deduplication differs only by case;
-- a protected branch is used as the head;
+- the repository protected-head set is missing or malformed, or one of those
+  protected branches is used as the head;
 - the same claim key was already consumed;
 - claim history is missing, malformed, duplicated, or contains a non-canonical claim key;
 - author or reviewer labels are malformed, or the canonical identities overlap;
 - review evidence belongs to an older head;
+- a required-check result has a missing, malformed, or stale head SHA;
 - either authoritative required check (`dogfood-contract` and `unit-tests`)
   is missing, duplicated, unnamed, replaced by an unknown name, or not successful;
 - cycle bounds are invalid or exhausted;

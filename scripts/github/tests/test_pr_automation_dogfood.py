@@ -25,6 +25,8 @@ class PrAutomationDogfoodTests(unittest.TestCase):
         self.assertTrue(receipt["actors"]["separated"])
         self.assertTrue(receipt["evidence"]["reviewed_head_matches"])
         self.assertTrue(receipt["evidence"]["checks_green"])
+        self.assertTrue(receipt["evidence"]["checks_bound_to_head"])
+        self.assertTrue(receipt["repository"]["protected_head_refs_valid"])
         self.assertEqual(receipt["policy"]["merge_mode"], "human")
         self.assertFalse(receipt["policy"]["auto_merge"])
 
@@ -154,17 +156,54 @@ class PrAutomationDogfoodTests(unittest.TestCase):
         scenario = self.load("ready.json")
         scenario["repository"]["head_ref"] = "refs/heads/main"
         scenario["evidence"]["required_checks"] = [
-            {"name": "dogfood-contract", "status": "success"},
-            {"name": "dogfood-contract", "status": "success"},
+            {
+                "name": "dogfood-contract",
+                "status": "success",
+                "head_sha": scenario["repository"]["head_sha"],
+            },
+            {
+                "name": "dogfood-contract",
+                "status": "success",
+                "head_sha": scenario["repository"]["head_sha"],
+            },
         ]
         receipt = MODULE.evaluate_scenario(scenario)
         self.assertIn("protected_head_ref", receipt["blockers"])
         self.assertIn("invalid_required_check", receipt["blockers"])
 
+    def test_nonstandard_protected_head_blocks(self):
+        scenario = self.load("ready.json")
+        scenario["repository"]["head_ref"] = "release"
+        receipt = MODULE.evaluate_scenario(scenario)
+        self.assertIn("protected_head_ref", receipt["blockers"])
+
+    def test_missing_or_malformed_protected_head_set_blocks(self):
+        variants = [
+            ("missing", None),
+            ("wrong-type", "dev,main"),
+            ("empty", []),
+            ("duplicate", ["dev", "dev"]),
+            ("full-ref", ["refs/heads/dev"]),
+            ("malformed", ["dev", "feature//invalid"]),
+        ]
+        for name, value in variants:
+            with self.subTest(name=name):
+                scenario = self.load("ready.json")
+                if name == "missing":
+                    del scenario["repository"]["protected_head_refs"]
+                else:
+                    scenario["repository"]["protected_head_refs"] = value
+                receipt = MODULE.evaluate_scenario(scenario)
+                self.assertIn("invalid_protected_head_refs", receipt["blockers"])
+
     def test_missing_authoritative_required_check_blocks(self):
         scenario = self.load("ready.json")
         scenario["evidence"]["required_checks"] = [
-            {"name": "dogfood-contract", "status": "success"},
+            {
+                "name": "dogfood-contract",
+                "status": "success",
+                "head_sha": scenario["repository"]["head_sha"],
+            },
         ]
         receipt = MODULE.evaluate_scenario(scenario)
         self.assertIn("missing_required_check", receipt["blockers"])
@@ -174,7 +213,11 @@ class PrAutomationDogfoodTests(unittest.TestCase):
     def test_unknown_check_blocks_even_when_required_checks_are_present(self):
         scenario = self.load("ready.json")
         scenario["evidence"]["required_checks"].append(
-            {"name": "arbitrary-success", "status": "success"}
+            {
+                "name": "arbitrary-success",
+                "status": "success",
+                "head_sha": scenario["repository"]["head_sha"],
+            }
         )
         receipt = MODULE.evaluate_scenario(scenario)
         self.assertIn("unexpected_required_check", receipt["blockers"])
@@ -182,6 +225,22 @@ class PrAutomationDogfoodTests(unittest.TestCase):
             receipt["evidence"]["unexpected_required_check_names"],
             ["arbitrary-success"],
         )
+        self.assertFalse(receipt["evidence"]["checks_green"])
+
+    def test_stale_required_check_head_blocks(self):
+        scenario = self.load("ready.json")
+        scenario["evidence"]["required_checks"][0]["head_sha"] = "3" * 40
+        receipt = MODULE.evaluate_scenario(scenario)
+        self.assertIn("stale_required_check_head", receipt["blockers"])
+        self.assertFalse(receipt["evidence"]["checks_bound_to_head"])
+        self.assertFalse(receipt["evidence"]["checks_green"])
+
+    def test_invalid_required_check_head_blocks(self):
+        scenario = self.load("ready.json")
+        scenario["evidence"]["required_checks"][0]["head_sha"] = "not-a-sha"
+        receipt = MODULE.evaluate_scenario(scenario)
+        self.assertIn("invalid_required_check_head_sha", receipt["blockers"])
+        self.assertFalse(receipt["evidence"]["checks_bound_to_head"])
         self.assertFalse(receipt["evidence"]["checks_green"])
 
     def test_malformed_git_branch_refs_block(self):
