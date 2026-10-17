@@ -40,6 +40,8 @@ For exact source-to-target bindings, also consult:
 | Sync starter-workflow template refs (trigger) | Starter | `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml` | `.github/workflows/sync-starter-workflow-template-refs-trigger.yml` | Repo-local trigger surface that calls the reusable maintenance workflow on push or manual dispatch |
 | Cross-repo workflow updater (push trigger) | Starter | `templates/starter-workflows/cross-repo-workflow-updater-push-trigger.yml` | `.github/workflows/cross-repo-workflow-updater-push-trigger.yml` | Repo-local push entrypoint that calls the reusable cross-repo updater when shared starter assets change |
 | Cross-repo workflow updater (manual trigger) | Starter | `templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml` | `.github/workflows/cross-repo-workflow-updater-manual-trigger.yml` | Repo-local manual-dispatch entrypoint that calls the reusable cross-repo updater without an irrelevant skipped sibling job |
+| PR automation dogfood (reusable) | Reusable | `templates/reusable-workflows/pr-automation-dogfood-reusable.yml` | `.github/workflows/pr-automation-dogfood-reusable.yml` | Provider-free contract runner for exact-head evidence, actor separation, bounded cycles, and human-only merge readiness |
+| PR automation dogfood (PR trigger) | Starter | `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml` | `.github/workflows/pr-automation-dogfood-pr-trigger.yml` | Read-only PR entrypoint for changes to the dogfood harness and its workflow assets |
 
 ## Asset details
 
@@ -466,25 +468,73 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 - This is a standalone CI entrypoint rather than a callable `workflow_call` engine, so its canonical source belongs under `templates/starter-workflows/`.
 - It does not call an in-repo reusable workflow and therefore does not need a `templates/workflow-ref-sync-manifest.json` binding.
 
+## 11. PR automation dogfood (reusable)
+
+- **Type:** reusable workflow
+- **Canonical source:** `templates/reusable-workflows/pr-automation-dogfood-reusable.yml`
+- **Live/runtime copy in this repo:** `.github/workflows/pr-automation-dogfood-reusable.yml`
+- **Governed by:**
+  - source in `templates/repo-workflow-materialization-manifest.json`
+- **Purpose:**
+  - run the focused provider-free contract tests
+  - evaluate deterministic positive and fail-closed fixtures
+  - prove exact-head evidence, actor separation, claim idempotency, bounded cycles, required checks, and human-only merge readiness
+
+### Security boundary
+- `contents: read` only
+- checkout credentials are not persisted
+- no provider or secret inputs
+- no GitHub mutation, commit, push, review, merge, deployment, or release
+
+### Notes
+- A successful receipt is `ready_for_human_merge`, never an approval or merge operation.
+- The same-commit PR trigger calls this workflow with a relative path, so no pinned reusable-workflow ref diffusion is needed.
+- See `docs/pr-automation-dogfood.md` for the fixture and receipt contract.
+
+---
+
+## 12. PR automation dogfood (PR trigger)
+
+- **Type:** starter workflow
+- **Canonical source:** `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml`
+- **Live/runtime copy in this repo:** `.github/workflows/pr-automation-dogfood-pr-trigger.yml`
+- **Governed by:**
+  - source in `templates/repo-workflow-materialization-manifest.json`
+- **Purpose:**
+  - run the dogfood harness on pull requests to `dev` when its evaluator, fixtures, workflow assets, manifest, or documentation changes
+
+### Calls
+- `./.github/workflows/pr-automation-dogfood-reusable.yml`
+
+### Notes
+- The entrypoint is intentionally thin.
+- Its path filter keeps unrelated repository changes from creating a dogfood run.
+
 ## Live runtime copies in this repo
 
 These files exist under `.github/workflows/` and should not be treated as the primary authoring location:
 - `.github/workflows/coderabbit-pr-automation.yml`
+- `.github/workflows/coderabbit-pr-comment-trigger.yml`
 - `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
 - `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
 - `.github/workflows/cross-repo-workflow-updater-reusable.yml`
 - `.github/workflows/cross-repo-workflow-updater-push-trigger.yml`
 - `.github/workflows/cross-repo-workflow-updater-manual-trigger.yml`
 - `.github/workflows/repository-similarity-preflight-ci.yml`
+- `.github/workflows/pr-automation-dogfood-reusable.yml`
+- `.github/workflows/pr-automation-dogfood-pr-trigger.yml`
 
 Their canonical sources are:
 - `templates/reusable-workflows/coderabbit-pr-automation.yml`
+- `templates/starter-workflows/coderabbit-pr-comment-trigger.yml`
 - `templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml`
 - `templates/starter-workflows/sync-starter-workflow-template-refs-trigger.yml`
 - `templates/reusable-workflows/cross-repo-workflow-updater-reusable.yml`
 - `templates/starter-workflows/cross-repo-workflow-updater-push-trigger.yml`
 - `templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml`
 - `templates/starter-workflows/repository-similarity-preflight-ci.yml`
+- `templates/reusable-workflows/pr-automation-dogfood-reusable.yml`
+- `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml`
 
 ## Maintenance rule for this catalog
 

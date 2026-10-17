@@ -1,0 +1,65 @@
+name: PR automation dogfood (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      python_version:
+        description: Python version used for the provider-free harness
+        required: false
+        type: string
+        default: '3.11'
+
+permissions:
+  contents: read
+
+jobs:
+  dogfood-contract:
+    name: Provider-free PR automation contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Run focused contract tests
+        run: python -m unittest discover -s scripts/github/tests -p 'test_pr_automation_dogfood.py' -v
+
+      - name: Evaluate deterministic dogfood fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf artifacts/pr-automation-dogfood
+          mkdir -p artifacts/pr-automation-dogfood
+          for scenario in scripts/github/tests/fixtures/*.json; do
+            name="$(basename "$scenario" .json)"
+            python scripts/github/pr_automation_dogfood.py \
+              --scenario "$scenario" \
+              --out "artifacts/pr-automation-dogfood/${name}.receipt.json"
+          done
+
+      - name: Assert the positive fixture remains human-merge-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(Path("artifacts/pr-automation-dogfood/ready.receipt.json").read_text(encoding="utf-8"))
+          assert receipt["status"] == "ready_for_human_merge"
+          assert receipt["policy"]["merge_mode"] == "human"
+          assert receipt["policy"]["auto_merge"] is False
+          assert receipt["policy"]["provider_free"] is True
+          assert receipt["policy"]["secrets_exposed"] is False
+          assert receipt["actors"]["separated"] is True
+          assert receipt["evidence"]["reviewed_head_matches"] is True
+          assert receipt["evidence"]["checks_green"] is True
+          PY
