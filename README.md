@@ -56,12 +56,15 @@ agent-toolkit/
 │       ├── cross-repo-workflow-updater-reusable.yml
 │       ├── cross-repo-workflow-updater-push-trigger.yml
 │       ├── cross-repo-workflow-updater-manual-trigger.yml
+│       ├── pr-automation-dogfood-reusable.yml
+│       ├── pr-automation-dogfood-pr-trigger.yml
 │       └── repository-similarity-preflight-ci.yml
 ├── templates/
 │   ├── reusable-workflows/
 │   │   ├── coderabbit-pr-automation.yml
 │   │   ├── sync-starter-workflow-template-refs-reusable.yml
-│   │   └── cross-repo-workflow-updater-reusable.yml
+│   │   ├── cross-repo-workflow-updater-reusable.yml
+│   │   └── pr-automation-dogfood-reusable.yml
 │   ├── starter-workflows/
 │   │   ├── coderabbit-pr-automation-pr-trigger.yml
 │   │   ├── coderabbit-pr-automation-manual-trigger.yml
@@ -69,6 +72,7 @@ agent-toolkit/
 │   │   ├── sync-starter-workflow-template-refs-trigger.yml
 │   │   ├── cross-repo-workflow-updater-push-trigger.yml
 │   │   ├── cross-repo-workflow-updater-manual-trigger.yml
+│   │   ├── pr-automation-dogfood-pr-trigger.yml
 │   │   └── repository-similarity-preflight-ci.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
@@ -119,6 +123,7 @@ This repository now treats GitHub Actions files as **source assets**, not as act
 - **CodeRabbit split-trigger starter sources:** `templates/starter-workflows/coderabbit-pr-automation-pr-trigger.yml` and `templates/starter-workflows/coderabbit-pr-automation-manual-trigger.yml`
 - **Ref-sync manifest:** `templates/workflow-ref-sync-manifest.json`
 - **Repo-workflow materialization manifest:** `templates/repo-workflow-materialization-manifest.json`
+- **Provider-free PR automation dogfood:** `docs/pr-automation-dogfood.md`
 - **Helper scripts:** `scripts/coderabbit/` plus `scripts/github/` (including the deterministic ref updater and repo-workflow materializer)
 - **Materialized live reusable maintenance workflow:** `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
 - **Live repo entrypoint workflow:** `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
