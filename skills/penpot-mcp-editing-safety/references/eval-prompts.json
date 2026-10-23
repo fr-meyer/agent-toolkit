@@ -1,0 +1,16 @@
+{
+  "should_trigger": [
+    "Use Penpot MCP to update these guide pages but keep everything editable.",
+    "The text is editable but something invisible is covering it in Penpot. Can you inspect and fix it?",
+    "Export this Penpot frame and check whether the arrows/photos/text are correct.",
+    "Move these target circles out of the image masks so I can drag them manually.",
+    "After your Penpot script, prove the photos, circles, and text can still be moved."
+  ],
+  "should_not_trigger": [
+    "Give me a visual critique of this landing page screenshot.",
+    "Write better French and English copy for these instructions, but do not edit Penpot yet.",
+    "Create an SVG icon in the repository.",
+    "Review this React component for accessibility issues.",
+    "Generate a bitmap background image for a hero page."
+  ]
+}
