@@ -8,6 +8,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+try:
+    from agent_command_policy import validate_agent_command
+except ImportError:  # pragma: no cover - supports package-style imports in tests
+    from scripts.coderabbit.agent_command_policy import validate_agent_command
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -241,6 +246,9 @@ def main() -> int:
 
     try:
         command_spec = parse_command_spec()
+        command_policy_error = validate_agent_command(command_spec['command'])
+        if command_policy_error:
+            raise ValueError(command_policy_error)
     except ValueError as exc:
         summary = {
             'status': 'misconfigured',

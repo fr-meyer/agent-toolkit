@@ -13,7 +13,7 @@ on:
         required: true
         type: number
       run_validation:
-        description: Whether to run validation after remediation
+        description: Whether to run validation after remediation; required when auto_commit or auto_push is enabled
         required: false
         type: boolean
         default: false
@@ -32,11 +32,6 @@ on:
         required: false
         type: string
         default: '3.11'
-      runner_labels_json:
-        description: JSON-encoded runs-on value, for example "[\"self-hosted\"]" or "[\"self-hosted\",\"linux\"]"
-        required: false
-        type: string
-        default: '["self-hosted"]'
       target_checkout_path:
         description: Relative checkout path for the consumer repository inside github.workspace
         required: false
@@ -63,12 +58,12 @@ on:
         type: string
         default: none
       agent_command_json:
-        description: Preferred JSON-array command template for the bounded agent pass
+        description: Preferred JSON-array command template; the executable must be agent or cursor-agent
         required: false
         type: string
         default: ''
       agent_command:
-        description: Fallback string command template for the bounded agent pass
+        description: Fallback string command template; the executable must be agent or cursor-agent
         required: false
         type: string
         default: ''
@@ -148,9 +143,10 @@ on:
 jobs:
   coderabbit-pr-automation:
     name: CodeRabbit PR automation
-    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
-      contents: write
+      contents: read
       pull-requests: read
       actions: read
 
@@ -248,6 +244,14 @@ jobs:
           ISSUE_COUNT=$(python -c "import json, pathlib; print(len(json.loads(pathlib.Path(r'$CODERABBIT_OUT_DIR/actionable-issues.json').read_text(encoding='utf-8'))['issues']))")
           echo "count=$ISSUE_COUNT" >> "$GITHUB_OUTPUT"
           echo "Actionable issue count: $ISSUE_COUNT"
+
+      - name: Enforce write-mode validation policy
+        if: steps.issue_count.outputs.count != '0' && (inputs.auto_commit || inputs.auto_push) && !inputs.run_validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "auto_commit/auto_push requires run_validation=true; refusing unvalidated write mode." >&2
+          exit 1
 
       - name: Preflight target checkout
         if: steps.issue_count.outputs.count != '0'
@@ -375,23 +379,9 @@ jobs:
           ELEVATED_GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          BRANCH=$(git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" rev-parse --abbrev-ref HEAD)
-          WORKFLOW_DIFF=$(git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" diff --name-only "origin/$BRANCH..HEAD" -- '.github/workflows/**' || true)
-          if [[ -z "$WORKFLOW_DIFF" ]]; then
-            WORKFLOW_DIFF=$(git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" diff --name-only "origin/$BRANCH..HEAD" -- .github/workflows || true)
-          fi
-          if [[ -z "$WORKFLOW_DIFF" ]]; then
-            echo "requires_elevated_github_token=false" >> "$GITHUB_OUTPUT"
-            echo "No workflow-path changes detected in outgoing push."
-            exit 0
-          fi
-
           echo "requires_elevated_github_token=true" >> "$GITHUB_OUTPUT"
-          echo "Workflow-path changes detected in outgoing push:"
-          printf '%s\n' "$WORKFLOW_DIFF"
-
           if [[ -z "${ELEVATED_GITHUB_TOKEN:-}" ]]; then
-            echo "Pending push touches .github/workflows/**, but ELEVATED_GITHUB_TOKEN is not configured." >&2
+            echo "auto_push requires the explicit ELEVATED_GITHUB_TOKEN secret; the default GITHUB_TOKEN is read-only." >&2
             exit 1
           fi
 
@@ -399,9 +389,7 @@ jobs:
         if: steps.issue_count.outputs.count != '0' && inputs.auto_commit && inputs.auto_push
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ELEVATED_GITHUB_TOKEN: ${{ secrets.ELEVATED_GITHUB_TOKEN }}
-          REQUIRES_ELEVATED_GITHUB_TOKEN: ${{ steps.push_requirements.outputs.requires_elevated_github_token }}
         run: |
           set -euo pipefail
           BRANCH=$(git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" rev-parse --abbrev-ref HEAD)
@@ -411,9 +399,10 @@ jobs:
             exit 0
           fi
 
-          PUSH_TOKEN="$GITHUB_TOKEN"
-          if [[ "${REQUIRES_ELEVATED_GITHUB_TOKEN:-false}" == "true" ]]; then
-            PUSH_TOKEN="$ELEVATED_GITHUB_TOKEN"
+          PUSH_TOKEN="${ELEVATED_GITHUB_TOKEN:-}"
+          if [[ -z "$PUSH_TOKEN" ]]; then
+            echo "auto_push requires the explicit ELEVATED_GITHUB_TOKEN secret; refusing to use the read-only default token." >&2
+            exit 1
           fi
 
           git -C "$GITHUB_WORKSPACE/$TARGET_CHECKOUT_PATH" config --local --unset-all http.https://github.com/.extraheader || true
