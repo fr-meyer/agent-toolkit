@@ -41,6 +41,10 @@
     {
       "source": "templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml",
       "target": ".github/workflows/pr-automation-dogfood-pr-trigger.yml"
+    },
+    {
+      "source": "templates/starter-workflows/pullfrog.yml",
+      "target": ".github/workflows/pullfrog.yml"
     }
   ]
 }

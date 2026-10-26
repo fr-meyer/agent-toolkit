@@ -7,8 +7,9 @@ repository:
   base_branch: dev
   default_branch: main
 status:
-  phase: in_review
-  blocker_summary: []
+  phase: implementation
+  blocker_summary:
+    - Pullfrog service configuration and model access remain separately approval-gated after repository workflow publication.
 publication_policy:
   repository_visibility: shared-repository
   intended_public_visibility: public
@@ -26,6 +27,16 @@ review_policy:
   legacy_pullfrog:
     policy: disabled
     evidence_source: historical-only
+  pullfrog_review:
+    policy: optional
+    evidence_source: bounded exact-head comparison only; never satisfies required_pr_review
+    controls:
+      push: disabled
+      shell: restricted
+      approval: disabled
+      remediation: disabled
+      ci_autofix: disabled
+      auto_merge: disabled
   legacy_coderabbit:
     policy: disabled
     evidence_source: historical-only
@@ -56,9 +67,9 @@ surfaces:
     status: open
     base_branch: dev
     default_branch: main
-    head_branch: chore/pr-080-agent-toolkit-review-gate-closeout
+    head_branch: feat/pullfrog-review-pilot-20261026
     head_sha: null
-    head_sha_source: Live PR #84 exact-head readback is supplied to review and merge gates; no self-referential SHA is committed
+    head_sha_source: Live PR #92 exact-head readback is supplied to review and merge gates; no self-referential SHA is committed
     merge_commit: null
 gates:
   before_publish:
@@ -70,5 +81,5 @@ gates:
   after_publish:
     - exact-head-mergeguez-review-requested
     - exact-head-review-and-check-evidence
-current_task: pr-080-agent-toolkit-review-gate-closeout
-current_task_metadata: .speculoos/tasks/pr-080-agent-toolkit-review-gate-closeout.yaml
+current_task: pullfrog-review-only-pilot-20261026
+current_task_metadata: .speculoos/tasks/pullfrog-review-only-pilot-20261026.yaml

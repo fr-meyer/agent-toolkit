@@ -97,10 +97,14 @@
     "pullfrog_optional": {
       "kind": "review_service",
       "roles": ["review_actor"],
-      "status": "disabled_historical",
-      "credential_location": "github_actions_workflow",
-      "requires_explicit_approval": false,
-      "secrets_in_repo": false
+      "status": "bounded_review_only_pilot",
+      "credential_location": "external_pullfrog_service",
+      "requires_explicit_approval": true,
+      "secrets_in_repo": false,
+      "required_for_merge": false,
+      "push_enabled": false,
+      "review_approval_enabled": false,
+      "auto_merge_enabled": false
     },
     "coderabbit_optional": {
       "kind": "review_service",
