@@ -42,7 +42,7 @@ For exact source-to-target bindings, also consult:
 | Cross-repo workflow updater (manual trigger) | Starter | `templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml` | `.github/workflows/cross-repo-workflow-updater-manual-trigger.yml` | Repo-local manual-dispatch entrypoint that calls the reusable cross-repo updater without an irrelevant skipped sibling job |
 | PR automation dogfood (reusable) | Reusable | `templates/reusable-workflows/pr-automation-dogfood-reusable.yml` | `.github/workflows/pr-automation-dogfood-reusable.yml` | Provider-free contract runner for exact-head evidence, actor separation, bounded cycles, and human-only merge readiness |
 | PR automation dogfood (PR trigger) | Starter | `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml` | `.github/workflows/pr-automation-dogfood-pr-trigger.yml` | Read-only PR entrypoint for changes to the dogfood harness and its workflow assets |
-| Pullfrog review-only pilot | Starter | `templates/starter-workflows/pullfrog.yml` | `.github/workflows/pullfrog.yml` | Bounded, non-pushing Pullfrog entrypoint for optional exact-head review comparison |
+| Pullfrog review gate | Starter | `templates/starter-workflows/pullfrog.yml` | `.github/workflows/pullfrog.yml` | Bounded, non-pushing entrypoint for required exact-head Pullfrog review checks |
 
 ## Asset details
 
@@ -513,7 +513,7 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 
 ---
 
-## 13. Pullfrog review-only pilot
+## 13. Pullfrog review gate
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/pullfrog.yml`
@@ -522,8 +522,8 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
   - source in `templates/repo-workflow-materialization-manifest.json`
 - **Purpose:**
   - provide the workflow-dispatch surface expected by the Pullfrog GitHub App
-  - run one bounded review-only comparison without granting file publication or merge authority
-  - preserve immutable action custody for the pilot
+  - run bounded exact-head reviews without granting file publication or merge authority
+  - preserve immutable action custody for the required reviewer
 
 ### Security boundary
 - top-level `contents: read`
@@ -535,10 +535,11 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 - 15-minute action timeout inside a 20-minute job timeout
 
 ### Notes
-- Pullfrog is optional comparison evidence only. Required exact-head Mergeguez review and explicit human merge authority remain unchanged.
-- Repository-side configuration and model access are separate, approval-gated surfaces and are not stored in this public workflow.
+- Successful exact-head `pullfrog` and `pullfrog-approval` checks are required review evidence. Mergeguez review is historical only.
+- Pullfrog has no push, approval, remediation, CI-fix, auto-merge, release, or deployment authority; explicit human merge authority remains unchanged.
+- Repository-side configuration and model access are external surfaces and are not stored in this public workflow.
 - This standalone entrypoint does not call a reusable workflow, so it needs no reusable-workflow ref diffusion.
-- See `docs/pullfrog-review-only-pilot.md` for the pilot evidence and stop gates.
+- See `docs/pullfrog-review-only-pilot.md` for the exact-head evidence and stop gates.
 
 ## Live runtime copies in this repo
 

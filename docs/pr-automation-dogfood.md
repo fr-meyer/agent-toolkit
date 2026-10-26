@@ -1,11 +1,12 @@
 # Provider-free PR automation dogfood harness
 
-This harness is the first non-merge acceptance surface for the Pullfrog, Mergeguez, and Speculoos PR-automation architecture. It deliberately calls no coding provider and receives no secrets. Its job is to prove the deterministic boundaries before any live agent or automatic remediation is enabled.
+This harness is the provider-free acceptance surface for the Pullfrog, publication-broker, and Speculoos PR-automation architecture. It deliberately calls no coding provider and receives no secrets. Its job is to prove deterministic identity and exact-head boundaries without invoking the live reviewer.
 
 ## Roles represented by the fixture
 
-- Pullfrog is represented as the PR authoring worker.
-- Mergeguez is represented as the distinct exact-head reviewer and PR-lifecycle orchestrator.
+- The historical fixture labels preserve Pullfrog as the authoring worker and Mergeguez as a distinct reviewer so identity-overlap regressions remain covered.
+- The active repository review policy now uses Pullfrog as the required exact-head reviewer; Mergeguez review evidence is historical only.
+- Mergeguez may still act as the separately authorized publication broker or branch-policy merge actor.
 - Speculoos policy is represented by the fail-closed receipt conditions.
 - The merge mode remains human-only.
 

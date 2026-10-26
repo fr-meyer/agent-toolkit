@@ -4,7 +4,7 @@
     "commit_actor": "human_approved_agent_assisted",
     "push_actor": "franck_user_pr_author",
     "pr_actor": "franck_user_pr_author",
-    "review_actor": "mergeguez_review",
+    "review_actor": "pullfrog_review",
     "merge_actor": "user_api"
   },
   "branch_policies": [
@@ -13,7 +13,7 @@
       "base_refs": ["dev"],
       "head_patterns": ["feat/*", "fix/*", "docs/*", "test/*", "chore/*"],
       "pr_actor": "franck_user_pr_author",
-      "review_actor": "mergeguez_review",
+      "review_actor": "pullfrog_review",
       "merge_actor": "mergeguez_dev_merge",
       "native_review_requires_distinct_author": true,
       "exact_pr_base_head_sha_required": true,
@@ -27,7 +27,7 @@
       "base_refs": ["main", "master"],
       "head_refs": ["dev"],
       "pr_actor": "franck_user_pr_author",
-      "review_actor": "mergeguez_review",
+      "review_actor": "pullfrog_review",
       "merge_actor": "user_api",
       "native_review_requires_distinct_author": true,
       "exact_pr_base_head_sha_required": true,
@@ -66,10 +66,9 @@
     },
     "mergeguez_review": {
       "kind": "github_app_installation_broker",
-      "roles": ["review_actor"],
-      "status": "available_host_broker",
+      "roles": ["historical_review_actor"],
+      "status": "disabled_historical",
       "bot_login": "mergeguez[bot]",
-      "forbidden_pr_author_logins_for_native_review": ["mergeguez[bot]"],
       "credential_location": "host_broker",
       "requires_explicit_approval": false,
       "secrets_in_repo": false
@@ -94,21 +93,24 @@
       "requires_explicit_approval": true,
       "secrets_in_repo": false
     },
-    "pullfrog_optional": {
+    "pullfrog_review": {
       "kind": "review_service",
       "roles": ["review_actor"],
-      "status": "bounded_review_only_pilot",
+      "status": "active_required_exact_head_reviewer",
       "credential_location": "external_pullfrog_service",
-      "requires_explicit_approval": true,
+      "requires_explicit_approval": false,
       "secrets_in_repo": false,
-      "required_for_merge": false,
+      "required_for_merge": true,
+      "required_check_names": ["pullfrog", "pullfrog-approval"],
       "push_enabled": false,
       "review_approval_enabled": false,
+      "review_remediation_enabled": false,
+      "ci_autofix_enabled": false,
       "auto_merge_enabled": false
     },
     "coderabbit_optional": {
       "kind": "review_service",
-      "roles": ["review_actor"],
+      "roles": ["historical_review_actor"],
       "status": "disabled_historical",
       "credential_location": "github_actions_workflow",
       "requires_explicit_approval": false,
