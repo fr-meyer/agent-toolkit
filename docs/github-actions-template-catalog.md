@@ -42,6 +42,7 @@ For exact source-to-target bindings, also consult:
 | Cross-repo workflow updater (manual trigger) | Starter | `templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml` | `.github/workflows/cross-repo-workflow-updater-manual-trigger.yml` | Repo-local manual-dispatch entrypoint that calls the reusable cross-repo updater without an irrelevant skipped sibling job |
 | PR automation dogfood (reusable) | Reusable | `templates/reusable-workflows/pr-automation-dogfood-reusable.yml` | `.github/workflows/pr-automation-dogfood-reusable.yml` | Provider-free contract runner for exact-head evidence, actor separation, bounded cycles, and human-only merge readiness |
 | PR automation dogfood (PR trigger) | Starter | `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml` | `.github/workflows/pr-automation-dogfood-pr-trigger.yml` | Read-only PR entrypoint for changes to the dogfood harness and its workflow assets |
+| Pullfrog review-only pilot | Starter | `templates/starter-workflows/pullfrog.yml` | `.github/workflows/pullfrog.yml` | Bounded, non-pushing Pullfrog entrypoint for optional exact-head review comparison |
 
 ## Asset details
 
@@ -510,6 +511,35 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 - The entrypoint is intentionally thin.
 - Its path filter keeps unrelated repository changes from creating a dogfood run.
 
+---
+
+## 13. Pullfrog review-only pilot
+
+- **Type:** starter workflow
+- **Canonical source:** `templates/starter-workflows/pullfrog.yml`
+- **Live/runtime copy in this repo:** `.github/workflows/pullfrog.yml`
+- **Governed by:**
+  - source in `templates/repo-workflow-materialization-manifest.json`
+- **Purpose:**
+  - provide the workflow-dispatch surface expected by the Pullfrog GitHub App
+  - run one bounded review-only comparison without granting file publication or merge authority
+  - preserve immutable action custody for the pilot
+
+### Security boundary
+- top-level `contents: read`
+- job-level `id-token: write` and `contents: read`
+- checkout credentials are not persisted
+- Pullfrog `push: disabled`
+- Pullfrog `shell: restricted`
+- no provider-key or other secret environment mapping
+- 15-minute action timeout inside a 20-minute job timeout
+
+### Notes
+- Pullfrog is optional comparison evidence only. Required exact-head Mergeguez review and explicit human merge authority remain unchanged.
+- Repository-side configuration and model access are separate, approval-gated surfaces and are not stored in this public workflow.
+- This standalone entrypoint does not call a reusable workflow, so it needs no reusable-workflow ref diffusion.
+- See `docs/pullfrog-review-only-pilot.md` for the pilot evidence and stop gates.
+
 ## Live runtime copies in this repo
 
 These files exist under `.github/workflows/` and should not be treated as the primary authoring location:
@@ -523,6 +553,7 @@ These files exist under `.github/workflows/` and should not be treated as the pr
 - `.github/workflows/repository-similarity-preflight-ci.yml`
 - `.github/workflows/pr-automation-dogfood-reusable.yml`
 - `.github/workflows/pr-automation-dogfood-pr-trigger.yml`
+- `.github/workflows/pullfrog.yml`
 
 Their canonical sources are:
 - `templates/reusable-workflows/coderabbit-pr-automation.yml`
@@ -535,6 +566,7 @@ Their canonical sources are:
 - `templates/starter-workflows/repository-similarity-preflight-ci.yml`
 - `templates/reusable-workflows/pr-automation-dogfood-reusable.yml`
 - `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml`
+- `templates/starter-workflows/pullfrog.yml`
 
 ## Maintenance rule for this catalog
 

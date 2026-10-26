@@ -22,6 +22,7 @@ agent-toolkit/
 │       ├── cross-repo-workflow-updater-manual-trigger.yml
 │       ├── pr-automation-dogfood-reusable.yml
 │       ├── pr-automation-dogfood-pr-trigger.yml
+│       ├── pullfrog.yml
 │       └── repository-similarity-preflight-ci.yml
 ├── templates/
 │   ├── reusable-workflows/
@@ -37,6 +38,7 @@ agent-toolkit/
 │   │   ├── cross-repo-workflow-updater-push-trigger.yml
 │   │   ├── cross-repo-workflow-updater-manual-trigger.yml
 │   │   ├── pr-automation-dogfood-pr-trigger.yml
+│   │   ├── pullfrog.yml
 │   │   └── repository-similarity-preflight-ci.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
@@ -154,5 +156,7 @@ The cross-repo updater follows the same layout pattern: its canonical reusable e
 The repository-similarity preflight CI is a standalone repo-local entrypoint. Its canonical source lives in `templates/starter-workflows/repository-similarity-preflight-ci.yml` and materializes to `.github/workflows/repository-similarity-preflight-ci.yml`; it does not participate in reusable-workflow ref diffusion.
 
 The PR automation dogfood pair also follows this pattern. Its canonical reusable harness lives in `templates/reusable-workflows/pr-automation-dogfood-reusable.yml`, its canonical pull-request trigger lives in `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml`, and both materialize to matching live copies under `.github/workflows/`. The trigger uses a relative same-commit call, so this pair does not need reusable-workflow SHA diffusion.
+
+The bounded Pullfrog entrypoint follows the standalone-starter pattern. Its canonical source lives in `templates/starter-workflows/pullfrog.yml` and materializes to `.github/workflows/pullfrog.yml`. It pins the Pullfrog action and checkout action to immutable commits, disables pushes, keeps the shell restricted, maps no provider secret, and remains optional review evidence rather than a required gate. See `docs/pullfrog-review-only-pilot.md`.
 
 Under the current policy, workflow-maintenance automation creates PR branches from `dev`, cross-repo divergence review is delivered on the update PR as a managed comment by default rather than as committed review-doc files, and cross-repo updater runs that need to clone, branch, or open PRs in consumer repositories should be configured with `ELEVATED_GITHUB_TOKEN` rather than relying on the built-in `GITHUB_TOKEN`.

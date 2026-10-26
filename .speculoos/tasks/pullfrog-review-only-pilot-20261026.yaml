@@ -1,0 +1,62 @@
+id: pullfrog-review-only-pilot-20261026
+title: Add a bounded Pullfrog review-only pilot
+status: implementation
+branch: feat/pullfrog-review-pilot-20261026
+base_branch: dev
+write_paths:
+  - .github/workflows/pullfrog.yml
+  - .speculoos/goal.md
+  - .speculoos/manifest.yaml
+  - .speculoos/actors.json
+  - .speculoos/review-evidence.json
+  - .speculoos/tasks/pullfrog-review-only-pilot-20261026.yaml
+  - README.md
+  - docs/github-actions-template-catalog.md
+  - docs/pullfrog-review-only-pilot.md
+  - docs/workflow-asset-library-layout.md
+  - specs/pullfrog-review-only-pilot-20261026/commit-message.txt
+  - specs/pullfrog-review-only-pilot-20261026/pr-body.md
+  - templates/repo-workflow-materialization-manifest.json
+  - templates/starter-workflows/pullfrog.yml
+scope:
+  - add one canonical Pullfrog starter workflow and its materialized live copy
+  - pin Pullfrog 0.1.102 and checkout v6 to reviewed immutable commits
+  - enforce disabled push, restricted shell, read-only contents, bounded time, and no secret environment mapping
+  - record Pullfrog as optional comparison evidence while retaining Mergeguez as the required exact-head reviewer
+  - document the separate repository-configuration and model-authorization gates
+non_goals:
+  - enabling broad automatic pull-request reviews
+  - storing or selecting provider credentials
+  - funding Pullfrog Router or changing billing
+  - allowing Pullfrog to push, approve, remediate reviews, fix CI, merge, release, or deploy
+  - replacing Speculoos policy or exact-head Mergeguez evidence
+  - merging the workflow PR or pilot PR without separate exact-scope approval
+acceptance:
+  - the canonical workflow materializes exactly to .github/workflows/pullfrog.yml
+  - all third-party actions use immutable commit SHAs
+  - workflow permissions are limited to top-level contents read and job-level id-token write plus contents read
+  - checkout credentials are not persisted
+  - Pullfrog push is disabled and shell is restricted
+  - the workflow contains no provider-key or secret environment mapping
+  - action timeout is 15 minutes and job timeout is 20 minutes
+  - Pullfrog remains optional evidence and cannot satisfy the required Mergeguez review gate
+  - documentation records the model-authorization and external-configuration stop gates
+  - repository workflow materialization and Speculoos validation pass
+publication_boundary:
+  statement: "Repository workflow, documentation, and policy metadata only: prepare a review-only Pullfrog pilot. No credential, model-provider call, billing change, direct default-branch write, review approval, remediation, autofix, merge, release, or deployment."
+documentation_impact:
+  status: updated
+  rationale: The workflow catalog and pilot boundary must remain recoverable from repository source.
+validation:
+  - "python3 scripts/github/materialize_repo_workflow_templates.py --repo-root . --manifest-path templates/repo-workflow-materialization-manifest.json"
+  - "cmp templates/starter-workflows/pullfrog.yml .github/workflows/pullfrog.yml"
+  - "for file in templates/starter-workflows/pullfrog.yml .github/workflows/pullfrog.yml; do npx --yes yaml@2.8.1 valid < \"$file\" >/dev/null; done"
+  - "python3 -m json.tool templates/repo-workflow-materialization-manifest.json >/dev/null"
+  - "git diff --check origin/dev...HEAD"
+  - "speculoos validate --repo . --repo-slug fr-meyer/agent-toolkit --base dev --task pullfrog-review-only-pilot-20261026 --validation \"git diff --check origin/dev...HEAD\" --json"
+  - "speculoos publish-check --base origin/dev --task pullfrog-review-only-pilot-20261026 --pr-body specs/pullfrog-review-only-pilot-20261026/pr-body.md --commit-message specs/pullfrog-review-only-pilot-20261026/commit-message.txt --json"
+private_data_scan: required
+publish_authority: Feature-to-dev workflow proposal only; Pullfrog service configuration, model access, pilot invocation, merge, stable-branch promotion, release, and deployment remain separately gated.
+notes:
+  - The first planned live comparison target is PR #88 at a separately revalidated exact head.
+  - The workflow remains inert until it is reviewed, merged to the default branch, and the repository is configured in Pullfrog.

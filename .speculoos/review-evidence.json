@@ -2,9 +2,10 @@
   "schema_version": "0.1",
   "requirements": {
     "required_sources": ["local_validation", "github_checks", "mergeguez_review"],
-    "optional_sources": ["self_managed"],
+    "optional_sources": ["self_managed", "pullfrog_review"],
     "reviewers": {
       "self_managed": {"policy": "optional"},
+      "pullfrog_review": {"policy": "optional"},
       "mergeguez_review": {"policy": "required"}
     },
     "reviewer_groups": {
@@ -12,38 +13,45 @@
         "policy": "required",
         "primary": ["mergeguez_review"],
         "summary": "Mergeguez review evidence is the primary required PR-review source.",
-        "fallback_summary": "Self-managed evidence is not accepted for normal closeout; hosted Mergeguez review is mandatory."
+        "fallback_summary": "Neither self-managed nor Pullfrog evidence is accepted for normal closeout; hosted Mergeguez review is mandatory."
       }
     }
   },
   "sources": {
     "local_validation": {
       "kind": "local_validation",
-      "status": "passed",
-      "summary": "Metadata parse, Speculoos validate, publish-check, request-review dry-run, and git diff check passed for the review-policy metadata bootstrap.",
-      "evidence_ref": ".speculoos/tasks/pr-080-agent-toolkit-review-gate.yaml",
-      "updated_at": "pr-080-agent-toolkit-review-gate"
+      "status": "pending",
+      "summary": "Workflow materialization, immutable-pin checks, YAML and JSON parsing, Speculoos validation, publish-check, and git diff checks must pass for the Pullfrog pilot workflow proposal.",
+      "evidence_ref": ".speculoos/tasks/pullfrog-review-only-pilot-20261026.yaml",
+      "updated_at": "pullfrog-review-only-pilot-20261026"
     },
     "github_checks": {
       "kind": "github_checks",
-      "status": "pending-live-read",
-      "summary": "The active closeout PR #84 has no completed check evidence yet; read live checks through the broker before merge.",
+      "status": "pending-publication",
+      "summary": "Read live checks at the future workflow PR exact head before merge.",
       "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pr-080-agent-toolkit-review-gate-closeout"
+      "updated_at": "pullfrog-review-only-pilot-20261026"
     },
     "self_managed": {
       "kind": "self_managed",
       "status": "pending",
       "summary": "Emergency fallback only; not the normal review lane.",
       "evidence_ref": ".speculoos/reviews/self-managed-review.json",
-      "updated_at": "pr-080-agent-toolkit-review-gate"
+      "updated_at": "pullfrog-review-only-pilot-20261026"
+    },
+    "pullfrog_review": {
+      "kind": "pullfrog_review",
+      "status": "pending-separate-pilot",
+      "summary": "Optional exact-head comparison evidence only. Model authorization, service configuration, and the first invocation remain separate external gates and cannot satisfy the required review source.",
+      "evidence_ref": "docs/pullfrog-review-only-pilot.md",
+      "updated_at": "pullfrog-review-only-pilot-20261026"
     },
     "mergeguez_review": {
       "kind": "mergeguez_review",
-      "status": "pending-live-read",
-      "summary": "The active closeout PR #84 requires a fresh exact-head Mergeguez review; historical PR #81 approval is recorded in the completed task metadata, not this active gate.",
+      "status": "pending-publication",
+      "summary": "The future workflow PR requires a fresh exact-head Mergeguez review before merge.",
       "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pr-080-agent-toolkit-review-gate-closeout"
+      "updated_at": "pullfrog-review-only-pilot-20261026"
     }
   }
 }

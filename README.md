@@ -124,6 +124,7 @@ This repository now treats GitHub Actions files as **source assets**, not as act
 - **Ref-sync manifest:** `templates/workflow-ref-sync-manifest.json`
 - **Repo-workflow materialization manifest:** `templates/repo-workflow-materialization-manifest.json`
 - **Provider-free PR automation dogfood:** `docs/pr-automation-dogfood.md`
+- **Bounded Pullfrog review-only pilot:** `docs/pullfrog-review-only-pilot.md`, with canonical workflow source at `templates/starter-workflows/pullfrog.yml`
 - **Helper scripts:** `scripts/coderabbit/` plus `scripts/github/` (including the deterministic ref updater and repo-workflow materializer)
 - **Materialized live reusable maintenance workflow:** `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
 - **Live repo entrypoint workflow:** `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`
@@ -174,6 +175,7 @@ This repository is for **shared, reusable content only**. It should not contain 
 - `docs/workflow-asset-library-layout.md` — canonical layout for workflow source assets in this repository
 - `docs/github-actions-template-catalog.md` — human-readable catalog of available workflow assets, their purpose, and how they relate
 - `docs/workflow-authoring-rules.md` — workflow classification and edit rules for humans and agents
+- `docs/pullfrog-review-only-pilot.md` — immutable action custody and non-merging pilot boundary
 - `scripts/public-pr-safety-scan` — deterministic public PR title/body and hosted patch/diff safety scanner
 - `AGENTS.md` — repo-local operating instructions and doc map for future agents
 - `scripts/coderabbit/README.md` — runtime notes for the CodeRabbit helper scripts
