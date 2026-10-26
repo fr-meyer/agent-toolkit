@@ -64,12 +64,12 @@ surfaces:
     authority: canonical
   github_pull_request:
     enabled: true
-    status: pending-publication
+    status: open
     base_branch: dev
     default_branch: main
     head_branch: feat/pullfrog-review-pilot-20261026
     head_sha: null
-    head_sha_source: A future published PR head must be read back live and reviewed exactly; no self-referential SHA is committed
+    head_sha_source: Live PR #92 exact-head readback is supplied to review and merge gates; no self-referential SHA is committed
     merge_commit: null
 gates:
   before_publish:

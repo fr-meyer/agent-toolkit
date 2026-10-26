@@ -2,6 +2,10 @@
 
 This repository carries a bounded Pullfrog entrypoint for an observational review pilot. Pullfrog is optional comparison evidence. It does not replace the required exact-head Mergeguez review, Speculoos policy checks, or explicit human merge authority.
 
+## Publication evidence
+
+The rollout is published as PR #92 against `dev`. `.speculoos/manifest.yaml` records the pull-request surface as open without committing a self-referential head SHA. `.speculoos/review-evidence.json` keeps hosted checks and Mergeguez review at `pending-live-read`: both must be read through the broker at the current exact head after every update and before merge.
+
 ## Workflow custody
 
 - Canonical source: `templates/starter-workflows/pullfrog.yml`

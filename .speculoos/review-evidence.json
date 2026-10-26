@@ -20,15 +20,15 @@
   "sources": {
     "local_validation": {
       "kind": "local_validation",
-      "status": "pending",
-      "summary": "Workflow materialization, checksum-verified actionlint, deterministic review-only policy tests, immutable-pin checks, YAML and JSON parsing, Speculoos validation, publish-check, and git diff checks must pass for the Pullfrog pilot workflow proposal.",
+      "status": "passed",
+      "summary": "Workflow materialization, checksum-verified actionlint, deterministic review-only policy tests, immutable-pin checks, YAML and JSON parsing, Speculoos validation, publish-check, and git diff checks passed for the Pullfrog pilot workflow proposal.",
       "evidence_ref": ".speculoos/tasks/pullfrog-review-only-pilot-20261026.yaml",
       "updated_at": "pullfrog-review-only-pilot-20261026"
     },
     "github_checks": {
       "kind": "github_checks",
-      "status": "pending-publication",
-      "summary": "Read live checks at the future workflow PR exact head before merge.",
+      "status": "pending-live-read",
+      "summary": "Published PR #92 checks must be read live at the current exact head before merge; no self-referential head SHA is committed.",
       "evidence_ref": "broker:mergeguez pr-state --json",
       "updated_at": "pullfrog-review-only-pilot-20261026"
     },
@@ -48,8 +48,8 @@
     },
     "mergeguez_review": {
       "kind": "mergeguez_review",
-      "status": "pending-publication",
-      "summary": "The future workflow PR requires a fresh exact-head Mergeguez review before merge.",
+      "status": "pending-live-read",
+      "summary": "Published PR #92 requires a fresh exact-head Mergeguez review after each head update and before merge; live evidence is not replaced by a committed SHA.",
       "evidence_ref": "broker:mergeguez pr-state --json",
       "updated_at": "pullfrog-review-only-pilot-20261026"
     }
