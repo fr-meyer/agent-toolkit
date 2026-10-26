@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 actionlint_version="1.7.12"
+# actionlint uses Go's `amd64` release-asset suffix for Linux x86-64 builds.
+# Keep the asset name and checksum aligned with the upstream versioned checksum manifest.
 actionlint_sha256="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
 archive_name="actionlint_${actionlint_version}_linux_amd64.tar.gz"
 download_url="https://github.com/rhysd/actionlint/releases/download/v${actionlint_version}/${archive_name}"

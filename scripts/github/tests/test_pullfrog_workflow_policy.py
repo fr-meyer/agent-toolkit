@@ -6,6 +6,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TEMPLATE = REPO_ROOT / "templates/starter-workflows/pullfrog.yml"
 LIVE = REPO_ROOT / ".github/workflows/pullfrog.yml"
+VALIDATOR = REPO_ROOT / "scripts/github/validate_pullfrog_workflow.sh"
 EXPECTED_HEADER = (
     "# Managed by templates/repo-workflow-materialization-manifest.json.\n"
     "# Edit templates/starter-workflows/pullfrog.yml, then rematerialize the live workflow.\n"
@@ -63,6 +64,19 @@ class PullfrogWorkflowPolicyTests(unittest.TestCase):
         )
         for use in uses:
             self.assertRegex(use, r"@[0-9a-f]{40}$")
+
+    def test_actionlint_release_asset_is_checksum_pinned(self):
+        validator = VALIDATOR.read_text(encoding="utf-8")
+        self.assertIn('actionlint_version="1.7.12"', validator)
+        self.assertIn(
+            'archive_name="actionlint_${actionlint_version}_linux_amd64.tar.gz"',
+            validator,
+        )
+        self.assertIn(
+            'actionlint_sha256="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"',
+            validator,
+        )
+        self.assertIn("sha256sum --check --status", validator)
 
     def test_pullfrog_inputs_are_review_only(self):
         pullfrog_inputs = re.search(
