@@ -11,6 +11,11 @@ EXPECTED_HEADER = (
     "# Managed by templates/repo-workflow-materialization-manifest.json.\n"
     "# Edit templates/starter-workflows/pullfrog.yml, then rematerialize the live workflow.\n"
 )
+SECRET_EXPRESSION = re.compile(
+    r"\$\{\{\s*secrets\s*(?:\.|\[)",
+    flags=re.IGNORECASE,
+)
+ENV_MAPPING = re.compile(r"(?m)^[ \t]*env[ \t]*:")
 
 
 def top_level_section(text: str, name: str) -> str:
@@ -98,8 +103,19 @@ class PullfrogWorkflowPolicyTests(unittest.TestCase):
                 ("progress_comments", "disabled"),
             ],
         )
-        self.assertNotIn("${{ secrets.", self.template)
-        self.assertNotRegex(self.template, r"(?m)^\s+env:\s*$")
+        self.assertIsNone(SECRET_EXPRESSION.search(self.template))
+        self.assertIsNone(ENV_MAPPING.search(self.template))
+
+    def test_secret_mapping_guard_rejects_whitespace_and_inline_forms(self):
+        variants = [
+            'env: {KEY: "${{secrets.KEY}}"}',
+            'env : {KEY: "${{  SeCrEtS . KEY  }}"}',
+            'env:\n  KEY: "${{ secrets[\'KEY\'] }}"',
+        ]
+        for variant in variants:
+            with self.subTest(variant=variant):
+                self.assertIsNotNone(ENV_MAPPING.search(variant))
+                self.assertIsNotNone(SECRET_EXPRESSION.search(variant))
 
 
 if __name__ == "__main__":
