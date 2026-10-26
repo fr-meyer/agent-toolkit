@@ -21,7 +21,7 @@
     "local_validation": {
       "kind": "local_validation",
       "status": "pending",
-      "summary": "Workflow materialization, immutable-pin checks, YAML and JSON parsing, Speculoos validation, publish-check, and git diff checks must pass for the Pullfrog pilot workflow proposal.",
+      "summary": "Workflow materialization, checksum-verified actionlint, deterministic review-only policy tests, immutable-pin checks, YAML and JSON parsing, Speculoos validation, publish-check, and git diff checks must pass for the Pullfrog pilot workflow proposal.",
       "evidence_ref": ".speculoos/tasks/pullfrog-review-only-pilot-20261026.yaml",
       "updated_at": "pullfrog-review-only-pilot-20261026"
     },

@@ -7,6 +7,7 @@ Pullfrog remains optional comparison evidence. Exact-head Mergeguez review, Spec
 
 ### Changed Files For Publish
 
+- `.github/workflows/pr-automation-dogfood-reusable.yml`
 - `.github/workflows/pullfrog.yml`
 - `.speculoos/actors.json`
 - `.speculoos/goal.md`
@@ -17,9 +18,12 @@ Pullfrog remains optional comparison evidence. Exact-head Mergeguez review, Spec
 - `docs/github-actions-template-catalog.md`
 - `docs/pullfrog-review-only-pilot.md`
 - `docs/workflow-asset-library-layout.md`
+- `scripts/github/tests/test_pullfrog_workflow_policy.py`
+- `scripts/github/validate_pullfrog_workflow.sh`
 - `specs/pullfrog-review-only-pilot-20261026/commit-message.txt`
 - `specs/pullfrog-review-only-pilot-20261026/pr-body.md`
 - `templates/repo-workflow-materialization-manifest.json`
+- `templates/reusable-workflows/pr-automation-dogfood-reusable.yml`
 - `templates/starter-workflows/pullfrog.yml`
 
 ### Publication Boundary
@@ -42,7 +46,8 @@ Updated `README.md`, `docs/github-actions-template-catalog.md`, `docs/workflow-a
 - deterministic workflow materialization, including a zero-change second pass
 - canonical/template byte equality
 - YAML and JSON syntax validation
-- immutable action pin and workflow-policy assertions
+- checksum-verified actionlint validation
+- deterministic immutable action pin and workflow-policy assertions
 - `git diff --check`
 - Speculoos validation and publish-check
 - public PR safety scan after publication

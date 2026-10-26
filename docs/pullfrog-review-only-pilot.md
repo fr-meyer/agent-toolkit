@@ -9,6 +9,7 @@ This repository carries a bounded Pullfrog entrypoint for an observational revie
 - Materialization binding: `templates/repo-workflow-materialization-manifest.json`
 - Pullfrog action: immutable commit `25a837a2b078177c3acdce790506d1fd1acedd82`, reviewed as Pullfrog `v0.1.102`
 - Checkout action: immutable commit `d23441a48e516b6c34aea4fa41551a30e30af803`, tagged `v6`
+- Workflow syntax: actionlint `1.7.12`, downloaded from its versioned release and verified against SHA-256 `8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8`
 
 The workflow uses only `workflow_dispatch`, which is also the dispatch surface used by the Pullfrog GitHub App. It becomes runnable only after the reviewed workflow reaches the repository default branch and Pullfrog is separately configured for the repository.
 
@@ -24,6 +25,8 @@ The committed workflow enforces:
 - Pullfrog `shell: restricted`
 - action timeout of 15 minutes inside a 20-minute job timeout
 - live progress updates disabled
+
+The provider-free dogfood check runs `scripts/github/validate_pullfrog_workflow.sh`. It verifies the actionlint archive before execution, validates both workflow copies with actionlint, and runs deterministic assertions for the trigger, permissions, immutable action refs, checkout credentials, timeouts, disabled push, restricted shell, disabled progress comments, and absence of secret environment mappings.
 
 Repository-side Pullfrog settings must additionally keep approval, auto-merge, review remediation, CI autofix, non-collaborator mentions, issue automation, and label automation disabled for the pilot. The environment allowlist stays empty. Those service settings are deliberately not represented as secrets or machine-local state in this public repository.
 

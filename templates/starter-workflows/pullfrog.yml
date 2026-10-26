@@ -1,5 +1,5 @@
-# Canonical source for the repo-local Pullfrog entrypoint.
-# Materialize this file to .github/workflows/pullfrog.yml; do not edit the live copy directly.
+# Managed by templates/repo-workflow-materialization-manifest.json.
+# Edit templates/starter-workflows/pullfrog.yml, then rematerialize the live workflow.
 name: Pullfrog
 run-name: ${{ inputs.name || github.workflow }}
 

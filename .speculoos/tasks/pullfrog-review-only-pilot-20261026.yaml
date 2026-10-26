@@ -4,6 +4,7 @@ status: implementation
 branch: feat/pullfrog-review-pilot-20261026
 base_branch: dev
 write_paths:
+  - .github/workflows/pr-automation-dogfood-reusable.yml
   - .github/workflows/pullfrog.yml
   - .speculoos/goal.md
   - .speculoos/manifest.yaml
@@ -14,15 +15,19 @@ write_paths:
   - docs/github-actions-template-catalog.md
   - docs/pullfrog-review-only-pilot.md
   - docs/workflow-asset-library-layout.md
+  - scripts/github/tests/test_pullfrog_workflow_policy.py
+  - scripts/github/validate_pullfrog_workflow.sh
   - specs/pullfrog-review-only-pilot-20261026/commit-message.txt
   - specs/pullfrog-review-only-pilot-20261026/pr-body.md
   - templates/repo-workflow-materialization-manifest.json
+  - templates/reusable-workflows/pr-automation-dogfood-reusable.yml
   - templates/starter-workflows/pullfrog.yml
 scope:
   - add one canonical Pullfrog starter workflow and its materialized live copy
   - pin Pullfrog 0.1.102 and checkout v6 to reviewed immutable commits
   - enforce disabled push, restricted shell, read-only contents, bounded time, and no secret environment mapping
   - record Pullfrog as optional comparison evidence while retaining Mergeguez as the required exact-head reviewer
+  - lint the workflow with a checksum-verified actionlint binary and enforce the review-only policy in deterministic tests
   - document the separate repository-configuration and model-authorization gates
 non_goals:
   - enabling broad automatic pull-request reviews
@@ -42,6 +47,7 @@ acceptance:
   - Pullfrog remains optional evidence and cannot satisfy the required Mergeguez review gate
   - documentation records the model-authorization and external-configuration stop gates
   - repository workflow materialization and Speculoos validation pass
+  - actionlint and deterministic workflow-policy tests pass in the provider-free dogfood job
 publication_boundary:
   statement: "Repository workflow, documentation, and policy metadata only: prepare a review-only Pullfrog pilot. No credential, model-provider call, billing change, direct default-branch write, review approval, remediation, autofix, merge, release, or deployment."
 documentation_impact:
@@ -51,6 +57,7 @@ validation:
   - "python3 scripts/github/materialize_repo_workflow_templates.py --repo-root . --manifest-path templates/repo-workflow-materialization-manifest.json"
   - "cmp templates/starter-workflows/pullfrog.yml .github/workflows/pullfrog.yml"
   - "for file in templates/starter-workflows/pullfrog.yml .github/workflows/pullfrog.yml; do npx --yes yaml@2.8.1 valid < \"$file\" >/dev/null; done"
+  - "scripts/github/validate_pullfrog_workflow.sh"
   - "python3 -m json.tool templates/repo-workflow-materialization-manifest.json >/dev/null"
   - "git diff --check origin/dev...HEAD"
   - "speculoos validate --repo . --repo-slug fr-meyer/agent-toolkit --base dev --task pullfrog-review-only-pilot-20261026 --validation \"git diff --check origin/dev...HEAD\" --json"
