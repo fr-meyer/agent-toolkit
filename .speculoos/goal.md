@@ -1,7 +1,7 @@
-# Exact-head Pullfrog remediation cycle contract
+# Non-bypassable Pullfrog remediation destination guard
 
-Define the provider-free, fail-closed decision contract for a fully unattended Pullfrog review → remediation → exact-head re-review loop.
+Add the provider-free guard that binds every automatic remediation attempt to the exact current PR head.
 
-The contract must bind repository, pull request, base, head, event, review, and required-check evidence to one exact head. It must make duplicate delivery idempotent, require a new review after every remediation commit, stop on drift or no progress, and authorize no more than three remediation cycles.
+The guard must allow only same-repository `feat/*`, `fix/*`, `docs/*`, `test/*`, or `chore/*` heads; reject forks, detached refs, protected/default/base branches, stale heads, changed retry destinations, and workflow or governance authority paths; and ignore credentials, environment variables, and unrelated event fields as authority.
 
 This task adds no provider call or write-capable workflow. Pullfrog remains the sole intended reviewer and fixer. Repository writes, hosted activation, approval, auto-merge, release, and deployment remain separately gated.

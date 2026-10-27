@@ -67,7 +67,7 @@ surfaces:
     status: planned
     base_branch: dev
     default_branch: main
-    head_branch: chore/pullfrog-cloud-cycle-contract
+    head_branch: chore/pullfrog-destination-guard
     head_sha: null
     head_sha_source: Local feature branch only; publication requires separate approval and live exact-head readback
     merge_commit: null
@@ -81,5 +81,5 @@ gates:
   after_publish:
     - exact-head-mergeguez-review-requested
     - exact-head-review-and-check-evidence
-current_task: pullfrog-cloud-cycle-contract-20261027
-current_task_metadata: .speculoos/tasks/pullfrog-cloud-cycle-contract-20261027.yaml
+current_task: pullfrog-destination-guard-20261027
+current_task_metadata: .speculoos/tasks/pullfrog-destination-guard-20261027.yaml
