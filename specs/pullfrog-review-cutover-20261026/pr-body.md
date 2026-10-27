@@ -30,7 +30,7 @@ Task: `pullfrog-review-cutover-20261026`
 - Treat Mergeguez review evidence as historical only.
 - Retain Mergeguez only as the separate approved branch-publication broker and explicitly authorized feature-to-`dev` merge actor.
 - Keep explicit human approval for every merge.
-- Pin review runs to `openai/gpt-6.1-sol` at `xhigh` and remediation runs to `openai/gpt-6.1-terra` at `xhigh` through role-specific Pullfrog prompts.
+- Pin review runs to `openai/gpt-sol` at `xhigh` and remediation runs to `openai/gpt-luna` at `xhigh` through role-specific Pullfrog prompts. Pinned Pullfrog `v0.1.102` resolves those selectors to `openai/gpt-6.1-sol` and `openai/gpt-6-luna`.
 
 ## Safety boundary
 

@@ -23,7 +23,7 @@ scope:
   - require successful pullfrog and pullfrog-approval checks on the current exact head
   - retire Mergeguez review to historical evidence while preserving its separate branch-publication and explicitly authorized merge roles
   - allow explicitly triggered Fix all or Fix 👍s remediation on policy-approved PR branches only
-  - use openai/gpt-6.1-sol at xhigh for review and openai/gpt-6.1-terra at xhigh for remediation
+  - use openai/gpt-sol at xhigh for review and openai/gpt-luna at xhigh for remediation; under pinned Pullfrog v0.1.102 these resolve to openai/gpt-6.1-sol and openai/gpt-6-luna
   - keep automatic remediation, approval, CI autofix, auto-merge, release, and deployment authority disabled
   - preserve explicit human merge authority and Speculoos validation
   - harden secret-expression and environment-mapping workflow regression coverage

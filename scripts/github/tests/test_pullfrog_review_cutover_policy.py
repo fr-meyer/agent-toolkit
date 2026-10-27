@@ -54,10 +54,10 @@ class PullfrogReviewCutoverPolicyTests(unittest.TestCase):
             "explicit_fix_all_or_fix_likes_only",
         )
         self.assertFalse(pullfrog["automatic_address_reviews_enabled"])
-        self.assertEqual(pullfrog["review_model"], "openai/gpt-6.1-sol")
+        self.assertEqual(pullfrog["review_model"], "openai/gpt-sol")
         self.assertEqual(pullfrog["review_effort"], "xhigh")
         self.assertEqual(
-            pullfrog["review_remediation_model"], "openai/gpt-6.1-terra"
+            pullfrog["review_remediation_model"], "openai/gpt-luna"
         )
         self.assertEqual(pullfrog["review_remediation_effort"], "xhigh")
         self.assertTrue(pullfrog["requires_explicit_remediation_trigger"])
@@ -104,8 +104,10 @@ class PullfrogReviewCutoverPolicyTests(unittest.TestCase):
         self.assertIn("explicit human merge authority", combined)
         self.assertIn("Mergeguez review is historical only", combined)
         self.assertIn("push: restricted", combined)
+        self.assertIn("openai/gpt-sol", combined)
+        self.assertIn("openai/gpt-luna", combined)
         self.assertIn("openai/gpt-6.1-sol", combined)
-        self.assertIn("openai/gpt-6.1-terra", combined)
+        self.assertIn("openai/gpt-6-luna", combined)
         self.assertIn("xhigh", combined)
         self.assertIn("Fix all", combined)
         self.assertIn("pre-push allowlist", combined)

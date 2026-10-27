@@ -37,8 +37,8 @@ The committed workflow enforces:
 Live repository settings additionally enforce:
 
 - automatic agent review with incremental re-review
-- review model `openai/gpt-6.1-sol` with `--effort=xhigh`
-- review-remediation model `openai/gpt-6.1-terra` with `--effort=xhigh`
+- review model selector `openai/gpt-sol` with `--effort=xhigh`
+- review-remediation model selector `openai/gpt-luna` with `--effort=xhigh`
 - `pullfrog` and `pullfrog-approval` checks enabled
 - manual **Fix all** and **Fix 👍s** remediation allowed only after an explicit collaborator action
 - progress comments, review approval, automatic Address reviews, CI autofix, mentions, issue automation, label automation, and auto-merge disabled
@@ -51,10 +51,10 @@ The provider-free validator `scripts/github/validate_pullfrog_workflow.sh` check
 
 Pullfrog reads built-in flags from each automation's custom instructions. The live repository configuration uses these exact role prompts:
 
-- `prompts.review`: `--model=openai/gpt-6.1-sol --effort=xhigh`
-- `prompts.address-reviews`: `--model=openai/gpt-6.1-terra --effort=xhigh` plus the bounded-remediation instructions
+- `prompts.review`: `--model=openai/gpt-sol --effort=xhigh`
+- `prompts.address-reviews`: `--model=openai/gpt-luna --effort=xhigh` plus the bounded-remediation instructions
 
-The full `openai/gpt-6.1-*` identifiers pin the requested generation instead of following the rolling `openai/gpt-sol` and `openai/gpt-terra` aliases. Both current catalog entries publish `xhigh`. Repository-level `effort` is a numeric default from `0` to `1`; the named per-role `--effort=xhigh` flags take precedence for these runs.
+Pullfrog prompt flags take supported model selectors, not provider wire identifiers. In pinned Pullfrog `v0.1.102`, `openai/gpt-sol` resolves to `openai/gpt-6.1-sol` and `openai/gpt-luna` resolves to `openai/gpt-6-luna`; both catalog entries publish `xhigh`. Repository-level `effort` is a numeric default from `0` to `1`; the named per-role `--effort=xhigh` flags take precedence for these runs.
 
 `address-reviews.enabled` stays false. That switch controls unattended handling of human reviews on Pullfrog-opened PRs; it is not needed for the explicit **Fix all** and **Fix 👍s** actions used here.
 

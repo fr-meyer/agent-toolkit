@@ -43,10 +43,10 @@ review_policy:
         - chore/*
       shell: restricted
       approval: disabled
-      review_model: openai/gpt-6.1-sol
+      review_model: openai/gpt-sol
       review_effort: xhigh
       remediation: explicit_fix_all_or_fix_likes_only
-      remediation_model: openai/gpt-6.1-terra
+      remediation_model: openai/gpt-luna
       remediation_effort: xhigh
       automatic_address_reviews: disabled
       post_remediation_rereview: required_exact_head

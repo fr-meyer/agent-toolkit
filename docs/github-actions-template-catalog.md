@@ -537,7 +537,7 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 ### Notes
 - Successful exact-head `pullfrog` and `pullfrog-approval` checks are required review evidence. Mergeguez review is historical only.
 - Pullfrog may push explicit Fix all or Fix 👍s commits only to policy-approved PR branches. It has no review-approval, automatic-remediation, CI-fix, auto-merge, release, or deployment authority; explicit human merge authority remains unchanged.
-- Review runs use `openai/gpt-6.1-sol` at `xhigh`; remediation runs use `openai/gpt-6.1-terra` at `xhigh` through role-specific Pullfrog prompts.
+- Review runs use `openai/gpt-sol` at `xhigh`; remediation runs use `openai/gpt-luna` at `xhigh` through role-specific Pullfrog prompts. Pinned Pullfrog `v0.1.102` resolves those selectors to `openai/gpt-6.1-sol` and `openai/gpt-6-luna`.
 - Repository-side configuration and model access are external surfaces and are not stored in this public workflow.
 - This standalone entrypoint does not call a reusable workflow, so it needs no reusable-workflow ref diffusion.
 - See `docs/pullfrog-review-only-pilot.md` for the exact-head evidence and stop gates.
