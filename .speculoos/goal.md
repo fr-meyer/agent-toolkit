@@ -1,7 +1,7 @@
-# Agent-toolkit exact-head review gate with bounded Pullfrog comparison
+# Exact-head Pullfrog remediation cycle contract
 
-Keep shared agent-toolkit pull requests behind the fail-closed, exact-head Mergeguez review lane while preparing one review-only Pullfrog pilot as optional comparison evidence.
+Define the provider-free, fail-closed decision contract for a fully unattended Pullfrog review → remediation → exact-head re-review loop.
 
-The Pullfrog workflow must remain non-pushing, non-approving, non-remediating, non-merging, secret-free in repository source, and separately gated on explicit model authorization. Pullfrog evidence never replaces Speculoos policy checks, required Mergeguez review, live exact-head checks, or explicit human merge authority.
+The contract must bind repository, pull request, base, head, event, review, and required-check evidence to one exact head. It must make duplicate delivery idempotent, require a new review after every remediation commit, stop on drift or no progress, and authorize no more than three remediation cycles.
 
-The repo-local metadata records public workflow policy only. Credentials, billing state, host paths, prompts, raw model output, and private runtime details remain outside the repository.
+This task adds no provider call or write-capable workflow. Pullfrog remains the sole intended reviewer and fixer. Repository writes, hosted activation, approval, auto-merge, release, and deployment remain separately gated.

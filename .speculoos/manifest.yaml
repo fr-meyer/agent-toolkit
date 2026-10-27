@@ -9,7 +9,7 @@ repository:
 status:
   phase: implementation
   blocker_summary:
-    - Pullfrog service configuration and model access remain separately approval-gated after repository workflow publication.
+    - Write-capable remediation remains disabled until the cycle contract, destination guard, dry-run coordinator, and hosted acceptance matrix pass.
 publication_policy:
   repository_visibility: shared-repository
   intended_public_visibility: public
@@ -64,12 +64,12 @@ surfaces:
     authority: canonical
   github_pull_request:
     enabled: true
-    status: open
+    status: planned
     base_branch: dev
     default_branch: main
-    head_branch: feat/pullfrog-review-pilot-20261026
+    head_branch: chore/pullfrog-cloud-cycle-contract
     head_sha: null
-    head_sha_source: Live PR #92 exact-head readback is supplied to review and merge gates; no self-referential SHA is committed
+    head_sha_source: Local feature branch only; publication requires separate approval and live exact-head readback
     merge_commit: null
 gates:
   before_publish:
@@ -81,5 +81,5 @@ gates:
   after_publish:
     - exact-head-mergeguez-review-requested
     - exact-head-review-and-check-evidence
-current_task: pullfrog-review-only-pilot-20261026
-current_task_metadata: .speculoos/tasks/pullfrog-review-only-pilot-20261026.yaml
+current_task: pullfrog-cloud-cycle-contract-20261027
+current_task_metadata: .speculoos/tasks/pullfrog-cloud-cycle-contract-20261027.yaml
