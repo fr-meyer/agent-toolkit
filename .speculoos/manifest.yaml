@@ -9,7 +9,7 @@ repository:
 status:
   phase: implementation
   blocker_summary:
-    - Pullfrog is enabled in review-only mode; merge remains blocked until live exact-head pullfrog and pullfrog-approval checks succeed.
+    - Pullfrog is enabled for required review and explicit manual remediation; merge remains blocked until live exact-head pullfrog and pullfrog-approval checks succeed after the latest push.
 publication_policy:
   repository_visibility: shared-repository
   intended_public_visibility: public
@@ -34,10 +34,22 @@ review_policy:
       - pullfrog
       - pullfrog-approval
     controls:
-      push: disabled
+      push: restricted_non_default_branches
+      pre_push_branch_allowlist:
+        - feat/*
+        - fix/*
+        - docs/*
+        - test/*
+        - chore/*
       shell: restricted
       approval: disabled
-      remediation: disabled
+      review_model: openai/gpt-6.1-sol
+      review_effort: xhigh
+      remediation: explicit_fix_all_or_fix_likes_only
+      remediation_model: openai/gpt-6.1-terra
+      remediation_effort: xhigh
+      automatic_address_reviews: disabled
+      post_remediation_rereview: required_exact_head
       ci_autofix: disabled
       auto_merge: disabled
   legacy_coderabbit:

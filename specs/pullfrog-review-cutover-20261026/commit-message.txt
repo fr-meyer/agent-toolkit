@@ -1,1 +1,1 @@
-chore: make Pullfrog the required reviewer
+chore: bound Pullfrog review remediation

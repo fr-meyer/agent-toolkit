@@ -43,6 +43,19 @@ actor_policy:
     - exact_head_pullfrog_approval_check
     - live_github_checks
     - branch_policy_merge_actor
+  remediation_requirements:
+    mode: explicit_fix_all_or_fix_likes_only
+    allowed_head_patterns:
+      - feat/*
+      - fix/*
+      - docs/*
+      - test/*
+      - chore/*
+    required_after_every_push:
+      - exact_head_pullfrog_status_check
+      - exact_head_pullfrog_approval_check
+      - live_github_checks
+      - explicit_human_merge_approval
   branch_merge_actor_requirements:
     - name: feature_to_dev
       base_branch: dev

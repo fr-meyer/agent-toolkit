@@ -42,7 +42,7 @@
     "pullfrog_review": {
       "kind": "pullfrog_review",
       "status": "pending-live-read",
-      "summary": "Required exact-head evidence consists of a completed successful pullfrog run check and successful pullfrog-approval verdict check attached to the current PR head, plus the corresponding Pullfrog review output.",
+      "summary": "Required exact-head evidence consists of a completed successful pullfrog run check and successful pullfrog-approval verdict check attached to the current PR head, plus the corresponding Pullfrog review output. Any remediation push makes all earlier review and check evidence stale and requires a fresh exact-head re-review.",
       "evidence_ref": "live PR checks and Pullfrog review thread",
       "updated_at": "pullfrog-review-cutover-20261026"
     },

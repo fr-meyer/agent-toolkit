@@ -83,7 +83,7 @@ class PullfrogWorkflowPolicyTests(unittest.TestCase):
         )
         self.assertIn("sha256sum --check --status", validator)
 
-    def test_pullfrog_inputs_are_review_only(self):
+    def test_pullfrog_inputs_allow_only_bounded_feature_branch_fixes(self):
         pullfrog_inputs = re.search(
             r"(?m)^        uses: pullfrog/pullfrog@[0-9a-f]{40}[^\n]*\n"
             r"        with:\n(?P<body>(?:          [^\n]+\n)+)",
@@ -98,7 +98,7 @@ class PullfrogWorkflowPolicyTests(unittest.TestCase):
             [
                 ("prompt", "${{ inputs.prompt }}"),
                 ("timeout", "15m"),
-                ("push", "disabled"),
+                ("push", "restricted"),
                 ("shell", "restricted"),
                 ("progress_comments", "disabled"),
             ],

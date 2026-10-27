@@ -43,10 +43,27 @@ class PullfrogReviewCutoverPolicyTests(unittest.TestCase):
         self.assertEqual(
             pullfrog["required_check_names"], ["pullfrog", "pullfrog-approval"]
         )
+        self.assertTrue(pullfrog["push_enabled"])
+        self.assertEqual(
+            pullfrog["push_mode"],
+            "restricted_feature_branches_with_prepush_allowlist",
+        )
+        self.assertTrue(pullfrog["review_remediation_enabled"])
+        self.assertEqual(
+            pullfrog["review_remediation_mode"],
+            "explicit_fix_all_or_fix_likes_only",
+        )
+        self.assertFalse(pullfrog["automatic_address_reviews_enabled"])
+        self.assertEqual(pullfrog["review_model"], "openai/gpt-6.1-sol")
+        self.assertEqual(pullfrog["review_effort"], "xhigh")
+        self.assertEqual(
+            pullfrog["review_remediation_model"], "openai/gpt-6.1-terra"
+        )
+        self.assertEqual(pullfrog["review_remediation_effort"], "xhigh")
+        self.assertTrue(pullfrog["requires_explicit_remediation_trigger"])
+        self.assertTrue(pullfrog["requires_post_remediation_exact_head_rereview"])
         for key in (
-            "push_enabled",
             "review_approval_enabled",
-            "review_remediation_enabled",
             "ci_autofix_enabled",
             "auto_merge_enabled",
         ):
@@ -81,12 +98,17 @@ class PullfrogReviewCutoverPolicyTests(unittest.TestCase):
         self.assertIn("    - exact_head_pullfrog_approval_check\n", self.publish_policy)
         self.assertNotIn("exact_head_mergeguez_review", self.publish_policy)
 
-    def test_documentation_preserves_human_merge_and_review_only_controls(self):
+    def test_documentation_preserves_human_merge_and_bounded_remediation_controls(self):
         combined = self.goal + "\n" + self.doc
         self.assertIn("Pullfrog as the primary required reviewer", combined)
         self.assertIn("explicit human merge authority", combined)
         self.assertIn("Mergeguez review is historical only", combined)
-        self.assertIn("push: disabled", combined)
+        self.assertIn("push: restricted", combined)
+        self.assertIn("openai/gpt-6.1-sol", combined)
+        self.assertIn("openai/gpt-6.1-terra", combined)
+        self.assertIn("xhigh", combined)
+        self.assertIn("Fix all", combined)
+        self.assertIn("pre-push allowlist", combined)
         self.assertIn("shell: restricted", combined)
         self.assertIn("auto-merge", combined)
         self.assertIn("credential", combined)

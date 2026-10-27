@@ -1,11 +1,12 @@
 ## Summary
 
-Make Pullfrog the primary required exact-head reviewer for `fr-meyer/agent-toolkit` while preserving explicit human merge authority and keeping Pullfrog non-pushing and non-remediating.
+Make Pullfrog the primary required exact-head reviewer for `fr-meyer/agent-toolkit` while preserving explicit human merge authority and allowing only explicitly triggered, branch-bounded remediation of selected Pullfrog findings.
 
 Task: `pullfrog-review-cutover-20261026`
 
 ## Changed Files
 
+- `.github/workflows/pullfrog.yml`
 - `.speculoos/actors.json`
 - `.speculoos/goal.md`
 - `.speculoos/manifest.yaml`
@@ -20,6 +21,7 @@ Task: `pullfrog-review-cutover-20261026`
 - `scripts/github/tests/test_pullfrog_workflow_policy.py`
 - `specs/pullfrog-review-cutover-20261026/commit-message.txt`
 - `specs/pullfrog-review-cutover-20261026/pr-body.md`
+- `templates/starter-workflows/pullfrog.yml`
 
 ## Policy change
 
@@ -28,13 +30,16 @@ Task: `pullfrog-review-cutover-20261026`
 - Treat Mergeguez review evidence as historical only.
 - Retain Mergeguez only as the separate approved branch-publication broker and explicitly authorized feature-to-`dev` merge actor.
 - Keep explicit human approval for every merge.
+- Pin review runs to `openai/gpt-6.1-sol` at `xhigh` and remediation runs to `openai/gpt-6.1-terra` at `xhigh` through role-specific Pullfrog prompts.
 
 ## Safety boundary
 
-- Pullfrog push is disabled.
+- Pullfrog push is restricted to non-default branches and a service-side pre-push hook permits only `feat/*`, `fix/*`, `docs/*`, `test/*`, and `chore/*`.
 - Pullfrog shell is restricted.
 - Pullfrog GitHub review approval is disabled.
-- Review remediation, CI autofix, mentions, issue automation, labels, and auto-merge are disabled.
+- **Fix all** and **Fix 👍s** require an explicit collaborator action; automatic Address reviews remain disabled.
+- CI autofix, mentions, issue automation, labels, and auto-merge are disabled.
+- Every remediation push requires fresh exact-head `pullfrog` and `pullfrog-approval` checks.
 - No provider secret or environment mapping is added.
 - The environment allowlist remains unset/empty.
 
@@ -55,4 +60,4 @@ The reviewer policy and exact-head evidence requirements are updated in `docs/pu
 
 ## Publication Boundary
 
-This PR changes repository policy, documentation, tests, and task metadata only. It stores no credential and changes no billing, Router funding, environment allowlist, branch protection, merge, release, or deployment setting. Feature PRs target `dev`; release/promotion PRs target `main`. Merge remains separately approval-gated.
+This PR changes repository workflow policy, documentation, tests, and task metadata. It stores no credential and changes no billing, Router funding, environment allowlist, branch protection, merge, release, or deployment setting. The default-branch workflow bootstrap and live push enablement remain separately gated. Feature PRs target `dev`; release/promotion PRs target `main`. Merge remains separately approval-gated.
