@@ -45,6 +45,10 @@
     {
       "source": "templates/starter-workflows/pullfrog.yml",
       "target": ".github/workflows/pullfrog.yml"
+    },
+    {
+      "source": "templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml",
+      "target": ".github/workflows/pullfrog-cloud-coordinator-dry-run.yml"
     }
   ]
 }

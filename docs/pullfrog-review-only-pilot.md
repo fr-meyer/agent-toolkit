@@ -1,10 +1,12 @@
 # Pullfrog review-only pilot
 
-This repository carries a bounded Pullfrog entrypoint for an observational review pilot. Pullfrog is optional comparison evidence. It does not replace the required exact-head Mergeguez review, Speculoos policy checks, or explicit human merge authority.
+This page preserves the original observational pilot boundary. The current target architecture now uses Pullfrog as the sole AI reviewer and intended fixer, with a thin provider-free GitHub Actions coordinator for the unattended review, remediation, and exact-head re-review loop. Mergeguez is not a reviewer in that target architecture; it retains only separately approved branch-publication and human-authorized merge execution duties.
 
-## Publication evidence
+The committed Pullfrog entrypoint remains non-pushing while the coordinator is in dry-run mode. Independent Speculoos evidence and explicit human merge authority remain required. See `docs/pullfrog-cloud-coordinator.md` for the current state machine and activation gates.
 
-The rollout is published as PR #92 against `dev`. `.speculoos/manifest.yaml` records the pull-request surface as open without committing a self-referential head SHA. `.speculoos/review-evidence.json` keeps hosted checks and Mergeguez review at `pending-live-read`: both must be read through the broker at the current exact head after every update and before merge.
+## Historical publication evidence
+
+The review-only rollout was published as PR #92 against `dev`. That pilot's live check and review evidence was read at its exact head rather than committed as a self-referential SHA. The current `.speculoos/manifest.yaml` and `.speculoos/review-evidence.json` now describe the Pullfrog-native target architecture and the local dry-run coordinator branch, not the superseded PR #92 gate.
 
 ## Workflow custody
 
@@ -34,15 +36,15 @@ The provider-free dogfood check runs `scripts/github/validate_pullfrog_workflow.
 
 Repository-side Pullfrog settings must additionally keep approval, auto-merge, review remediation, CI autofix, non-collaborator mentions, issue automation, and label automation disabled for the pilot. The environment allowlist stays empty. Those service settings are deliberately not represented as secrets or machine-local state in this public repository.
 
-## Pilot evidence rule
+## Historical pilot evidence rule
 
-For each pilot run:
+For each review-only pilot run:
 
 1. Record the pull request number and exact head SHA before invocation.
 2. Run one review-only request, without requesting file changes, pushes, approval, or merge.
 3. Bind every Pullfrog check, review, comment, and Actions URL to that same head SHA.
-4. Compare the result with independent Mergeguez and Speculoos evidence.
-5. Treat Pullfrog output as optional comparison evidence only.
+4. Compare the result with independent Speculoos evidence and any historical reviewer baseline available for the pilot.
+5. Treat the review-only run as evidence for Pullfrog behavior, not as authorization to remediate or merge.
 6. Do not merge through Pullfrog or because Pullfrog reports success.
 
 Stop the pilot if the action pin changes, the reviewed PR head moves before invocation, model access is not explicitly authorized, or Pullfrog asks for broader shell, environment, push, approval, remediation, autofix, or merge authority.

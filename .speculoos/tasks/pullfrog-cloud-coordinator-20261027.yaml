@@ -1,0 +1,71 @@
+id: pullfrog-cloud-coordinator-20261027
+title: Add the provider-free Pullfrog cloud coordinator dry run
+status: implementation
+branch: chore/pullfrog-cloud-coordinator-dry-run
+base_branch: dev
+write_paths:
+  - .github/workflows/pr-automation-dogfood-reusable.yml
+  - .github/workflows/pullfrog-cloud-coordinator-dry-run.yml
+  - .speculoos/actors.json
+  - .speculoos/goal.md
+  - .speculoos/manifest.yaml
+  - .speculoos/publish-policy.yaml
+  - .speculoos/review-evidence.json
+  - .speculoos/tasks/pullfrog-cloud-coordinator-20261027.yaml
+  - docs/github-actions-template-catalog.md
+  - docs/pr-automation-dogfood.md
+  - docs/pullfrog-cloud-coordinator.md
+  - docs/pullfrog-review-only-pilot.md
+  - docs/workflow-asset-library-layout.md
+  - scripts/github/pullfrog_cloud_coordinator.py
+  - scripts/github/pullfrog_cycle_contract.py
+  - scripts/github/tests/test_pullfrog_cloud_coordinator.py
+  - scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py
+  - scripts/github/validate_pullfrog_workflow.sh
+  - specs/pullfrog-cloud-coordinator-20261027/commit-message.txt
+  - specs/pullfrog-cloud-coordinator-20261027/pr-body.md
+  - templates/repo-workflow-materialization-manifest.json
+  - templates/reusable-workflows/pr-automation-dogfood-reusable.yml
+  - templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml
+scope:
+  - collect bounded exact-head Pullfrog, CI, Speculoos, PR identity, and changed-path evidence with GitHub REST GET requests only
+  - evaluate the destination guard and exact-head cycle contract with a maximum of three remediation cycles
+  - select required checks only from configured GitHub App identities and require Pullfrog checks to share a suite
+  - make repeated findings and unchanged structured output stable across volatile GitHub review and comment IDs
+  - emit deterministic sanitized receipts and upload them before enforcing a fail-closed workflow result
+  - materialize the canonical coordinator workflow and add its tests to provider-free dogfood
+  - record Pullfrog as the sole required AI reviewer while preserving independent Speculoos evidence and human merge authority
+non_goals:
+  - invoking Pullfrog remediation or another coding provider
+  - committing, pushing, approving, merging, rerunning, releasing, deploying, changing settings, or deleting branches
+  - enabling Pullfrog push, approval, CI autofix, auto-merge, Router billing, or provider credentials
+  - publishing or activating the write-capable unattended loop
+acceptance:
+  - clean exact-head evidence reports complete without mutation
+  - findings report would_action start_remediation while executed_action remains none
+  - stale, missing, failed, cancelled, timed-out, skipped, wrong-app, forked, protected, forbidden-path, or drifted evidence fails closed
+  - Pullfrog review comments are exact-head bound and raw review or comment text never reaches receipts
+  - repeated semantic findings and unchanged output are detected despite new GitHub review and comment IDs
+  - duplicate claims are idempotent no-ops and malformed or incomplete history fails closed
+  - canonical and materialized workflows are byte-identical, read-only, immutable-pinned, bounded, and provider-free
+  - focused tests, workflow validation, full repository tests, whitespace checks, public-safety scans, and Speculoos validation pass
+publication_boundary:
+  statement: "Provider-free local dry-run coordinator and policy metadata only. No Pullfrog remediation invocation, repository write, approval, merge, release, deployment, credential, billing, or hosted-setting change."
+documentation_impact:
+  status: updated
+  rationale: The state machine, evidence rules, receipt contract, reviewer roles, and activation gates must remain recoverable from repository source.
+validation:
+  - "python3 -m unittest scripts/github/tests/test_pullfrog_cloud_coordinator.py -v"
+  - "python3 -m unittest scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py -v"
+  - "python3 -m py_compile scripts/github/pullfrog_cloud_coordinator.py scripts/github/pullfrog_cycle_contract.py scripts/github/pullfrog_destination_guard.py"
+  - "scripts/github/validate_pullfrog_workflow.sh"
+  - "python3 -m unittest discover -s scripts/github/tests -p 'test_*.py' -q"
+  - "git diff --check"
+  - "speculoos validate --repo . --repo-slug fr-meyer/agent-toolkit --base dev --task pullfrog-cloud-coordinator-20261027 --validation 'scripts/github/validate_pullfrog_workflow.sh' --json"
+  - "speculoos publish-check --base origin/dev --task pullfrog-cloud-coordinator-20261027 --pr-body specs/pullfrog-cloud-coordinator-20261027/pr-body.md --commit-message specs/pullfrog-cloud-coordinator-20261027/commit-message.txt --json"
+private_data_scan: required
+publish_authority: Local dry-run preparation only; publication and every write-capable hosted behavior remain separately gated.
+notes:
+  - This branch is based on destination-guard commit f372159, which contains exact-head cycle-contract commit 7cd4d87.
+  - Pullfrog remains the sole intended AI reviewer and fixer. Mergeguez retains only separately approved publication and human-authorized merge execution duties.
+  - Hosted claim-history persistence, Pullfrog remediation invocation, post-patch guard enforcement, and exact-head re-review belong to the separately authorized write-capable stage.

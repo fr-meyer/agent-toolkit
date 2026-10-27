@@ -23,6 +23,7 @@ agent-toolkit/
 │       ├── pr-automation-dogfood-reusable.yml
 │       ├── pr-automation-dogfood-pr-trigger.yml
 │       ├── pullfrog.yml
+│       ├── pullfrog-cloud-coordinator-dry-run.yml
 │       └── repository-similarity-preflight-ci.yml
 ├── templates/
 │   ├── reusable-workflows/
@@ -39,6 +40,7 @@ agent-toolkit/
 │   │   ├── cross-repo-workflow-updater-manual-trigger.yml
 │   │   ├── pr-automation-dogfood-pr-trigger.yml
 │   │   ├── pullfrog.yml
+│   │   ├── pullfrog-cloud-coordinator-dry-run.yml
 │   │   └── repository-similarity-preflight-ci.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
@@ -157,6 +159,8 @@ The repository-similarity preflight CI is a standalone repo-local entrypoint. It
 
 The PR automation dogfood pair also follows this pattern. Its canonical reusable harness lives in `templates/reusable-workflows/pr-automation-dogfood-reusable.yml`, its canonical pull-request trigger lives in `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml`, and both materialize to matching live copies under `.github/workflows/`. The trigger uses a relative same-commit call, so this pair does not need reusable-workflow SHA diffusion.
 
-The bounded Pullfrog entrypoint follows the standalone-starter pattern. Its canonical source lives in `templates/starter-workflows/pullfrog.yml` and materializes to `.github/workflows/pullfrog.yml`. It pins the Pullfrog action and checkout action to immutable commits, disables pushes, keeps the shell restricted, maps no provider secret, and remains optional review evidence rather than a required gate. See `docs/pullfrog-review-only-pilot.md`.
+The bounded Pullfrog entrypoint follows the standalone-starter pattern. Its canonical source lives in `templates/starter-workflows/pullfrog.yml` and materializes to `.github/workflows/pullfrog.yml`. It pins the Pullfrog action and checkout action to immutable commits, disables pushes, keeps the shell restricted, and maps no provider secret. Pullfrog is the sole intended AI reviewer and future fixer, but write-capable activation remains separately gated. See `docs/pullfrog-review-only-pilot.md` for the historical pilot and `docs/pullfrog-cloud-coordinator.md` for the current architecture.
+
+The Pullfrog cloud coordinator dry run is another standalone starter. Its canonical source lives in `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml` and materializes to `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml`. It uses only read permissions and immutable action pins, collects bounded GitHub evidence, evaluates the exact-head contract and destination guard, and uploads a sanitized receipt. It never invokes a provider or performs a repository mutation.
 
 Under the current policy, workflow-maintenance automation creates PR branches from `dev`, cross-repo divergence review is delivered on the update PR as a managed comment by default rather than as committed review-doc files, and cross-repo updater runs that need to clone, branch, or open PRs in consumer repositories should be configured with `ELEVATED_GITHUB_TOKEN` rather than relying on the built-in `GITHUB_TOKEN`.

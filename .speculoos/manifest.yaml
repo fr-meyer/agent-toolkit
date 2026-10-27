@@ -9,7 +9,8 @@ repository:
 status:
   phase: implementation
   blocker_summary:
-    - Write-capable remediation remains disabled until the cycle contract, destination guard, dry-run coordinator, and hosted acceptance matrix pass.
+    - Write-capable remediation remains disabled until this dry-run coordinator and the hosted event/evidence matrix pass.
+    - Pullfrog push, approval, CI autofix, auto-merge, release, deployment, branch deletion, credentials, billing, and hosted settings remain separately gated.
 publication_policy:
   repository_visibility: shared-repository
   intended_public_visibility: public
@@ -21,15 +22,14 @@ release_policy:
   release_gate: separate-explicit-approval
 review_policy:
   self_managed:
-    policy: optional
-    fallback_role: emergency_fallback
-    evidence_source: ignored local self-review artifact
+    policy: disabled
+    evidence_source: historical-only; never satisfies required_pr_review
   legacy_pullfrog:
     policy: disabled
     evidence_source: historical-only
   pullfrog_review:
-    policy: optional
-    evidence_source: bounded exact-head comparison only; never satisfies required_pr_review
+    policy: primary
+    evidence_source: exact-head Pullfrog review plus app-bound pullfrog and pullfrog-approval checks
     controls:
       push: disabled
       shell: restricted
@@ -37,23 +37,25 @@ review_policy:
       remediation: disabled
       ci_autofix: disabled
       auto_merge: disabled
+  speculoos_evidence:
+    policy: required
+    evidence_source: independent exact-head hosted policy check
   legacy_coderabbit:
     policy: disabled
     evidence_source: historical-only
   mergeguez_review:
-    policy: primary
-    evidence_source: broker pr-state reviewers/reviews/checks normalized by review-evidence and merge-plan
-    protocol: https://github.com/fr-meyer/speculoos/blob/dev/docs/mergeguez-pr-command-protocol.md
+    policy: disabled
+    evidence_source: historical-only; Mergeguez is not a reviewer in the target architecture
   required_pr_review:
     policy: required
     primary:
-      - mergeguez_review
-    fallback_summary: self_managed evidence is not accepted for normal closeout; hosted Mergeguez review is mandatory.
+      - pullfrog_review
+    fallback_summary: No self-managed, Mergeguez, or CodeRabbit review may replace an exact-head Pullfrog review.
 actor_policy:
   commit_actor: human_approved_agent_assisted
   push_actor: franck_user_pr_author
   pr_actor: franck_user_pr_author
-  review_actor: mergeguez_review
+  review_actor: pullfrog_review
   default_merge_actor: user_api
   feature_to_dev_merge_actor: mergeguez_dev_merge
   native_review_requires_distinct_author: true
@@ -67,7 +69,7 @@ surfaces:
     status: planned
     base_branch: dev
     default_branch: main
-    head_branch: chore/pullfrog-destination-guard
+    head_branch: chore/pullfrog-cloud-coordinator-dry-run
     head_sha: null
     head_sha_source: Local feature branch only; publication requires separate approval and live exact-head readback
     merge_commit: null
@@ -79,7 +81,7 @@ gates:
     - review-policy-recorded
     - review-request-dry-run-pass
   after_publish:
-    - exact-head-mergeguez-review-requested
-    - exact-head-review-and-check-evidence
-current_task: pullfrog-destination-guard-20261027
-current_task_metadata: .speculoos/tasks/pullfrog-destination-guard-20261027.yaml
+    - exact-head-pullfrog-review-requested
+    - exact-head-pullfrog-ci-speculoos-evidence
+current_task: pullfrog-cloud-coordinator-20261027
+current_task_metadata: .speculoos/tasks/pullfrog-cloud-coordinator-20261027.yaml

@@ -28,6 +28,7 @@ REVIEW_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,200}$")
 ALLOWED_EVENT_KINDS = {
     "pullfrog_review_completed",
     "pull_request_synchronize",
+    "required_evidence_completed",
     "workflow_dispatch",
 }
 ALLOWED_REVIEW_STATUSES = {

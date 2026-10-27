@@ -42,7 +42,8 @@ For exact source-to-target bindings, also consult:
 | Cross-repo workflow updater (manual trigger) | Starter | `templates/starter-workflows/cross-repo-workflow-updater-manual-trigger.yml` | `.github/workflows/cross-repo-workflow-updater-manual-trigger.yml` | Repo-local manual-dispatch entrypoint that calls the reusable cross-repo updater without an irrelevant skipped sibling job |
 | PR automation dogfood (reusable) | Reusable | `templates/reusable-workflows/pr-automation-dogfood-reusable.yml` | `.github/workflows/pr-automation-dogfood-reusable.yml` | Provider-free contract runner for exact-head evidence, actor separation, bounded cycles, and human-only merge readiness |
 | PR automation dogfood (PR trigger) | Starter | `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml` | `.github/workflows/pr-automation-dogfood-pr-trigger.yml` | Read-only PR entrypoint for changes to the dogfood harness and its workflow assets |
-| Pullfrog review-only pilot | Starter | `templates/starter-workflows/pullfrog.yml` | `.github/workflows/pullfrog.yml` | Bounded, non-pushing Pullfrog entrypoint for optional exact-head review comparison |
+| Pullfrog review entrypoint | Starter | `templates/starter-workflows/pullfrog.yml` | `.github/workflows/pullfrog.yml` | Bounded, non-pushing Pullfrog entrypoint retained while unattended remediation stays approval-gated |
+| Pullfrog cloud coordinator (dry run) | Starter | `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml` | `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml` | Provider-free exact-head state-machine evaluator with read-only GitHub collection and sanitized receipts |
 
 ## Asset details
 
@@ -513,7 +514,7 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 
 ---
 
-## 13. Pullfrog review-only pilot
+## 13. Pullfrog review entrypoint
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/pullfrog.yml`
@@ -522,8 +523,8 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
   - source in `templates/repo-workflow-materialization-manifest.json`
 - **Purpose:**
   - provide the workflow-dispatch surface expected by the Pullfrog GitHub App
-  - run one bounded review-only comparison without granting file publication or merge authority
-  - preserve immutable action custody for the pilot
+  - keep Pullfrog review execution bounded and non-pushing while write-capable activation remains separately gated
+  - preserve immutable action custody for the sole intended AI reviewer and future fixer
 
 ### Security boundary
 - top-level `contents: read`
@@ -535,10 +536,39 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 - 15-minute action timeout inside a 20-minute job timeout
 
 ### Notes
-- Pullfrog is optional comparison evidence only. Required exact-head Mergeguez review and explicit human merge authority remain unchanged.
+- The target architecture uses Pullfrog as the sole AI reviewer and intended fixer. The committed entrypoint still disables pushes, so this change does not activate remediation.
+- Mergeguez retains only the separately approved publication/merge-broker role and is not a reviewer in the target architecture. Every merge remains human-authorized.
 - Repository-side configuration and model access are separate, approval-gated surfaces and are not stored in this public workflow.
 - This standalone entrypoint does not call a reusable workflow, so it needs no reusable-workflow ref diffusion.
-- See `docs/pullfrog-review-only-pilot.md` for the pilot evidence and stop gates.
+- See `docs/pullfrog-review-only-pilot.md` for historical pilot evidence and `docs/pullfrog-cloud-coordinator.md` for the current automation architecture.
+
+---
+
+## 14. Pullfrog cloud coordinator (dry run)
+
+- **Type:** starter workflow
+- **Canonical source:** `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml`
+- **Live/runtime copy in this repo:** `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml`
+- **Governed by:**
+  - source in `templates/repo-workflow-materialization-manifest.json`
+- **Purpose:**
+  - collect bounded exact-head Pullfrog, CI, and Speculoos evidence through GitHub REST `GET` requests
+  - evaluate the destination guard and three-cycle contract
+  - serialize same-head evidence events through a concurrency group
+  - upload one sanitized receipt before failing closed when evidence is incomplete or unsafe
+
+### Security boundary
+- `checks: read`, `contents: read`, and `pull-requests: read` only
+- checkout, setup-python, and artifact actions pinned to immutable commits
+- no provider action, provider secret, elevated token, commit, push, approval, merge, rerun, release, deployment, settings change, or branch deletion
+- raw reviews, comments, and PR snapshots are never uploaded
+- any `start_remediation` result is reported only as `would_action`; `executed_action` stays `none`
+
+### Notes
+- Automatic evidence triggers cover Pullfrog check completion plus configured CI/Speculoos workflow completion; manual dispatch requires an exact PR number and head SHA.
+- The live template names one required CI check and one Speculoos check, both bound to the `github-actions` app. Wrong-app lookalikes are ignored.
+- This dry-run surface does not persist production claim history or invoke remediation. Hosted history recovery, post-patch guard enforcement, and one bounded write pilot remain separate gates.
+- See `docs/pullfrog-cloud-coordinator.md` for the state machine, receipt contract, and activation boundary.
 
 ## Live runtime copies in this repo
 
@@ -554,6 +584,7 @@ These files exist under `.github/workflows/` and should not be treated as the pr
 - `.github/workflows/pr-automation-dogfood-reusable.yml`
 - `.github/workflows/pr-automation-dogfood-pr-trigger.yml`
 - `.github/workflows/pullfrog.yml`
+- `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml`
 
 Their canonical sources are:
 - `templates/reusable-workflows/coderabbit-pr-automation.yml`
@@ -567,6 +598,7 @@ Their canonical sources are:
 - `templates/reusable-workflows/pr-automation-dogfood-reusable.yml`
 - `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml`
 - `templates/starter-workflows/pullfrog.yml`
+- `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml`
 
 ## Maintenance rule for this catalog
 
