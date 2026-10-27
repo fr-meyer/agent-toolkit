@@ -5,7 +5,7 @@ This harness is the provider-free acceptance surface for the Pullfrog, publicati
 ## Roles represented by the fixture
 
 - The historical fixture labels preserve Pullfrog as the authoring worker and Mergeguez as a distinct reviewer so identity-overlap regressions remain covered.
-- The active repository review policy now uses Pullfrog as the required exact-head reviewer and permits explicit-only remediation of selected Pullfrog findings. Every remediation push requires a fresh exact-head review; Mergeguez review evidence is historical only.
+- The active repository review policy now uses Pullfrog as the required exact-head reviewer while keeping Pullfrog push and remediation disabled. Every head update requires a fresh exact-head review; Mergeguez review evidence is historical only.
 - Mergeguez may still act as the separately authorized publication broker or branch-policy merge actor.
 - Speculoos policy is represented by the fail-closed receipt conditions.
 - The merge mode remains human-only.

@@ -9,7 +9,8 @@ repository:
 status:
   phase: implementation
   blocker_summary:
-    - Pullfrog is enabled for required review and explicit manual remediation; merge remains blocked until live exact-head pullfrog and pullfrog-approval checks succeed after the latest push.
+    - Pullfrog is enabled for required review only; remediation remains disabled because pinned v0.1.102 cannot enforce the repository branch allowlist through its bypassable pre-push hook.
+    - Merge remains blocked until live exact-head pullfrog and pullfrog-approval checks succeed after the latest head update.
 publication_policy:
   repository_visibility: shared-repository
   intended_public_visibility: public
@@ -34,22 +35,19 @@ review_policy:
       - pullfrog
       - pullfrog-approval
     controls:
-      push: restricted_non_default_branches
-      pre_push_branch_allowlist:
-        - feat/*
-        - fix/*
-        - docs/*
-        - test/*
-        - chore/*
+      push: disabled
       shell: restricted
       approval: disabled
       review_model: openai/gpt-sol
       review_effort: xhigh
-      remediation: explicit_fix_all_or_fix_likes_only
-      remediation_model: openai/gpt-luna
-      remediation_effort: xhigh
+      remediation: disabled_pending_non_bypassable_push_boundary
+      remediation_target_model: openai/gpt-luna
+      remediation_target_effort: xhigh
+      remediation_enablement_requires:
+        - non_bypassable_push_destination_guard
+        - first_attempt_and_retry_guard_tests
+        - separate_explicit_authorization
       automatic_address_reviews: disabled
-      post_remediation_rereview: required_exact_head
       ci_autofix: disabled
       auto_merge: disabled
   legacy_coderabbit:

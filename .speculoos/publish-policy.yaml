@@ -44,18 +44,13 @@ actor_policy:
     - live_github_checks
     - branch_policy_merge_actor
   remediation_requirements:
-    mode: explicit_fix_all_or_fix_likes_only
-    allowed_head_patterns:
-      - feat/*
-      - fix/*
-      - docs/*
-      - test/*
-      - chore/*
-    required_after_every_push:
-      - exact_head_pullfrog_status_check
-      - exact_head_pullfrog_approval_check
-      - live_github_checks
-      - explicit_human_merge_approval
+    mode: disabled_pending_non_bypassable_push_boundary
+    required_before_enablement:
+      - non_bypassable_push_destination_guard
+      - forbidden_destination_rejected_on_first_attempt
+      - forbidden_destination_rejected_after_hook_failure_retry
+      - approved_feature_branch_destination_allowed
+      - separate_explicit_human_authorization
   branch_merge_actor_requirements:
     - name: feature_to_dev
       base_branch: dev

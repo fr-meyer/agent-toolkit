@@ -1,1 +1,1 @@
-chore: bound Pullfrog review remediation
+fix: keep Pullfrog remediation fail-closed

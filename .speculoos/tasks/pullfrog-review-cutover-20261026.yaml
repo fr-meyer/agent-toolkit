@@ -4,6 +4,7 @@ status: implementation
 branch: chore/pullfrog-review-cutover-20261026
 base_branch: dev
 write_paths:
+  - .github/workflows/pullfrog.yml
   - .speculoos/actors.json
   - .speculoos/goal.md
   - .speculoos/manifest.yaml
@@ -18,19 +19,19 @@ write_paths:
   - scripts/github/tests/test_pullfrog_workflow_policy.py
   - specs/pullfrog-review-cutover-20261026/commit-message.txt
   - specs/pullfrog-review-cutover-20261026/pr-body.md
+  - templates/starter-workflows/pullfrog.yml
 scope:
   - make Pullfrog the primary required exact-head reviewer for feature-to-dev and dev-to-stable pull requests
   - require successful pullfrog and pullfrog-approval checks on the current exact head
   - retire Mergeguez review to historical evidence while preserving its separate branch-publication and explicitly authorized merge roles
-  - allow explicitly triggered Fix all or Fix 👍s remediation on policy-approved PR branches only
-  - use openai/gpt-sol at xhigh for review and openai/gpt-luna at xhigh for remediation; under pinned Pullfrog v0.1.102 these resolve to openai/gpt-6.1-sol and openai/gpt-6-luna
-  - keep automatic remediation, approval, CI autofix, auto-merge, release, and deployment authority disabled
+  - keep Pullfrog push and review remediation disabled because pinned v0.1.102 cannot use its bypassable pre-push hook as a branch-authorization boundary
+  - use openai/gpt-sol at xhigh for review; under pinned Pullfrog v0.1.102 this resolves to openai/gpt-6.1-sol
+  - retain openai/gpt-luna at xhigh, resolving to openai/gpt-6-luna, only as the inactive target for a future separately authorized remediation path
+  - keep review approval, CI autofix, auto-merge, release, and deployment authority disabled
   - preserve explicit human merge authority and Speculoos validation
   - harden secret-expression and environment-mapping workflow regression coverage
 non_goals:
-  - automatic remediation or any remediation not explicitly started through Fix all or Fix 👍s
-  - pushing to dev, main, master, tags, deleted branches, or branch names outside feat/fix/docs/test/chore prefixes
-  - allowing Pullfrog to approve, fix CI, merge, release, or deploy
+  - allowing Pullfrog to push, approve, remediate reviews, fix CI, merge, release, or deploy
   - deleting or disabling the Mergeguez publication broker
   - changing provider credentials, billing, Router funding, or the environment allowlist
   - changing branch protection or merging this cutover PR
@@ -39,15 +40,15 @@ acceptance:
   - review evidence requires pullfrog and pullfrog-approval checks bound to the current exact head
   - Mergeguez review is disabled historical evidence and cannot satisfy normal closeout
   - Mergeguez branch publication and policy-gated merge roles remain separate and unchanged
-  - Pullfrog push is restricted and further limited by a service-side pre-push branch allowlist
-  - review and remediation use the exact requested models with xhigh effort
-  - remediation is explicit-only; automatic Address reviews, review approval, CI autofix, and auto-merge remain disabled
-  - every remediation push requires fresh exact-head Pullfrog checks before merge readiness
+  - Pullfrog push, remediation, review approval, CI autofix, and auto-merge remain disabled
+  - review uses openai/gpt-sol at xhigh and resolves to openai/gpt-6.1-sol on pinned v0.1.102
+  - the future remediation target is recorded as openai/gpt-luna at xhigh resolving to openai/gpt-6-luna, but is not active
+  - policy does not rely on the bypassable pre-push hook and records the non-bypassable guard plus first-attempt/retry tests required before re-enablement
   - explicit human merge authority remains mandatory
   - secret mapping tests cover whitespace, case, bracket, block, and inline environment variants
   - workflow policy, cutover policy, dogfood, JSON, YAML, Speculoos, publish-check, and diff validation pass
 publication_boundary:
-  statement: "Repository workflow policy, documentation, tests, and task metadata: make Pullfrog the required exact-head reviewer and permit only explicitly triggered review remediation on policy-approved PR branches. No credential, billing, Router funding, environment allowlist, branch-protection, merge, release, or deployment mutation."
+  statement: "Repository workflow policy, documentation, tests, and task metadata only: make Pullfrog the required exact-head reviewer while keeping push and remediation disabled. No credential, billing, Router funding, environment allowlist, branch-protection, merge, release, or deployment mutation."
 documentation_impact:
   status: updated
   rationale: The active reviewer, exact-head evidence, publication separation, and rollback boundary must be recoverable from repository source.
@@ -62,7 +63,8 @@ validation:
   - "speculoos validate --repo . --repo-slug fr-meyer/agent-toolkit --base dev --task pullfrog-review-cutover-20261026 --validation 'git diff --check origin/dev...HEAD' --json"
   - "speculoos publish-check --base origin/dev --task pullfrog-review-cutover-20261026 --pr-body specs/pullfrog-review-cutover-20261026/pr-body.md --commit-message specs/pullfrog-review-cutover-20261026/commit-message.txt --json"
 private_data_scan: required
-publish_authority: Feature-to-dev policy cutover only; publication, default-branch workflow bootstrap, live push enablement, each remediation invocation, review evidence, merge, stable-branch promotion, release, and deployment remain separately gated.
+publish_authority: Feature-to-dev policy cutover only; publication, any future remediation enablement or invocation, review evidence, merge, stable-branch promotion, release, and deployment remain separately gated.
 notes:
-  - Pullfrog service configuration has the exact review and remediation model prompts plus the pre-push branch allowlist, while push remains disabled until the workflow and live setting pass their separate gates.
+  - The active review path uses openai/gpt-sol at xhigh. The Luna remediation selector is an inactive target and must not be represented as live-verified while remediation is disabled.
+  - Pullfrog review 5663049831 identified that pinned v0.1.102 skips the service-side pre-push hook after its first failure; workflow push remains disabled rather than relying on that hook.
   - The first live evidence target is this cutover PR itself, opened as fr-meyer so automatic bot-author exclusions do not suppress review.
