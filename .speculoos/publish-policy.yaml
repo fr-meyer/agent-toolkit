@@ -24,7 +24,7 @@ actor_policy:
     - human_approved_agent_assisted
     - mergeguez_branch_broker
     - franck_user_pr_author
-    - mergeguez_review
+    - pullfrog_review
     - user_api
   required_branch_policy:
     base_branch: dev
@@ -39,9 +39,18 @@ actor_policy:
     - exact_base_branch
     - exact_head_branch
     - exact_head_sha
-    - exact_head_mergeguez_review
+    - exact_head_pullfrog_status_check
+    - exact_head_pullfrog_approval_check
     - live_github_checks
     - branch_policy_merge_actor
+  remediation_requirements:
+    mode: disabled_pending_non_bypassable_push_boundary
+    required_before_enablement:
+      - non_bypassable_push_destination_guard
+      - forbidden_destination_rejected_on_first_attempt
+      - forbidden_destination_rejected_after_hook_failure_retry
+      - approved_feature_branch_destination_allowed
+      - separate_explicit_human_authorization
   branch_merge_actor_requirements:
     - name: feature_to_dev
       base_branch: dev

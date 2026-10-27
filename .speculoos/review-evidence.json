@@ -1,19 +1,19 @@
 {
   "schema_version": "0.1",
   "requirements": {
-    "required_sources": ["local_validation", "github_checks", "mergeguez_review"],
-    "optional_sources": ["self_managed", "pullfrog_review"],
+    "required_sources": ["local_validation", "github_checks", "pullfrog_review"],
+    "optional_sources": ["self_managed"],
     "reviewers": {
       "self_managed": {"policy": "optional"},
-      "pullfrog_review": {"policy": "optional"},
-      "mergeguez_review": {"policy": "required"}
+      "pullfrog_review": {"policy": "required"},
+      "mergeguez_review": {"policy": "disabled"}
     },
     "reviewer_groups": {
       "required_pr_review": {
         "policy": "required",
-        "primary": ["mergeguez_review"],
-        "summary": "Mergeguez review evidence is the primary required PR-review source.",
-        "fallback_summary": "Neither self-managed nor Pullfrog evidence is accepted for normal closeout; hosted Mergeguez review is mandatory."
+        "primary": ["pullfrog_review"],
+        "summary": "Exact-head Pullfrog review evidence is the primary required PR-review source.",
+        "fallback_summary": "Neither self-managed nor Mergeguez review evidence satisfies normal closeout; both exact-head Pullfrog checks are mandatory."
       }
     }
   },
@@ -21,37 +21,37 @@
     "local_validation": {
       "kind": "local_validation",
       "status": "passed",
-      "summary": "Workflow materialization, checksum-verified actionlint, deterministic review-only policy tests, immutable-pin checks, YAML and JSON parsing, Speculoos validation, publish-check, and git diff checks passed for the Pullfrog pilot workflow proposal.",
-      "evidence_ref": ".speculoos/tasks/pullfrog-review-only-pilot-20261026.yaml",
-      "updated_at": "pullfrog-review-only-pilot-20261026"
+      "summary": "Workflow custody, reviewer-cutover policy tests, secret-mapping regression coverage, YAML and JSON parsing, Speculoos validation, publish-check, and git diff checks passed for the Pullfrog reviewer cutover.",
+      "evidence_ref": ".speculoos/tasks/pullfrog-review-cutover-20261026.yaml",
+      "updated_at": "pullfrog-review-cutover-20261026"
     },
     "github_checks": {
       "kind": "github_checks",
       "status": "pending-live-read",
-      "summary": "Published PR #92 checks must be read live at the current exact head before merge; no self-referential head SHA is committed.",
+      "summary": "The cutover PR checks must be read live at the current exact head before merge; no self-referential head SHA is committed.",
       "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pullfrog-review-only-pilot-20261026"
+      "updated_at": "pullfrog-review-cutover-20261026"
     },
     "self_managed": {
       "kind": "self_managed",
       "status": "pending",
       "summary": "Emergency fallback only; not the normal review lane.",
       "evidence_ref": ".speculoos/reviews/self-managed-review.json",
-      "updated_at": "pullfrog-review-only-pilot-20261026"
+      "updated_at": "pullfrog-review-cutover-20261026"
     },
     "pullfrog_review": {
       "kind": "pullfrog_review",
-      "status": "pending-separate-pilot",
-      "summary": "Optional exact-head comparison evidence only. Model authorization, service configuration, and the first invocation remain separate external gates and cannot satisfy the required review source.",
-      "evidence_ref": "docs/pullfrog-review-only-pilot.md",
-      "updated_at": "pullfrog-review-only-pilot-20261026"
+      "status": "pending-live-read",
+      "summary": "Required exact-head evidence consists of a completed successful pullfrog run check and successful pullfrog-approval verdict check attached to the current PR head, plus the corresponding Pullfrog review output. Any head update makes all earlier review and check evidence stale and requires a fresh exact-head re-review.",
+      "evidence_ref": "live PR checks and Pullfrog review thread",
+      "updated_at": "pullfrog-review-cutover-20261026"
     },
     "mergeguez_review": {
       "kind": "mergeguez_review",
-      "status": "pending-live-read",
-      "summary": "Published PR #92 requires a fresh exact-head Mergeguez review after each head update and before merge; live evidence is not replaced by a committed SHA.",
-      "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pullfrog-review-only-pilot-20261026"
+      "status": "disabled-historical",
+      "summary": "Mergeguez review evidence is retained only as historical provenance and is not accepted for normal closeout after the Pullfrog cutover.",
+      "evidence_ref": "historical PR review records",
+      "updated_at": "pullfrog-review-cutover-20261026"
     }
   }
 }
