@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Fail-closed exact-head auto-merge for clean feature PRs targeting dev only.
+"""Fail-closed exact-head auto-merge for clean non-stable feature PRs.
 
-The irreversible boundary is a normal fast-forward Git push of a locally built
-two-parent merge commit. That binds the mutation to both the authorized ``dev``
-ref and its exact reviewed tip; GitHub's pull-request merge endpoint cannot
-express either base predicate.
+The irreversible boundary is a normal fast-forward Git receive-pack update of
+a locally built two-parent merge commit. The command binds the literal reviewed
+base ref and its exact reviewed tip as the old OID in the server's ref
+transaction; GitHub's pull-request merge endpoint cannot express either base
+predicate. Targets named ``main`` or ``master`` always fail closed.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -32,16 +34,19 @@ import pullfrog_cloud_coordinator as coordinator  # noqa: E402
 import pullfrog_cycle_contract as cycle_contract  # noqa: E402
 import pullfrog_destination_guard as destination_guard  # noqa: E402
 
-RECEIPT_SCHEMA = "pullfrog-dev-auto-merge-receipt.v1"
+RECEIPT_SCHEMA = "pullfrog-auto-merge-receipt.v1"
 COORDINATOR_SCHEMA = "pullfrog-cloud-coordinator-receipt.v1"
-ALLOWED_BASE_REF = "dev"
 FORBIDDEN_BASE_REFS = frozenset({"main", "master"})
+DEV_AUTOMATION_REF = "dev"
 ALLOWED_HEAD_PREFIXES = ("feat/", "fix/", "docs/", "test/", "chore/")
 REQUIRED_CHECKS = frozenset(
     {"pullfrog", "pullfrog-approval", "ci", "speculoos", "destination-guard"}
 )
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+MAX_GIT_PROTOCOL_BYTES = 8 * 1024 * 1024
+MAX_PUSH_PACK_BYTES = 64 * 1024 * 1024
+GIT_PUSH_AGENT = "agent-toolkit-pullfrog-auto-merge/1"
 CROSS_REPO_DISPATCH_WORKFLOW = "cross-repo-workflow-updater-manual-trigger.yml"
 REF_SYNC_DISPATCH_WORKFLOW = "sync-starter-workflow-template-refs-trigger.yml"
 ALLOWED_DISPATCH_WORKFLOWS = frozenset(
@@ -122,7 +127,6 @@ def _validated_identity(value: Any) -> dict[str, Any]:
         or head_repository_slug != repository_slug
         or pr_number is None
         or pr_number < 1
-        or base_ref != ALLOWED_BASE_REF
         or base_ref in FORBIDDEN_BASE_REFS
         or not cycle_contract._valid_branch(base_ref)
         or not cycle_contract._valid_branch(head_ref)
@@ -153,7 +157,11 @@ def _validated_receipt_check_rules(
         raise AutoMergeError("invalid_receipt_check_details")
     rules: dict[str, list[tuple[str, str]]] = {}
     for group in ("pullfrog", "pullfrog_approval", "ci", "speculoos"):
-        values = _list(details.get(group))
+        raw_values = details.get(group)
+        if group in {"pullfrog", "pullfrog_approval"}:
+            values = [raw_values] if isinstance(raw_values, dict) else []
+        else:
+            values = raw_values if isinstance(raw_values, list) else []
         parsed: list[tuple[str, str]] = []
         if not values:
             raise AutoMergeError("invalid_receipt_check_details")
@@ -416,16 +424,237 @@ class GitHubMergeClient(coordinator.GitHubReadClient):
             raise AutoMergeError(code)
         return result
 
+    @staticmethod
+    def _pkt_line(payload: bytes) -> bytes:
+        length = len(payload) + 4
+        if length > 0xFFFF:
+            raise AutoMergeError("git_protocol_packet_too_large")
+        return f"{length:04x}".encode("ascii") + payload
+
+    @staticmethod
+    def _pkt_payloads(data: bytes) -> list[bytes | None]:
+        packets: list[bytes | None] = []
+        offset = 0
+        while offset < len(data):
+            if offset + 4 > len(data):
+                raise AutoMergeError("invalid_git_protocol_response")
+            prefix = data[offset : offset + 4]
+            try:
+                length = int(prefix, 16)
+            except ValueError as exc:
+                raise AutoMergeError("invalid_git_protocol_response") from exc
+            offset += 4
+            if length in {0, 1, 2}:
+                packets.append(None)
+                continue
+            if length < 4 or offset + length - 4 > len(data):
+                raise AutoMergeError("invalid_git_protocol_response")
+            packets.append(data[offset : offset + length - 4])
+            offset += length - 4
+        return packets
+
+    @staticmethod
+    def _basic_git_authorization(token: str) -> str:
+        if not token:
+            raise AutoMergeError("missing_github_token")
+        encoded = base64.b64encode(f"x-access-token:{token}".encode("utf-8")).decode(
+            "ascii"
+        )
+        return f"Basic {encoded}"
+
+    @staticmethod
+    def _bounded_protocol_output(data: bytes) -> bytes:
+        if len(data) > MAX_GIT_PROTOCOL_BYTES:
+            raise AutoMergeError("git_protocol_response_too_large")
+        return data
+
+    def _receive_pack_advertisement(self, remote: str, token: str) -> bytes:
+        parsed = urllib.parse.urlparse(remote)
+        if parsed.scheme in {"http", "https"}:
+            url = remote.rstrip("/") + "/info/refs?service=git-receive-pack"
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "Accept": "application/x-git-receive-pack-advertisement",
+                    "Authorization": self._basic_git_authorization(token),
+                    "User-Agent": GIT_PUSH_AGENT,
+                },
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    data = response.read(MAX_GIT_PROTOCOL_BYTES + 1)
+            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+                raise AutoMergeError("git_receive_pack_advertisement_failed") from exc
+            return self._bounded_protocol_output(data)
+        try:
+            result = subprocess.run(
+                ["git", "receive-pack", "--stateless-rpc", "--advertise-refs", remote],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise AutoMergeError("git_receive_pack_advertisement_failed") from exc
+        if result.returncode != 0:
+            raise AutoMergeError("git_receive_pack_advertisement_failed")
+        return self._bounded_protocol_output(result.stdout)
+
+    def _submit_receive_pack(self, remote: str, token: str, body: bytes) -> bytes:
+        parsed = urllib.parse.urlparse(remote)
+        if parsed.scheme in {"http", "https"}:
+            request = urllib.request.Request(
+                remote.rstrip("/") + "/git-receive-pack",
+                data=body,
+                method="POST",
+                headers={
+                    "Accept": "application/x-git-receive-pack-result",
+                    "Authorization": self._basic_git_authorization(token),
+                    "Content-Type": "application/x-git-receive-pack-request",
+                    "User-Agent": GIT_PUSH_AGENT,
+                },
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=120) as response:
+                    data = response.read(MAX_GIT_PROTOCOL_BYTES + 1)
+            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+                raise AutoMergeError("base_compare_and_swap_failed") from exc
+            return self._bounded_protocol_output(data)
+        try:
+            result = subprocess.run(
+                ["git", "receive-pack", "--stateless-rpc", remote],
+                input=body,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise AutoMergeError("base_compare_and_swap_failed") from exc
+        if result.returncode != 0:
+            raise AutoMergeError("base_compare_and_swap_failed")
+        return self._bounded_protocol_output(result.stdout)
+
+    @classmethod
+    def _advertised_ref(cls, data: bytes, ref: str) -> tuple[str, set[str]]:
+        advertised: dict[str, str] = {}
+        capabilities: set[str] = set()
+        for payload in cls._pkt_payloads(data):
+            if payload is None or payload.startswith(b"# service="):
+                continue
+            line = payload.rstrip(b"\n")
+            if line.startswith(b"version "):
+                continue
+            if b"\0" in line:
+                line, raw_capabilities = line.split(b"\0", 1)
+                try:
+                    capabilities = set(raw_capabilities.decode("ascii").split())
+                except UnicodeDecodeError as exc:
+                    raise AutoMergeError("invalid_git_protocol_advertisement") from exc
+            try:
+                oid, raw_ref = line.decode("ascii").split(" ", 1)
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise AutoMergeError("invalid_git_protocol_advertisement") from exc
+            if SHA_RE.fullmatch(oid):
+                advertised[raw_ref] = oid
+        old_oid = advertised.get(ref)
+        if old_oid is None:
+            raise AutoMergeError("base_compare_and_swap_failed")
+        if not ({"report-status", "side-band-64k"} <= capabilities):
+            raise AutoMergeError("unsupported_git_receive_pack_capabilities")
+        if any(
+            value.startswith("object-format=") and value != "object-format=sha1"
+            for value in capabilities
+        ):
+            raise AutoMergeError("unsupported_git_object_format")
+        return old_oid, capabilities
+
+    @staticmethod
+    def _pack_objects(workspace: Path, new_oid: str, old_oid: str) -> bytes:
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "pack-objects",
+                    "--stdout",
+                    "--revs",
+                    "--thin",
+                    "--delta-base-offset",
+                ],
+                cwd=workspace,
+                input=f"{new_oid}\n^{old_oid}\n".encode("ascii"),
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise AutoMergeError("git_pack_creation_failed") from exc
+        if (
+            result.returncode != 0
+            or not result.stdout.startswith(b"PACK")
+            or len(result.stdout) > MAX_PUSH_PACK_BYTES
+        ):
+            raise AutoMergeError("git_pack_creation_failed")
+        return result.stdout
+
+    @classmethod
+    def _receive_pack_body(
+        cls,
+        *,
+        old_oid: str,
+        new_oid: str,
+        ref: str,
+        capabilities: set[str],
+        pack: bytes,
+    ) -> bytes:
+        report_capability = (
+            "report-status-v2" if "report-status-v2" in capabilities else "report-status"
+        )
+        requested = [report_capability, "side-band-64k", "ofs-delta", f"agent={GIT_PUSH_AGENT}"]
+        if "object-format=sha1" in capabilities:
+            requested.append("object-format=sha1")
+        command = f"{old_oid} {new_oid} {ref}\0{' '.join(requested)}\n".encode("ascii")
+        return cls._pkt_line(command) + b"0000" + pack
+
+    @classmethod
+    def _assert_receive_pack_success(cls, data: bytes, ref: str) -> None:
+        channel_one = bytearray()
+        for payload in cls._pkt_payloads(data):
+            if payload is None:
+                continue
+            if payload[:1] == b"\x03":
+                raise AutoMergeError("base_compare_and_swap_failed")
+            if payload[:1] == b"\x01":
+                channel_one.extend(payload[1:])
+            elif payload[:1] != b"\x02":
+                channel_one.extend(payload)
+        status_data = bytes(channel_one)
+        try:
+            nested = cls._pkt_payloads(status_data)
+        except AutoMergeError:
+            nested = [line + b"\n" for line in status_data.splitlines()]
+        lines = {
+            payload.decode("utf-8", "replace").strip()
+            for payload in nested
+            if payload is not None and payload.strip()
+        }
+        if "unpack ok" not in lines or f"ok {ref}" not in lines:
+            raise AutoMergeError("base_compare_and_swap_failed")
+        if any(line.startswith("ng ") for line in lines):
+            raise AutoMergeError("base_compare_and_swap_failed")
+
     def _repository_remote(self) -> str:
         return f"https://github.com/{self.repository_slug}.git"
 
     def push_exact_merge(self, identity: dict[str, Any], title: str) -> dict[str, Any]:
         """Build and normally push one merge commit onto the reviewed base.
 
-        The generated commit's first parent is the reviewed base SHA. A normal
-        (never forced) push to the literal reviewed base ref is therefore a
-        server-side compare-and-swap: retargeting cannot redirect it, and a base
-        advance makes the push non-fast-forward and fails closed.
+        The generated commit's first parent is the reviewed base SHA. The Git
+        receive-pack command carries that exact SHA as the update's old OID, so
+        the server rejects any intervening base change in the same ref-update
+        transaction. The update remains a normal fast-forward, never a force or
+        force-with-lease, and targets the literal reviewed base ref.
         """
 
         token = self.token
@@ -504,22 +733,33 @@ class GitHubMergeClient(coordinator.GitHubReadClient):
             ).stdout.strip()
             if not SHA_RE.fullmatch(merge_sha):
                 raise AutoMergeError("invalid_merge_commit")
-            self._git(
-                workspace,
-                "push",
-                "--porcelain",
-                "origin",
-                f"{merge_sha}:refs/heads/{identity['base_ref']}",
-                env=env,
-                code="base_compare_and_swap_failed",
+            destination = f"refs/heads/{identity['base_ref']}"
+            advertisement = self._receive_pack_advertisement(remote, token)
+            advertised_old, capabilities = self._advertised_ref(
+                advertisement, destination
             )
+            if advertised_old != identity["base_sha"]:
+                raise AutoMergeError("base_compare_and_swap_failed")
+            pack = self._pack_objects(workspace, merge_sha, identity["base_sha"])
+            response = self._submit_receive_pack(
+                remote,
+                token,
+                self._receive_pack_body(
+                    old_oid=identity["base_sha"],
+                    new_oid=merge_sha,
+                    ref=destination,
+                    capabilities=capabilities,
+                    pack=pack,
+                ),
+            )
+            self._assert_receive_pack_success(response, destination)
         return {
             "merged": True,
             "sha": merge_sha,
             "base_ref": identity["base_ref"],
             "base_sha": identity["base_sha"],
             "head_sha": identity["head_sha"],
-            "transport": "normal-fast-forward-push",
+            "transport": "exact-old-oid-normal-fast-forward-push",
         }
 
     def dispatch_workflow(
@@ -529,7 +769,7 @@ class GitHubMergeClient(coordinator.GitHubReadClient):
         ref: str,
         inputs: dict[str, str],
     ) -> None:
-        if workflow not in ALLOWED_DISPATCH_WORKFLOWS or ref != ALLOWED_BASE_REF:
+        if workflow not in ALLOWED_DISPATCH_WORKFLOWS or ref != DEV_AUTOMATION_REF:
             raise AutoMergeError("forbidden_workflow_dispatch")
         encoded_workflow = urllib.parse.quote(workflow, safe="")
         path = f"{self.allowed_prefix}/actions/workflows/{encoded_workflow}/dispatches"
@@ -544,7 +784,7 @@ class GitHubMergeClient(coordinator.GitHubReadClient):
                 "Accept": "application/vnd.github+json",
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json",
-                "User-Agent": "agent-toolkit-pullfrog-dev-auto-merge",
+                "User-Agent": "agent-toolkit-pullfrog-auto-merge",
                 "X-GitHub-Api-Version": "2022-11-28",
             },
         )
@@ -566,6 +806,12 @@ def _post_merge_dispatches(
     merge_sha: str,
     changed_paths: list[str],
 ) -> tuple[list[str], list[str]]:
+    # These manual dispatches replace dev push events suppressed by GITHUB_TOKEN.
+    # Other eligible integration branches must not publish unintegrated workflow
+    # assets through dev's downstream automation.
+    if identity["base_ref"] != DEV_AUTOMATION_REF:
+        return [], []
+
     planned: list[tuple[str, dict[str, str]]] = []
     if any(
         path.startswith("templates/starter-workflows/")
@@ -612,7 +858,7 @@ def _post_merge_dispatches(
     return dispatched, failed
 
 
-def merge_clean_dev_pr(
+def merge_clean_pr(
     client: GitHubMergeClient,
     receipt: dict[str, Any],
     *,
@@ -659,7 +905,7 @@ def merge_clean_dev_pr(
         or merge.get("base_ref") != identity["base_ref"]
         or merge.get("base_sha") != identity["base_sha"]
         or merge.get("head_sha") != identity["head_sha"]
-        or merge.get("transport") != "normal-fast-forward-push"
+        or merge.get("transport") != "exact-old-oid-normal-fast-forward-push"
     ):
         raise AutoMergeError("merge_not_confirmed")
     dispatched, dispatch_failures = _post_merge_dispatches(
@@ -675,7 +921,7 @@ def merge_clean_dev_pr(
         "head_sha": identity["head_sha"],
         "merge_commit_sha": merge_sha,
         "merge_method": "merge",
-        "merge_transport": "normal-fast-forward-push",
+        "merge_transport": "exact-old-oid-normal-fast-forward-push",
         "branch_deleted": False,
         "changed_paths_digest": _digest(changed_paths),
         "fresh_evidence_digest": _digest(fresh_evidence),
@@ -707,7 +953,7 @@ def main() -> int:
             os.environ.get("GITHUB_TOKEN", ""),
             args.repository,
         )
-        result = merge_clean_dev_pr(
+        result = merge_clean_pr(
             client,
             receipt,
             expected_head_sha=args.expected_head_sha,
@@ -726,11 +972,11 @@ def main() -> int:
                 "branch_deleted": False,
             },
         )
-        raise SystemExit(f"dev auto-merge failed: {code}") from exc
+        raise SystemExit(f"auto-merge failed: {code}") from exc
     _write_object(Path(args.out), result)
     print(json.dumps(result, sort_keys=True))
     if result["status"] != "merged":
-        raise SystemExit("dev auto-merge completed with downstream dispatch failure")
+        raise SystemExit("auto-merge completed with downstream dispatch failure")
     return 0
 
 

@@ -26,22 +26,22 @@
     "local_validation": {
       "kind": "local_validation",
       "status": "passed",
-      "summary": "All available local gates pass for the repaired dev auto-merge change: 142 GitHub helper tests, 28 focused auto-merge/workflow-policy tests, 29 checksum-verified actionlint and workflow-policy tests, Python compilation, a real local two-parent exact-base fast-forward integration test, zero-change materialization, canonical/live workflow identity, JSON metadata parsing, and whitespace checks. The local Speculoos binary is unavailable, so independent hosted Speculoos evidence remains required after publication.",
+      "summary": "All available local gates pass for the repaired repository-owned auto-merge gate, which now accepts any valid base except main or master: 146 GitHub helper tests, 59 focused auto-merge/coordinator/workflow-policy tests, 29 checksum-verified actionlint and workflow-policy tests, Python compilation, coordinator-to-consumer schema compatibility, eligible non-stable-base and stable-base-rejection coverage, a real exact-old-OID receive-pack race, deterministic workflow materialization, canonical/live byte identity, JSON parsing, public-safety and secret-pattern scans, and whitespace checks. The local Speculoos binary is unavailable, so independent hosted Speculoos evidence remains required after publication.",
       "evidence_ref": ".speculoos/tasks/pullfrog-cloud-remediation-20261028.yaml",
       "updated_at": "pullfrog-cloud-remediation-20261028"
     },
     "github_checks": {
       "kind": "github_checks",
       "status": "blocked-by-current-pullfrog-findings",
-      "summary": "PR #95 remains open at hosted head 11e42aee5d7ecce817653be33127e082dea1a523. The exact-head Pullfrog run succeeded but pullfrog-approval failed on two P1 findings; both are repaired locally and require guarded publication plus fresh exact-head hosted checks.",
+      "summary": "PR #95 remains open at hosted head 10766f48799c527d5adf264b9c3ec09f4ef17c4f. The exact-head Pullfrog run succeeded but pullfrog-approval failed on one P1 receipt-shape finding and one P2 stale-base push finding; both are repaired locally and require guarded publication plus fresh exact-head hosted checks.",
       "evidence_ref": "live GitHub exact-head checks",
       "updated_at": "pullfrog-cloud-remediation-20261028"
     },
     "pullfrog_review": {
       "kind": "pullfrog_review",
       "status": "findings-repaired-locally-pending-rereview",
-      "summary": "Pullfrog review 5677899044 found two P1 races at hosted head 11e42aee5d7ecce817653be33127e082dea1a523: retarget/base drift at the REST merge boundary and stale same-head check reuse. The local repair refreshes app-bound checks and review evidence, then uses a normal destination-bound exact-base fast-forward push; fresh hosted Pullfrog review and approval remain required.",
-      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/95#pullrequestreview-5677899044",
+      "summary": "Pullfrog review 5678056245 found that the consumer expected list-valued Pullfrog records although the coordinator emits singleton dictionaries, and that a normal porcelain push could accept a newer remote tip already reachable from the merge commit. The local repair consumes the producer's exact schema and submits a normal fast-forward Git receive-pack command whose old OID is the exact reviewed base SHA, so the server rejects any intervening base change in the same transaction. Fresh hosted Pullfrog review and approval remain required.",
+      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/95#pullrequestreview-5678056245",
       "updated_at": "pullfrog-cloud-remediation-20261028"
     },
     "speculoos_evidence": {

@@ -9,9 +9,9 @@ repository:
 status:
   phase: implementation
   blocker_summary:
-    - PR #95 is open at hosted head 11e42aee5d7ecce817653be33127e082dea1a523 with two exact-head Pullfrog P1 findings. Their destination-bound exact-base mutation and fresh-evidence repairs are validated locally but not yet published or re-reviewed.
+    - PR #95 is open at hosted head 10766f48799c527d5adf264b9c3ec09f4ef17c4f with one exact-head Pullfrog P1 finding and one P2 finding. Their coordinator-schema and exact-old-OID receive-pack repairs are validated locally but not yet published or re-reviewed.
     - Serving-ref activation, publisher-token provisioning, independent hosted Speculoos evidence, and the first hosted write pilot remain separately gated.
-    - Pullfrog provider push, approval, native repository-wide auto-merge, CI autofix, release, deployment, branch deletion, credentials, billing, and hosted settings remain disabled or separately gated. A repository-owned exact-head gate may auto-merge eligible feature PRs only into `dev`.
+    - Pullfrog provider push, approval, native repository-wide auto-merge, CI autofix, release, deployment, branch deletion, credentials, billing, and hosted settings remain disabled or separately gated. A repository-owned exact-head gate may auto-merge eligible feature PRs into any valid base except `main` or `master`.
 publication_policy:
   repository_visibility: shared-repository
   intended_public_visibility: public
@@ -39,7 +39,7 @@ review_policy:
       approval: disabled
       remediation: native_fix_review_local_candidate_only
       ci_autofix: disabled
-      auto_merge: pullfrog-native-disabled; repository-owned-dev-only
+      auto_merge: pullfrog-native-disabled; repository-owned-non-main-master
   speculoos_evidence:
     policy: required
     evidence_source: independent exact-head hosted policy check
@@ -61,7 +61,7 @@ actor_policy:
   review_actor: pullfrog_review
   default_merge_actor: user_api
   feature_to_dev_merge_actor: mergeguez_dev_merge
-  feature_to_dev_auto_merge_actor: github_actions_dev_auto_merge
+  non_stable_auto_merge_actor: github_actions_non_stable_auto_merge
   stable_auto_merge: forbidden
   native_review_requires_distinct_author: true
   exact_pr_base_head_sha_required: true
@@ -76,8 +76,8 @@ surfaces:
     base_branch: dev
     default_branch: main
     head_branch: feat/pullfrog-write-capable-loop
-    head_sha: 11e42aee5d7ecce817653be33127e082dea1a523
-    head_sha_source: Live GitHub readback at the Pullfrog review that reported the two P1 auto-merge findings; the local repair is not yet published, so re-read GitHub after guarded publication
+    head_sha: 10766f48799c527d5adf264b9c3ec09f4ef17c4f
+    head_sha_source: Live GitHub readback at Pullfrog review 5678056245; the local repair and broader non-stable-base policy are not yet published, so re-read GitHub after guarded publication
     merge_commit: null
 gates:
   before_publish:

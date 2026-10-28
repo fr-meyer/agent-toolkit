@@ -37,7 +37,7 @@ scope:
   - treat provider output as untrusted and rebuild it in a fresh read-only validation job against the exact source head, same-repository destination, forbidden-path policy, and gitlink prohibition
   - isolate a trusted publisher with one normal exact-head fast-forward push and verify the resulting PR head
   - require fresh Pullfrog, CI, Speculoos, and destination-guard evidence after every head mutation
-  - preserve human-only approval and stable-branch merge authority while allowing a repository-owned exact-head automatic merge gate for eligible same-repository feature PRs targeting only `dev`
+  - preserve human-only approval and `main`/`master` merge authority while allowing a repository-owned exact-head automatic merge gate for eligible same-repository feature PRs targeting any other valid base
 non_goals:
   - publishing this commit, activating the workflow on a serving ref, or running a hosted write pilot
   - force-push, force-with-lease, approval, Pullfrog-native auto-merge, merges to main or master, release, deployment, settings changes, branch deletion, billing changes, or credential creation
@@ -52,15 +52,15 @@ acceptance:
   - exact head is re-read before provider execution, before patch application, and immediately before publication
   - publication is one normal fast-forward push to the current same-repository PR branch
   - automatic merge is performed only by a separate GitHub Actions job after a fresh clean coordinator receipt, same-repository and feature-head validation, exact live base/head re-read, successful Pullfrog/approval/CI/Speculoos/destination evidence, and no unresolved human changes-requested review
-  - automatic merge accepts base exactly `dev`, explicitly rejects `main` and `master`, refreshes app-bound exact-head evidence immediately before mutation, builds a two-parent merge commit from the reviewed base and head, and sends it through one normal fast-forward push to the literal reviewed base ref
-  - the normal push is the server-side exact-base compare-and-swap: concurrent base advancement fails non-fast-forward, concurrent PR retargeting cannot redirect the mutation, force and force-with-lease remain prohibited, and the source branch is never deleted
-  - because mutations made with the built-in token suppress ordinary push-triggered Actions runs, the gate replays only the existing path-matched cross-repository updater and reusable-ref synchronization workflows through bounded workflow_dispatch calls and records any post-merge dispatch failure durably
+  - automatic merge accepts any valid base except `main` and `master`, refreshes app-bound exact-head evidence immediately before mutation, builds a two-parent merge commit from the reviewed base and head, and sends it through one normal fast-forward Git receive-pack update to the literal reviewed base ref
+  - the receive-pack command carries the exact reviewed base SHA as its old OID, so the server rejects concurrent base advancement in the same ref-update transaction; concurrent PR retargeting cannot redirect the mutation, force and force-with-lease remain prohibited, and the source branch is never deleted
+  - because mutations made with the built-in token suppress ordinary push-triggered Actions runs, a merge into `dev` replays only the existing path-matched cross-repository updater and reusable-ref synchronization workflows through bounded workflow_dispatch calls and records any post-merge dispatch failure durably; other eligible bases do not dispatch `dev` publication automation
   - the publisher uses a separately approved event-emitting credential so successful publication schedules fresh Pullfrog, CI, and Speculoos evidence rather than relying on suppressed built-in-token events
   - artifact enumeration is complete, expired matching history fails closed, and PRs older than the 90-day durable-history window are not eligible for unattended remediation
   - canonical and materialized workflows are byte-identical, immutable-pinned, bounded, and actionlint-clean
   - focused tests, workflow validation, full repository tests, whitespace checks, public-safety scans, and Speculoos validation pass
 publication_boundary:
-  statement: "Local source implementation and validation only. Publication, hosted activation, and the first write-capable remediation pilot require separate authorization for the exact commit SHA and scope. The repository-owned exact-head dev auto-merge gate is authorized; approval, stable-branch merge, release, deployment, settings changes, force-push, branch deletion, billing, and credential changes remain prohibited."
+  statement: "Local source implementation and validation only. Publication, hosted activation, and the first write-capable remediation pilot require separate authorization for the exact commit SHA and scope. The repository-owned exact-head non-stable auto-merge gate is authorized for any valid base except main or master; approval, main/master merge, release, deployment, settings changes, force-push, branch deletion, billing, and credential changes remain prohibited."
 documentation_impact:
   status: updated
   rationale: The native fix_review contract, credential split, artifact ledger, compare-and-swap publisher, and activation boundary must remain recoverable from repository source.
@@ -81,5 +81,5 @@ notes:
   - Pullfrog is the sole AI reviewer and fixer. Speculoos remains independent exact-head evidence.
   - The provider job has no GitHub write token and cannot mint Pullfrog's normal MCP write token; a separate read-only validator seals its raw output; the publisher has no provider identity token and alone references `PULLFROG_REMEDIATION_PUBLISH_TOKEN`.
   - Provisioning or changing the publisher credential remains a separate hosted-settings approval and is not performed by this source change.
-  - Pullfrog approval and native auto-merge stay disabled. The repository-owned gate, not Pullfrog, may auto-merge only an eligible exact-head feature PR into `dev`; `main` and `master` remain human-authorized.
+  - Pullfrog approval and native auto-merge stay disabled. The repository-owned gate, not Pullfrog, may auto-merge an eligible exact-head feature PR into any valid base except `main` or `master`; those two stable bases remain human-authorized.
   - The first hosted pilot must be bounded to one explicitly authorized same-repository feature head and must stop rather than bypass an unsupported native fix_review path.

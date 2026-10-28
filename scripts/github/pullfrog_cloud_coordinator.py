@@ -681,6 +681,15 @@ def collect_github_snapshot(
     prefix = f"/repos/{client.repository_slug}"
     repository = _mapping(client.get(prefix))
     expected_pr = _mapping(client.get(f"{prefix}/pulls/{pr_number}"))
+    default_branch = _text(repository.get("default_branch"))
+    base_ref = _text(_mapping(expected_pr.get("base")).get("ref"))
+    effective_protected_refs = sorted(
+        {
+            ref
+            for ref in (*protected_refs, default_branch, base_ref)
+            if ref
+        }
+    )
     reviews = client.paginated(f"{prefix}/pulls/{pr_number}/reviews")
     comments = client.paginated(f"{prefix}/pulls/{pr_number}/comments")
     files = client.paginated(f"{prefix}/pulls/{pr_number}/files")
@@ -694,7 +703,7 @@ def collect_github_snapshot(
     return {
         "schema": SNAPSHOT_SCHEMA,
         "repository_slug": client.repository_slug,
-        "repository": {"default_branch": _text(repository.get("default_branch"))},
+        "repository": {"default_branch": default_branch},
         "event": {
             "kind": event_kind,
             "delivery_id": delivery_id,
@@ -709,7 +718,7 @@ def collect_github_snapshot(
         "history": history,
         "policy": {
             "max_cycles": cycle_contract.MAX_CYCLES,
-            "protected_refs": protected_refs,
+            "protected_refs": effective_protected_refs,
             "ci_checks": ci_rules,
             "speculoos_checks": speculoos_rules,
         },

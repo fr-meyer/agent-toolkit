@@ -112,6 +112,59 @@ class PullfrogCloudCoordinatorTests(unittest.TestCase):
         self.assertFalse(receipt["mutation"]["enabled"])
         self.assertFalse(any(receipt["mutation"].values()))
 
+    def test_live_base_and_default_are_always_protected_during_collection(self):
+        fixture = base_snapshot()
+        for key in ("expected_pull_request", "observed_pull_request"):
+            fixture[key]["base"]["ref"] = "staging"
+
+        class StubClient:
+            repository_slug = "fr-meyer/agent-toolkit"
+
+            def get(self, path):
+                prefix = "/repos/fr-meyer/agent-toolkit"
+                if path == prefix:
+                    return {"default_branch": "main"}
+                if path == f"{prefix}/pulls/94":
+                    return copy.deepcopy(fixture["expected_pull_request"])
+                if path == f"{prefix}/commits/{HEAD_SHA}/check-runs?per_page=100":
+                    return {
+                        "total_count": len(fixture["check_runs"]),
+                        "check_runs": copy.deepcopy(fixture["check_runs"]),
+                    }
+                raise AssertionError(path)
+
+            def paginated(self, path):
+                suffix = path.rsplit("/", 1)[-1]
+                mapping = {
+                    "reviews": fixture["reviews"],
+                    "comments": fixture["review_comments"],
+                    "files": fixture["files"],
+                }
+                if suffix not in mapping:
+                    raise AssertionError(path)
+                return copy.deepcopy(mapping[suffix])
+
+        with mock.patch.object(MODULE, "GitHubReadClient", return_value=StubClient()):
+            snapshot = MODULE.collect_github_snapshot(
+                api_url="https://api.github.com",
+                token="test-token",
+                repository_slug="fr-meyer/agent-toolkit",
+                pr_number=94,
+                expected_head_sha=HEAD_SHA,
+                event_kind="pullfrog_review_completed",
+                delivery_id="check-run:100",
+                protected_refs=["main", "master"],
+                ci_rules=[{"name": "ci-required", "app_slug": "github-actions"}],
+                speculoos_rules=[
+                    {"name": "speculoos", "app_slug": "github-actions"}
+                ],
+                history=MODULE._empty_history(),
+            )
+        self.assertEqual(
+            snapshot["policy"]["protected_refs"], ["main", "master", "staging"]
+        )
+        self.assertEqual(MODULE.evaluate_snapshot(snapshot)["status"], "clean")
+
     def test_findings_report_would_remediate_but_execute_nothing(self):
         receipt = MODULE.evaluate_snapshot(base_snapshot(with_findings=True))
         self.assertEqual(receipt["status"], "remediation_ready")

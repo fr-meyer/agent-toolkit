@@ -9,18 +9,20 @@
   },
   "branch_policies": [
     {
-      "name": "feature_to_dev",
-      "base_refs": ["dev"],
+      "name": "feature_to_non_stable",
+      "base_policy": "any_valid_branch_except_forbidden",
+      "forbidden_base_refs": ["main", "master"],
       "head_patterns": ["feat/*", "fix/*", "docs/*", "test/*", "chore/*"],
       "pr_actor": "franck_user_pr_author",
       "review_actor": "pullfrog_review",
-      "merge_actor": "mergeguez_dev_merge",
+      "merge_actor": "github_actions_non_stable_auto_merge",
       "native_review_requires_distinct_author": true,
       "exact_pr_base_head_sha_required": true,
       "auto_merge": {
         "enabled": true,
-        "actor": "github_actions_dev_auto_merge",
-        "allowed_base_refs": ["dev"],
+        "actor": "github_actions_non_stable_auto_merge",
+        "base_policy": "any_valid_branch_except_forbidden",
+        "forbidden_base_refs": ["main", "master"],
         "required_evidence": ["pullfrog", "pullfrog-approval", "ci", "speculoos", "destination-guard"],
         "delete_branch_after_merge": false
       }
@@ -87,12 +89,12 @@
       "exact_pr_base_head_sha_required": true,
       "secrets_in_repo": false
     },
-    "github_actions_dev_auto_merge": {
+    "github_actions_non_stable_auto_merge": {
       "kind": "github_actions_builtin_token",
       "roles": ["merge_actor"],
-      "status": "enabled_policy_gated_exact_head_dev_auto_merge",
+      "status": "enabled_policy_gated_exact_head_non_stable_auto_merge",
       "bot_login": "github-actions[bot]",
-      "allowed_base_refs": ["dev"],
+      "base_policy": "any_valid_branch_except_forbidden",
       "forbidden_base_refs": ["main", "master"],
       "credential_location": "github_actions_job_token",
       "requires_explicit_approval": false,
@@ -101,7 +103,7 @@
       "fresh_app_bound_evidence_required": true,
       "mutation_transport": "normal_exact_base_fast_forward_merge_commit",
       "force_push_allowed": false,
-      "replays_suppressed_dev_push_automation": true,
+      "replays_suppressed_dev_push_automation_for_dev_merges_only": true,
       "secrets_in_repo": false
     },
     "user_api": {

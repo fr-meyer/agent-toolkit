@@ -23,7 +23,7 @@ actor_policy:
   required_profiles:
     - human_approved_agent_assisted
     - mergeguez_branch_broker
-    - github_actions_dev_auto_merge
+    - github_actions_non_stable_auto_merge
     - franck_user_pr_author
     - pullfrog_review
     - user_api
@@ -44,16 +44,18 @@ actor_policy:
     - live_github_checks
     - branch_policy_merge_actor
   branch_merge_actor_requirements:
-    - name: feature_to_dev
-      base_branch: dev
+    - name: feature_to_non_stable
+      forbidden_base_branches:
+        - main
+        - master
       head_patterns:
         - feat/*
         - fix/*
         - docs/*
         - test/*
         - chore/*
-      merge_actor: mergeguez_dev_merge
-      auto_merge_actor: github_actions_dev_auto_merge
+      merge_actor: github_actions_non_stable_auto_merge
+      auto_merge_actor: github_actions_non_stable_auto_merge
       auto_merge_enabled: true
     - name: dev_to_stable
       base_branches:

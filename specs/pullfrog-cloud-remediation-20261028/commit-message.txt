@@ -1,5 +1,5 @@
-fix(github): bind dev auto-merge to fresh exact-base evidence
+fix(github): guard non-stable auto-merge by exact-base evidence
 
-Keep Pullfrog's repository-wide native auto-merge disabled. Add a repository-owned gate that refreshes exact-head evidence, creates a two-parent merge commit, and normally fast-forwards only the exact reviewed dev tip. Retargeting cannot redirect the mutation, base advancement fails closed, main and master remain blocked, and path-matched dev push automation suppressed by the built-in token is replayed.
+Keep Pullfrog's repository-wide native auto-merge disabled. Add a repository-owned gate that refreshes exact-head evidence, accepts any valid base except main or master, creates a two-parent merge commit, and submits one normal fast-forward receive-pack update carrying the exact reviewed base SHA as its old OID. The server rejects base advancement in the same ref-update transaction, retargeting cannot redirect the mutation, and only dev merges replay path-matched dev push automation suppressed by the built-in token.
 
 Task: pullfrog-cloud-remediation-20261028

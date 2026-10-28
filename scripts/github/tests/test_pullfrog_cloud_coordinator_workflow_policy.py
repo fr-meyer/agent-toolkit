@@ -122,18 +122,30 @@ class PullfrogCloudCoordinatorWorkflowPolicyTests(unittest.TestCase):
         publish_policy = PUBLISH_POLICY.read_text(encoding="utf-8")
 
         self.assertEqual(actors["defaults"]["review_actor"], "pullfrog_review")
-        feature_to_dev, dev_to_stable = actors["branch_policies"]
+        feature_to_non_stable, dev_to_stable = actors["branch_policies"]
         for branch in actors["branch_policies"]:
             self.assertEqual(branch["review_actor"], "pullfrog_review")
-        self.assertTrue(feature_to_dev["auto_merge"]["enabled"])
+        self.assertTrue(feature_to_non_stable["auto_merge"]["enabled"])
         self.assertEqual(
-            feature_to_dev["auto_merge"]["actor"],
-            "github_actions_dev_auto_merge",
+            feature_to_non_stable["auto_merge"]["actor"],
+            "github_actions_non_stable_auto_merge",
         )
-        self.assertEqual(feature_to_dev["auto_merge"]["allowed_base_refs"], ["dev"])
+        self.assertEqual(
+            feature_to_non_stable["auto_merge"]["base_policy"],
+            "any_valid_branch_except_forbidden",
+        )
+        self.assertEqual(
+            feature_to_non_stable["auto_merge"]["forbidden_base_refs"],
+            ["main", "master"],
+        )
         self.assertFalse(dev_to_stable["auto_merge"]["enabled"])
-        auto_merge_actor = actors["profiles"]["github_actions_dev_auto_merge"]
-        self.assertEqual(auto_merge_actor["allowed_base_refs"], ["dev"])
+        auto_merge_actor = actors["profiles"][
+            "github_actions_non_stable_auto_merge"
+        ]
+        self.assertEqual(
+            auto_merge_actor["base_policy"],
+            "any_valid_branch_except_forbidden",
+        )
         self.assertEqual(auto_merge_actor["forbidden_base_refs"], ["main", "master"])
         self.assertEqual(actors["profiles"]["mergeguez_review"]["roles"], [])
         self.assertTrue(actors["profiles"]["pullfrog_review"]["required_for_merge"])
@@ -155,7 +167,10 @@ class PullfrogCloudCoordinatorWorkflowPolicyTests(unittest.TestCase):
             r"(?s)mergeguez_review:\n\s+policy: disabled\b.*required_pr_review:.*primary:\n\s+- pullfrog_review\b",
         )
         self.assertIn("    - exact_head_pullfrog_review\n", publish_policy)
-        self.assertIn("      auto_merge_actor: github_actions_dev_auto_merge\n", publish_policy)
+        self.assertIn(
+            "      auto_merge_actor: github_actions_non_stable_auto_merge\n",
+            publish_policy,
+        )
         self.assertIn("      auto_merge_enabled: false\n", publish_policy)
         self.assertNotIn("exact_head_mergeguez_review", publish_policy)
 

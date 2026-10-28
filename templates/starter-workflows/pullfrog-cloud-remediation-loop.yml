@@ -119,6 +119,7 @@ jobs:
           --delivery-id "${{ steps.context.outputs.delivery_id }}"
           --protected-ref dev
           --protected-ref main
+          --protected-ref master
           --ci-check 'dogfood / Provider-free PR automation contract=github-actions'
           --speculoos-check 'speculoos=github-actions'
           --history artifacts/pullfrog-remediation/evaluate/history.json
@@ -643,8 +644,8 @@ jobs:
         if: always() && (steps.apply.outcome != 'success' || steps.terminal.outcome != 'success')
         run: exit 1
 
-  auto_merge_dev:
-    name: Auto-merge clean exact-head PR to dev
+  auto_merge_eligible:
+    name: Auto-merge clean exact-head PR to eligible non-stable base
     needs: evaluate
     if: >-
       always() &&
@@ -678,7 +679,7 @@ jobs:
           name: pullfrog-remediation-evaluation-${{ github.run_id }}
           path: artifacts/pullfrog-remediation/evaluate
 
-      - name: Fast-forward an exact-base merge commit into dev
+      - name: Fast-forward an exact-base merge commit into the eligible reviewed base
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >-
@@ -693,7 +694,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: pullfrog-dev-auto-merge-pr-${{ needs.evaluate.outputs.pr_number }}-${{ github.run_id }}
+          name: pullfrog-auto-merge-pr-${{ needs.evaluate.outputs.pr_number }}-${{ github.run_id }}
           path: artifacts/pullfrog-remediation/auto-merge/receipt.json
           if-no-files-found: error
           retention-days: 90

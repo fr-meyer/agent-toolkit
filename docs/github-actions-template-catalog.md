@@ -537,7 +537,7 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 
 ### Notes
 - The target architecture uses Pullfrog as the sole AI reviewer and intended fixer. The committed entrypoint still disables pushes, so this change does not activate remediation.
-- Mergeguez retains the separately approved publication/manual-merge broker role and is not a reviewer in the target architecture. Pullfrog-native auto-merge stays disabled; the remediation workflow's separate exact-head gate may auto-merge eligible feature PRs only into `dev`, while `main` and `master` remain human-authorized.
+- Mergeguez retains the separately approved publication/manual-merge broker role and is not a reviewer in the target architecture. Pullfrog-native auto-merge stays disabled; the remediation workflow's separate exact-head gate may auto-merge eligible feature PRs into any valid base except `main` or `master`, while those stable branches remain human-authorized.
 - Repository-side configuration and model access are separate, approval-gated surfaces and are not stored in this public workflow.
 - This standalone entrypoint does not call a reusable workflow, so it needs no reusable-workflow ref diffusion.
 - See `docs/pullfrog-review-only-pilot.md` for historical pilot evidence and `docs/pullfrog-cloud-coordinator.md` for the current automation architecture.
@@ -584,16 +584,16 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
   - persist exact-head claims before execution and reconstruct bounded retry/cycle history from trusted workflow artifacts
   - treat provider output as untrusted, rebuild and seal it in a fresh read-only validation job, then publish it through a separate trusted compare-and-swap job
   - let each successful commit trigger fresh Pullfrog, CI, and Speculoos evidence for the next bounded cycle
-  - automatically merge a clean exact-head same-repository feature PR only when its base is exactly `dev`, preserving the repository's merge-commit convention
+  - automatically merge a clean exact-head same-repository feature PR into any valid base except `main` or `master`, preserving the repository's merge-commit convention
 
 ### Security boundary
 - provider job: `id-token: write` for provider routing, `contents: read`, `pull-requests: read`, and the built-in read token mapped as `GH_TOKEN` so Pullfrog cannot mint its normal write-capable MCP token; Pullfrog also uses `push: disabled`, restricted shell, `authorPermission: none` to withhold gh and learning writes, and no provider-secret mapping
 - validator job: read-only permissions, a fresh trusted controller checkout, and a fresh exact-source checkout; it alone converts the untrusted provider bundle into a canonical digest-bound candidate
 - publisher job: one separately provisioned `PULLFROG_REMEDIATION_PUBLISH_TOKEN`, no provider identity token, and one normal fast-forward push to the exact same-repository PR head; unlike `github.token`, this push emits the PR synchronize event that schedules fresh Pullfrog, CI, and Speculoos evidence
-- auto-merge job: built-in token limited to `actions: write`, `checks: read`, `contents: write`, and `pull-requests: write`, no provider identity or publisher secret, and one normal exact-base fast-forward of a two-parent merge commit only after refreshing clean app-bound evidence and live `dev` destination identity; concurrent retargeting cannot redirect the literal ref update, concurrent base advancement fails non-fast-forward, and path-matched dispatches replay the existing `dev` push automation that built-in-token events suppress
+- auto-merge job: built-in token limited to `actions: write`, `checks: read`, `contents: write`, and `pull-requests: write`, no provider identity or publisher secret, and one normal fast-forward Git receive-pack update of a two-parent merge commit only after refreshing clean app-bound evidence and live base identity; the update command carries the exact reviewed base SHA as its old OID, so the server rejects concurrent base advancement in the same ref-update transaction and concurrent retargeting cannot redirect the literal ref update; only merges into `dev` replay path-matched `dev` push automation that built-in-token events suppress
 - the durable claim artifact contains only `claim.json`, while the sealed dispatch is a separate transient artifact; claim, candidate, publish plan, patch, changed paths, source/result heads, and pushed terminal evidence are schema-validated and mutually digest-bound
 - forks, protected/default/base refs, stale or reused heads, workflow/governance paths, malformed history, repeated findings, unchanged output, and no-progress states fail closed
-- no force-push, approval, Pullfrog-native auto-merge, stable-branch merge, release, deployment, settings change, branch deletion, or elevated token
+- no force-push, approval, Pullfrog-native auto-merge, merge into `main` or `master`, release, deployment, settings change, branch deletion, or elevated token
 
 ### Notes
 - Pullfrog `v0.1.102` receives the native dispatch envelope through the exact `prompt` input. `prompt_file` is deliberately not used because Pullfrog treats it as plain text and would discard the `fix_review` event contract.

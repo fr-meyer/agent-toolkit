@@ -11,6 +11,14 @@ MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
+COORDINATOR_TEST_SCRIPT = Path(__file__).with_name("test_pullfrog_cloud_coordinator.py")
+COORDINATOR_TEST_SPEC = importlib.util.spec_from_file_location(
+    "pullfrog_cloud_coordinator_producer_test", COORDINATOR_TEST_SCRIPT
+)
+COORDINATOR_TEST = importlib.util.module_from_spec(COORDINATOR_TEST_SPEC)
+assert COORDINATOR_TEST_SPEC.loader is not None
+COORDINATOR_TEST_SPEC.loader.exec_module(COORDINATOR_TEST)
+
 BASE_SHA = "1" * 40
 HEAD_SHA = "2" * 40
 MERGE_SHA = "3" * 40
@@ -43,26 +51,22 @@ def clean_receipt():
         for name in MODULE.REQUIRED_CHECKS
     }
     check_details = {
-        "pullfrog": [
-            {
-                "name": "pullfrog",
-                "app_slug": "pullfrog",
-                "status": "success",
-                "head_sha": HEAD_SHA,
-                "check_run_id": 101,
-                "check_suite_id": 900,
-            }
-        ],
-        "pullfrog_approval": [
-            {
-                "name": "pullfrog-approval",
-                "app_slug": "pullfrog",
-                "status": "success",
-                "head_sha": HEAD_SHA,
-                "check_run_id": 102,
-                "check_suite_id": 900,
-            }
-        ],
+        "pullfrog": {
+            "name": "pullfrog",
+            "app_slug": "pullfrog",
+            "status": "success",
+            "head_sha": HEAD_SHA,
+            "check_run_id": 101,
+            "check_suite_id": 900,
+        },
+        "pullfrog_approval": {
+            "name": "pullfrog-approval",
+            "app_slug": "pullfrog",
+            "status": "success",
+            "head_sha": HEAD_SHA,
+            "check_run_id": 102,
+            "check_suite_id": 900,
+        },
         "ci": [
             {
                 "name": "dogfood / Provider-free PR automation contract",
@@ -161,6 +165,15 @@ def receipt_for_paths(paths):
     return receipt
 
 
+def retarget_base(receipt, client, base_ref):
+    receipt["identity"]["base_ref"] = base_ref
+    receipt["cycle_decision"]["repository"]["base_ref"] = base_ref
+    client.pr["base"]["ref"] = base_ref
+    client.refs[base_ref] = BASE_SHA
+    client.merge_result["base_ref"] = base_ref
+    return receipt
+
+
 class FakeClient:
     def __init__(self):
         self.allowed_prefix = "/repos/fr-meyer/agent-toolkit"
@@ -207,7 +220,7 @@ class FakeClient:
             "base_ref": "dev",
             "base_sha": BASE_SHA,
             "head_sha": HEAD_SHA,
-            "transport": "normal-fast-forward-push",
+            "transport": "exact-old-oid-normal-fast-forward-push",
         }
         self.push_calls = []
         self.before_push = None
@@ -256,19 +269,63 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
             function(*args, **kwargs)
         self.assertEqual(raised.exception.code, code)
 
+    def test_unmodified_coordinator_receipt_passes_validation_and_fresh_evidence(self):
+        snapshot = COORDINATOR_TEST.base_snapshot()
+        receipt = COORDINATOR_TEST.MODULE.evaluate_snapshot(snapshot)
+        identity = MODULE.validate_clean_receipt(receipt)
+
+        class ProducerClient:
+            allowed_prefix = "/repos/fr-meyer/agent-toolkit"
+
+            def get(self, path):
+                expected = (
+                    f"{self.allowed_prefix}/commits/{identity['head_sha']}"
+                    "/check-runs?per_page=100"
+                )
+                if path != expected:
+                    raise AssertionError(path)
+                return {
+                    "total_count": len(snapshot["check_runs"]),
+                    "check_runs": copy.deepcopy(snapshot["check_runs"]),
+                }
+
+        changed_paths = sorted(item["filename"] for item in snapshot["files"])
+        fresh = MODULE._refresh_exact_head_evidence(
+            ProducerClient(),
+            receipt,
+            identity,
+            repository=snapshot["repository"],
+            reviews=snapshot["reviews"],
+            comments=snapshot["review_comments"],
+            changed_paths=changed_paths,
+        )
+        self.assertEqual(fresh["review_id"], 601)
+        self.assertEqual(fresh["check_run_ids"]["pullfrog"], [100])
+
     def test_clean_exact_head_dev_pr_merges_once(self):
         client = FakeClient()
-        result = MODULE.merge_clean_dev_pr(client, clean_receipt(), expected_head_sha=HEAD_SHA)
+        result = MODULE.merge_clean_pr(client, clean_receipt(), expected_head_sha=HEAD_SHA)
         self.assertEqual(result["status"], "merged")
         self.assertEqual(result["base_ref"], "dev")
         self.assertEqual(result["head_sha"], HEAD_SHA)
         self.assertEqual(result["merge_commit_sha"], MERGE_SHA)
         self.assertEqual(result["merge_method"], "merge")
-        self.assertEqual(result["merge_transport"], "normal-fast-forward-push")
+        self.assertEqual(
+            result["merge_transport"], "exact-old-oid-normal-fast-forward-push"
+        )
         self.assertFalse(result["branch_deleted"])
         self.assertEqual(len(client.push_calls), 1)
         self.assertEqual(result["downstream_dispatches"], [])
         self.assertEqual(result["downstream_dispatch_failures"], [])
+
+    def test_clean_exact_head_non_stable_base_is_eligible(self):
+        client = FakeClient()
+        receipt = retarget_base(clean_receipt(), client, "staging")
+        result = MODULE.merge_clean_pr(client, receipt, expected_head_sha=HEAD_SHA)
+        self.assertEqual(result["status"], "merged")
+        self.assertEqual(result["base_ref"], "staging")
+        self.assertEqual(client.refs["staging"], MERGE_SHA)
+        self.assertEqual(client.refs["dev"], BASE_SHA)
 
     def test_main_and_master_bases_fail_closed(self):
         for base in ("main", "master"):
@@ -323,7 +380,7 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
                 client.pr[section][key] = value
                 self.assert_code(
                     "live_pull_request_drift",
-                    MODULE.merge_clean_dev_pr,
+                    MODULE.merge_clean_pr,
                     client,
                     clean_receipt(),
                     expected_head_sha=HEAD_SHA,
@@ -337,7 +394,7 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
         )
         self.assert_code(
             "human_changes_requested",
-            MODULE.merge_clean_dev_pr,
+            MODULE.merge_clean_pr,
             client,
             clean_receipt(),
             expected_head_sha=HEAD_SHA,
@@ -352,14 +409,14 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
                 {"state": "APPROVED", "user": {"login": "human-reviewer"}},
             ]
         )
-        result = MODULE.merge_clean_dev_pr(client, clean_receipt(), expected_head_sha=HEAD_SHA)
+        result = MODULE.merge_clean_pr(client, clean_receipt(), expected_head_sha=HEAD_SHA)
         self.assertEqual(result["status"], "merged")
 
     def test_expected_head_and_merge_confirmation_are_required(self):
         client = FakeClient()
         self.assert_code(
             "expected_head_mismatch",
-            MODULE.merge_clean_dev_pr,
+            MODULE.merge_clean_pr,
             client,
             clean_receipt(),
             expected_head_sha="4" * 40,
@@ -367,7 +424,7 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
         client.merge_result = {"merged": False, "message": "blocked"}
         self.assert_code(
             "merge_not_confirmed",
-            MODULE.merge_clean_dev_pr,
+            MODULE.merge_clean_pr,
             client,
             clean_receipt(),
             expected_head_sha=HEAD_SHA,
@@ -377,7 +434,7 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
         client = FakeClient()
         paths = ["scripts/github/cross_repo_workflow_updater.py"]
         client.files = [{"filename": path} for path in paths]
-        result = MODULE.merge_clean_dev_pr(
+        result = MODULE.merge_clean_pr(
             client, receipt_for_paths(paths), expected_head_sha=HEAD_SHA
         )
         self.assertEqual(result["status"], "merged")
@@ -390,12 +447,22 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
         self.assertEqual(client.dispatch_calls[0][2]["source_commit"], MERGE_SHA)
         self.assertEqual(client.dispatch_calls[0][2]["previous_source_commit"], BASE_SHA)
 
+    def test_non_dev_merge_does_not_replay_dev_push_automation(self):
+        client = FakeClient()
+        paths = ["scripts/github/cross_repo_workflow_updater.py"]
+        client.files = [{"filename": path} for path in paths]
+        receipt = retarget_base(receipt_for_paths(paths), client, "staging")
+        result = MODULE.merge_clean_pr(client, receipt, expected_head_sha=HEAD_SHA)
+        self.assertEqual(result["status"], "merged")
+        self.assertEqual(result["downstream_dispatches"], [])
+        self.assertEqual(client.dispatch_calls, [])
+
     def test_downstream_dispatch_failure_is_durable_after_confirmed_merge(self):
         client = FakeClient()
         paths = ["scripts/github/cross_repo_workflow_updater.py"]
         client.files = [{"filename": path} for path in paths]
         client.dispatch_failure = True
-        result = MODULE.merge_clean_dev_pr(
+        result = MODULE.merge_clean_pr(
             client, receipt_for_paths(paths), expected_head_sha=HEAD_SHA
         )
         self.assertEqual(result["status"], "merged_with_downstream_failure")
@@ -414,7 +481,7 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
                 )
                 self.assert_code(
                     "fresh_required_evidence_not_successful",
-                    MODULE.merge_clean_dev_pr,
+                    MODULE.merge_clean_pr,
                     client,
                     clean_receipt(),
                     expected_head_sha=HEAD_SHA,
@@ -429,7 +496,7 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
             value.pr["base"] = {"ref": "main", "sha": stable_before}
 
         client.before_push = retarget_after_final_get
-        result = MODULE.merge_clean_dev_pr(
+        result = MODULE.merge_clean_pr(
             client, clean_receipt(), expected_head_sha=HEAD_SHA
         )
         self.assertEqual(result["status"], "merged")
@@ -447,14 +514,14 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
         client.before_push = advance_base
         self.assert_code(
             "base_compare_and_swap_failed",
-            MODULE.merge_clean_dev_pr,
+            MODULE.merge_clean_pr,
             client,
             clean_receipt(),
             expected_head_sha=HEAD_SHA,
         )
         self.assertEqual(client.refs["dev"], advanced)
 
-    def test_real_normal_push_builds_two_parent_merge_on_exact_base(self):
+    def test_real_receive_pack_enforces_exact_old_oid_and_builds_two_parent_merge(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / "source"
@@ -488,19 +555,61 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
                 def _repository_remote(self):
                     return str(remote)
 
-            client = LocalClient("https://api.github.com", "test-token", "fr-meyer/agent-toolkit")
-            result = client.push_exact_merge(
-                {
-                    "repository_slug": "fr-meyer/agent-toolkit",
-                    "pr_number": 95,
-                    "base_ref": "dev",
-                    "base_sha": base_sha,
-                    "head_ref": "feat/test",
-                    "head_sha": head_sha,
-                    "head_repository_slug": "fr-meyer/agent-toolkit",
-                },
-                "Test merge",
+            class RacingClient(LocalClient):
+                def _submit_receive_pack(self, remote_path, token, body):
+                    subprocess.run(
+                        [
+                            "git",
+                            "-C",
+                            str(source),
+                            "push",
+                            "origin",
+                            f"{head_sha}:refs/heads/dev",
+                        ],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    return super()._submit_receive_pack(remote_path, token, body)
+
+            identity = {
+                "repository_slug": "fr-meyer/agent-toolkit",
+                "pr_number": 95,
+                "base_ref": "dev",
+                "base_sha": base_sha,
+                "head_ref": "feat/test",
+                "head_sha": head_sha,
+                "head_repository_slug": "fr-meyer/agent-toolkit",
+            }
+            racing_client = RacingClient(
+                "https://api.github.com", "test-token", "fr-meyer/agent-toolkit"
             )
+            self.assert_code(
+                "base_compare_and_swap_failed",
+                racing_client.push_exact_merge,
+                identity,
+                "Test stale-base merge",
+            )
+            raced_tip = subprocess.check_output(
+                ["git", "--git-dir", str(remote), "rev-parse", "refs/heads/dev"],
+                text=True,
+            ).strip()
+            self.assertEqual(raced_tip, head_sha)
+            subprocess.run(
+                [
+                    "git",
+                    "--git-dir",
+                    str(remote),
+                    "update-ref",
+                    "refs/heads/dev",
+                    base_sha,
+                    head_sha,
+                ],
+                check=True,
+            )
+
+            client = LocalClient("https://api.github.com", "test-token", "fr-meyer/agent-toolkit")
+            result = client.push_exact_merge(identity, "Test merge")
             remote_tip = subprocess.check_output(
                 ["git", "--git-dir", str(remote), "rev-parse", "refs/heads/dev"], text=True
             ).strip()

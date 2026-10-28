@@ -72,8 +72,8 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertEqual(self.template.count("      id-token: write\n"), 1)
         remediate = self.template.split("  remediate:\n", 1)[1].split("  validate:\n", 1)[0]
         validate = self.template.split("  validate:\n", 1)[1].split("  publish:\n", 1)[0]
-        publish = self.template.split("  publish:\n", 1)[1].split("  auto_merge_dev:\n", 1)[0]
-        auto_merge = self.template.split("  auto_merge_dev:\n", 1)[1]
+        publish = self.template.split("  publish:\n", 1)[1].split("  auto_merge_eligible:\n", 1)[0]
+        auto_merge = self.template.split("  auto_merge_eligible:\n", 1)[1]
         self.assertIn("      id-token: write\n", remediate)
         self.assertIn("      contents: read\n", remediate)
         self.assertNotIn("contents: write", remediate)
@@ -213,7 +213,7 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
     def test_failure_paths_always_emit_terminal_evidence_before_failing_closed(self):
         remediate = self.template.split("  remediate:\n", 1)[1].split("  validate:\n", 1)[0]
         validate = self.template.split("  validate:\n", 1)[1].split("  publish:\n", 1)[0]
-        publish = self.template.split("  publish:\n", 1)[1].split("  auto_merge_dev:\n", 1)[0]
+        publish = self.template.split("  publish:\n", 1)[1].split("  auto_merge_eligible:\n", 1)[0]
         self.assertIn("        if: always()\n", remediate)
         self.assertIn("Persist untrusted provider bundle", remediate)
         self.assertIn("        continue-on-error: true\n", validate)
@@ -251,7 +251,7 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         )
 
     def test_publisher_push_uses_separate_event_emitting_credential(self):
-        publish = self.template.split("  publish:\n", 1)[1].split("  auto_merge_dev:\n", 1)[0]
+        publish = self.template.split("  publish:\n", 1)[1].split("  auto_merge_eligible:\n", 1)[0]
         checkout = publish.split(
             "      - name: Checkout exact source with publication credential\n", 1
         )[1].split("\n      - name:", 1)[0]
@@ -264,7 +264,7 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("Pullfrog, CI, and Speculoos", checkout)
         self.assertNotIn("github.token", checkout)
 
-    def test_dev_auto_merge_is_custom_exact_head_and_stable_branches_remain_blocked(self):
+    def test_custom_auto_merge_is_exact_head_and_main_master_remain_blocked(self):
         for forbidden in [
             "gh pr merge",
             "enablePullRequestAutoMerge",
@@ -275,7 +275,11 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
             "repository_dispatches",
         ]:
             self.assertNotIn(forbidden, self.template)
-        auto_merge = self.template.split("  auto_merge_dev:\n", 1)[1]
+        auto_merge = self.template.split("  auto_merge_eligible:\n", 1)[1]
+        self.assertIn(
+            "name: Auto-merge clean exact-head PR to eligible non-stable base",
+            auto_merge,
+        )
         self.assertIn("needs.evaluate.outputs.reason == 'clean'", auto_merge)
         self.assertIn("scripts/github/pullfrog_dev_auto_merge.py", auto_merge)
         self.assertIn("      checks: read\n", auto_merge)
@@ -287,13 +291,18 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         script = (REPO_ROOT / "scripts/github/pullfrog_dev_auto_merge.py").read_text(
             encoding="utf-8"
         )
-        self.assertIn('ALLOWED_BASE_REF = "dev"', script)
         self.assertIn('FORBIDDEN_BASE_REFS = frozenset({"main", "master"})', script)
+        self.assertNotIn("ALLOWED_BASE_REF", script)
+        self.assertIn('DEV_AUTOMATION_REF = "dev"', script)
+        self.assertIn('base_ref in FORBIDDEN_BASE_REFS', script)
+        self.assertIn('identity["base_ref"] != DEV_AUTOMATION_REF', script)
         self.assertIn("def push_exact_merge", script)
-        self.assertIn('"normal-fast-forward-push"', script)
+        self.assertIn('"exact-old-oid-normal-fast-forward-push"', script)
+        self.assertIn("def _receive_pack_body", script)
         self.assertIn('"merge-tree"', script)
-        self.assertIn('code="base_compare_and_swap_failed"', script)
+        self.assertIn('AutoMergeError("base_compare_and_swap_failed")', script)
         self.assertNotIn('"--force"', script)
+        self.assertNotIn('"--force-with-lease"', script)
         self.assertNotIn("/pulls/{identity['pr_number']}/merge", script)
         self.assertIn("cross-repo-workflow-updater-manual-trigger.yml", script)
         self.assertIn("sync-starter-workflow-template-refs-trigger.yml", script)
