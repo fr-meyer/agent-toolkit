@@ -537,7 +537,7 @@ class GitHubMergeClient(coordinator.GitHubReadClient):
 
     @classmethod
     def _advertised_ref(cls, data: bytes, ref: str) -> tuple[str, set[str]]:
-        advertised: dict[str, str] = {}
+        advertised: dict[bytes, str] = {}
         capabilities: set[str] = set()
         for payload in cls._pkt_payloads(data):
             if payload is None or payload.startswith(b"# service="):
@@ -551,13 +551,17 @@ class GitHubMergeClient(coordinator.GitHubReadClient):
                     capabilities = set(raw_capabilities.decode("ascii").split())
                 except UnicodeDecodeError as exc:
                     raise AutoMergeError("invalid_git_protocol_advertisement") from exc
+            fields = line.split(b" ", 1)
+            if len(fields) != 2:
+                raise AutoMergeError("invalid_git_protocol_advertisement")
+            raw_oid, raw_ref = fields
             try:
-                oid, raw_ref = line.decode("ascii").split(" ", 1)
-            except (UnicodeDecodeError, ValueError) as exc:
+                oid = raw_oid.decode("ascii")
+            except UnicodeDecodeError as exc:
                 raise AutoMergeError("invalid_git_protocol_advertisement") from exc
             if SHA_RE.fullmatch(oid):
                 advertised[raw_ref] = oid
-        old_oid = advertised.get(ref)
+        old_oid = advertised.get(ref.encode("utf-8"))
         if old_oid is None:
             raise AutoMergeError("base_compare_and_swap_failed")
         if not ({"report-status", "side-band-64k"} <= capabilities):

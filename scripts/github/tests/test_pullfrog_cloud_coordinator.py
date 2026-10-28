@@ -163,7 +163,15 @@ class PullfrogCloudCoordinatorTests(unittest.TestCase):
         self.assertEqual(
             snapshot["policy"]["protected_refs"], ["main", "master", "staging"]
         )
-        self.assertEqual(MODULE.evaluate_snapshot(snapshot)["status"], "clean")
+        receipt = MODULE.evaluate_snapshot(snapshot)
+        self.assertEqual(receipt["status"], "clean")
+        self.assertEqual(
+            receipt["destination_policy"],
+            {
+                "default_branch": "main",
+                "protected_refs": ["main", "master", "staging"],
+            },
+        )
 
     def test_findings_report_would_remediate_but_execute_nothing(self):
         receipt = MODULE.evaluate_snapshot(base_snapshot(with_findings=True))

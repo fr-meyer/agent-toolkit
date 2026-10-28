@@ -151,6 +151,39 @@ def _valid_identity(identity: Any) -> dict[str, Any]:
     }
 
 
+def _valid_destination_policy(value: Any, identity: dict[str, Any]) -> dict[str, Any]:
+    policy = _mapping(value)
+    default_branch = _text(policy.get("default_branch"))
+    protected_refs_value = policy.get("protected_refs")
+    protected_refs = [_text(item) for item in _list(protected_refs_value)]
+    if (
+        not cycle_contract._valid_branch(default_branch)
+        or not isinstance(protected_refs_value, list)
+        or not protected_refs
+        or protected_refs != sorted(protected_refs)
+        or len(set(protected_refs)) != len(protected_refs)
+        or any(not cycle_contract._valid_branch(item) for item in protected_refs)
+        or default_branch not in protected_refs
+        or identity["base_ref"] not in protected_refs
+    ):
+        raise RemediationError("invalid_destination_policy")
+    return {
+        "default_branch": default_branch,
+        "protected_refs": protected_refs,
+    }
+
+
+def _guard_identity(
+    identity: dict[str, Any], policy: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "slug": identity["repository_slug"],
+        **{key: identity[key] for key in identity if key != "repository_slug"},
+        "default_branch": policy["default_branch"],
+        "protected_refs": policy["protected_refs"],
+    }
+
+
 def _run_git(workspace: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[bytes]:
     try:
         result = subprocess.run(
@@ -277,6 +310,7 @@ def _artifact_record(data: bytes, expected_filename: str) -> dict[str, Any]:
 def _validate_claim(value: Any) -> dict[str, Any]:
     claim = _mapping(value)
     identity = _valid_identity(claim.get("identity"))
+    _valid_destination_policy(claim.get("destination_policy"), identity)
     if claim.get("schema") != CLAIM_SCHEMA:
         raise RemediationError("invalid_claim_schema")
     run_id = _text(claim.get("run_id"))
@@ -708,6 +742,9 @@ def prepare_claim(
     action = _text(receipt.get("would_action"))
     decision = _mapping(receipt.get("cycle_decision"))
     identity = _valid_identity(receipt.get("identity"))
+    destination_policy = _valid_destination_policy(
+        receipt.get("destination_policy"), identity
+    )
     history = coordinator._validated_history(ledger.get("history"))
     if (
         ledger.get("repository_slug") != identity["repository_slug"]
@@ -829,6 +866,7 @@ def prepare_claim(
         "cycle_number": history["cycle_number"],
         "attempt_number": attempt_number,
         "identity": identity,
+        "destination_policy": destination_policy,
         "review_id": review_id,
         "finding_count": _integer(review.get("finding_count")),
         "finding_set_digest": finding_set_digest,
@@ -912,10 +950,19 @@ def build_pullfrog_payload(claim: dict[str, Any]) -> dict[str, Any]:
 def verify_exact_head(client: coordinator.GitHubReadClient, claim: dict[str, Any]) -> dict[str, Any]:
     claim = _validate_claim(claim)
     expected = _valid_identity(claim["identity"])
+    destination_policy = _valid_destination_policy(
+        claim.get("destination_policy"), expected
+    )
     prefix = f"/repos/{expected['repository_slug']}"
     pr = _mapping(client.get(f"{prefix}/pulls/{expected['pr_number']}"))
+    default_branch = _text(_mapping(client.get(prefix)).get("default_branch"))
+    if default_branch != destination_policy["default_branch"]:
+        raise RemediationError("destination_policy_drift")
     observed = coordinator._identity_from_pr(
-        expected["repository_slug"], pr, _text(_mapping(client.get(prefix)).get("default_branch")), ["dev", "main"]
+        expected["repository_slug"],
+        pr,
+        default_branch,
+        destination_policy["protected_refs"],
     )
     observed_identity = _valid_identity(observed)
     for key in expected:
@@ -957,6 +1004,9 @@ def prepare_candidate(
 ) -> tuple[dict[str, Any], bytes]:
     claim = _validate_claim(claim)
     identity = _valid_identity(claim["identity"])
+    destination_policy = _valid_destination_policy(
+        claim.get("destination_policy"), identity
+    )
     if action_outcome != "success":
         raise RemediationError("provider_failed")
     _parse_action_result(action_result_raw, claim)
@@ -1010,18 +1060,8 @@ def prepare_candidate(
     guard = destination_guard.evaluate_guard(
         {
             "schema": destination_guard.INPUT_SCHEMA,
-            "expected": {
-                "slug": identity["repository_slug"],
-                **{key: identity[key] for key in identity if key != "repository_slug"},
-                "default_branch": "main",
-                "protected_refs": ["dev", "main"],
-            },
-            "observed": {
-                "slug": observed_identity["repository_slug"],
-                **{key: observed_identity[key] for key in observed_identity if key != "repository_slug"},
-                "default_branch": "main",
-                "protected_refs": ["dev", "main"],
-            },
+            "expected": _guard_identity(identity, destination_policy),
+            "observed": _guard_identity(observed_identity, destination_policy),
             "request": {
                 "destination_repository_slug": identity["repository_slug"],
                 "destination_ref": identity["head_ref"],
@@ -1078,6 +1118,9 @@ def prepare_candidate_from_patch(
 
     claim = _validate_claim(claim)
     identity = _valid_identity(claim["identity"])
+    destination_policy = _valid_destination_policy(
+        claim.get("destination_policy"), identity
+    )
     if action_outcome in {"candidate_patch_too_large", "action_result_too_large"}:
         raise RemediationError(action_outcome)
     if action_outcome != "success":
@@ -1134,22 +1177,8 @@ def prepare_candidate_from_patch(
     guard = destination_guard.evaluate_guard(
         {
             "schema": destination_guard.INPUT_SCHEMA,
-            "expected": {
-                "slug": identity["repository_slug"],
-                **{key: identity[key] for key in identity if key != "repository_slug"},
-                "default_branch": "main",
-                "protected_refs": ["dev", "main"],
-            },
-            "observed": {
-                "slug": observed_identity["repository_slug"],
-                **{
-                    key: observed_identity[key]
-                    for key in observed_identity
-                    if key != "repository_slug"
-                },
-                "default_branch": "main",
-                "protected_refs": ["dev", "main"],
-            },
+            "expected": _guard_identity(identity, destination_policy),
+            "observed": _guard_identity(observed_identity, destination_policy),
             "request": {
                 "destination_repository_slug": identity["repository_slug"],
                 "destination_ref": identity["head_ref"],
@@ -1207,6 +1236,9 @@ def apply_candidate(
     claim = _validate_claim(claim)
     candidate = _validate_candidate(candidate)
     identity = _valid_identity(claim["identity"])
+    destination_policy = _valid_destination_policy(
+        claim.get("destination_policy"), identity
+    )
     if (
         candidate["attempt_id"] != claim["attempt_id"]
         or candidate.get("run_id") != claim["run_id"]
@@ -1253,18 +1285,8 @@ def apply_candidate(
     guard = destination_guard.evaluate_guard(
         {
             "schema": destination_guard.INPUT_SCHEMA,
-            "expected": {
-                "slug": identity["repository_slug"],
-                **{key: identity[key] for key in identity if key != "repository_slug"},
-                "default_branch": "main",
-                "protected_refs": ["dev", "main"],
-            },
-            "observed": {
-                "slug": identity["repository_slug"],
-                **{key: identity[key] for key in identity if key != "repository_slug"},
-                "default_branch": "main",
-                "protected_refs": ["dev", "main"],
-            },
+            "expected": _guard_identity(identity, destination_policy),
+            "observed": _guard_identity(identity, destination_policy),
             "request": {
                 "destination_repository_slug": identity["repository_slug"],
                 "destination_ref": identity["head_ref"],

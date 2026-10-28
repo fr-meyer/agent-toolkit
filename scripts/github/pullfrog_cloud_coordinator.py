@@ -574,6 +574,10 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
             "head_repository_slug": observed.get("head_repository_slug"),
             "event_head_sha": event_head_sha,
         },
+        "destination_policy": {
+            "default_branch": default_branch,
+            "protected_refs": protected_refs,
+        },
         "event": {
             "kind": event_kind,
             "delivery_id_digest": _digest(delivery_id),

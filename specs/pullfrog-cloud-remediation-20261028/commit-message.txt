@@ -1,5 +1,5 @@
-fix(github): guard non-stable auto-merge by exact-base evidence
+fix(github): preserve non-stable remediation policy
 
-Keep Pullfrog's repository-wide native auto-merge disabled. Add a repository-owned gate that refreshes exact-head evidence, accepts any valid base except main or master, creates a two-parent merge commit, and submits one normal fast-forward receive-pack update carrying the exact reviewed base SHA as its old OID. The server rejects base advancement in the same ref-update transaction, retargeting cannot redirect the mutation, and only dev merges replay path-matched dev push automation suppressed by the built-in token.
+Keep Pullfrog's repository-wide native auto-merge disabled. Carry the coordinator's exact default branch and effective protected-ref set into the digest-bound remediation claim, then reuse that policy during candidate validation and publication so eligible non-dev bases cannot fail only after provider execution.
 
-Task: pullfrog-cloud-remediation-20261028
+Parse Git receive-pack object IDs and capabilities separately from byte-preserved ref names, allowing unrelated legal Unicode refs without weakening exact destination matching or the reviewed-base old-OID compare-and-swap. Main and master remain blocked, force updates remain prohibited, and only dev merges replay path-matched dev automation.

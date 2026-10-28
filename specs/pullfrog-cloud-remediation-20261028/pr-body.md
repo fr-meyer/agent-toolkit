@@ -20,7 +20,7 @@
 - focused remediation and workflow-policy tests
 - checksum-verified actionlint over all Pullfrog workflow copies
 - full repository unit-test discovery
-- Python compile, JSON/YAML parsing, canonical/materialized byte identity, and `git diff --check`
+- Python compile, JSON parsing, actionlint-backed workflow YAML validation, canonical/materialized byte identity, and `git diff --check`
 - public-safety/private-data scan
 - Speculoos `validate` and `publish-check` when the local binary is available
 
@@ -34,7 +34,8 @@
 - The trusted controller re-reads exact PR identity before provider execution, candidate validation/application, and publication; it rejects forks, protected/default/base refs, stale/reused heads, workflow/governance paths, malformed history, unchanged output, repeated findings, and no-progress cycles.
 - The remediation publisher's only mutation is one normal fast-forward push to the exact same-repository PR branch after the sealed patch digest and post-patch destination guard pass.
 - A separate least-privilege job may merge only a clean exact-head same-repository feature PR whose base is valid and is neither `main` nor `master`; it re-reads live identity, refreshes all app-bound trusted checks and Pullfrog review evidence, rejects unresolved human changes requests, and preserves the repository's merge-commit convention.
-- The mutation boundary builds a two-parent commit from the exact reviewed base and head, then submits one normal fast-forward Git receive-pack update to the literal `dev` ref with the reviewed base SHA as the command's old OID. The server rejects any intervening base change in that same ref-update transaction, concurrent retargeting cannot redirect the push, and neither force nor force-with-lease is used.
+- The coordinator carries its exact default/protected-ref policy into the digest-bound remediation claim, and the validator and publisher reuse it, so a newly eligible non-`dev` base cannot become an impossible post-provider destination.
+- The mutation boundary builds a two-parent commit from the exact reviewed base and head, then submits one normal fast-forward Git receive-pack update to the literal reviewed base ref with the reviewed base SHA as the command's old OID. The server rejects any intervening base change in that same ref-update transaction, concurrent retargeting cannot redirect the push, and neither force nor force-with-lease is used. Receive-pack ref names stay byte-preserving so unrelated legal Unicode refs cannot block the selected destination.
 - Because built-in-token pushes suppress ordinary push-triggered Actions runs, path-matched bounded dispatches replay only the existing `dev` cross-repository updater and reusable-ref synchronization workflows; any post-merge dispatch failure is persisted and fails visibly.
 - Force-push, force-with-lease, approval, Pullfrog-native auto-merge, merges to `main` or `master`, release, deployment, settings changes, branch deletion, elevated tokens, and credential/billing changes remain out of scope.
 

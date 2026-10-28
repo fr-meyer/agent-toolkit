@@ -24,12 +24,12 @@ HEAD_SHA = "2" * 40
 RESULT_SHA = "3" * 40
 
 
-def pull_request(head_sha=HEAD_SHA):
+def pull_request(head_sha=HEAD_SHA, base_ref="dev"):
     return {
         "number": 94,
         "state": "open",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "base": {"ref": "dev", "sha": BASE_SHA},
+        "base": {"ref": base_ref, "sha": BASE_SHA},
         "head": {
             "ref": "chore/pullfrog-full-automation",
             "sha": head_sha,
@@ -38,19 +38,27 @@ def pull_request(head_sha=HEAD_SHA):
     }
 
 
-def check(name, conclusion="success", app="pullfrog", check_id=100, suite_id=50):
+def check(
+    name,
+    conclusion="success",
+    app="pullfrog",
+    check_id=100,
+    suite_id=50,
+    head_sha=HEAD_SHA,
+):
     return {
         "id": check_id,
         "name": name,
         "status": "completed",
         "conclusion": conclusion,
-        "head_sha": HEAD_SHA,
+        "head_sha": head_sha,
         "app": {"slug": app},
         "check_suite": {"id": suite_id},
     }
 
 
-def remediation_receipt():
+def remediation_receipt(head_sha=HEAD_SHA, base_ref="dev"):
+    protected_refs = sorted({"dev", "main", base_ref})
     snapshot = {
         "schema": COORDINATOR.SNAPSHOT_SCHEMA,
         "repository_slug": "fr-meyer/agent-toolkit",
@@ -58,14 +66,14 @@ def remediation_receipt():
         "event": {
             "kind": "pullfrog_review_completed",
             "delivery_id": "check-run:100",
-            "head_sha": HEAD_SHA,
+            "head_sha": head_sha,
         },
-        "expected_pull_request": pull_request(),
-        "observed_pull_request": pull_request(),
+        "expected_pull_request": pull_request(head_sha, base_ref),
+        "observed_pull_request": pull_request(head_sha, base_ref),
         "reviews": [
             {
                 "id": 601,
-                "commit_id": HEAD_SHA,
+                "commit_id": head_sha,
                 "submitted_at": "2026-10-27T10:00:00Z",
                 "state": "COMMENTED",
                 "body": "PRIVATE REVIEW TEXT",
@@ -76,7 +84,7 @@ def remediation_receipt():
             {
                 "id": 701,
                 "pull_request_review_id": 601,
-                "commit_id": HEAD_SHA,
+                "commit_id": head_sha,
                 "path": "scripts/example.py",
                 "line": 12,
                 "body": "PRIVATE COMMENT TEXT",
@@ -85,15 +93,27 @@ def remediation_receipt():
         ],
         "files": [{"filename": "scripts/example.py"}],
         "check_runs": [
-            check("pullfrog", check_id=100),
-            check("pullfrog-approval", "failure", check_id=101),
-            check("ci-required", app="github-actions", check_id=102, suite_id=60),
-            check("speculoos", app="github-actions", check_id=103, suite_id=61),
+            check("pullfrog", check_id=100, head_sha=head_sha),
+            check("pullfrog-approval", "failure", check_id=101, head_sha=head_sha),
+            check(
+                "ci-required",
+                app="github-actions",
+                check_id=102,
+                suite_id=60,
+                head_sha=head_sha,
+            ),
+            check(
+                "speculoos",
+                app="github-actions",
+                check_id=103,
+                suite_id=61,
+                head_sha=head_sha,
+            ),
         ],
         "history": COORDINATOR._empty_history(),
         "policy": {
             "max_cycles": 3,
-            "protected_refs": ["dev", "main"],
+            "protected_refs": protected_refs,
             "ci_checks": [{"name": "ci-required", "app_slug": "github-actions"}],
             "speculoos_checks": [
                 {"name": "speculoos", "app_slug": "github-actions"}
@@ -125,6 +145,10 @@ def make_claim(source_head=HEAD_SHA, cycle=0, attempt=1, run_id="123"):
             "head_ref": "chore/pullfrog-full-automation",
             "head_sha": source_head,
             "head_repository_slug": "fr-meyer/agent-toolkit",
+        },
+        "destination_policy": {
+            "default_branch": "main",
+            "protected_refs": ["dev", "main"],
         },
         "review_id": 601 + cycle,
         "finding_count": 1,
@@ -944,6 +968,70 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
                 ).strip(),
                 "scripts/example.py",
             )
+
+    def test_non_dev_base_policy_reaches_claim_validator_and_publisher(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
+            )
+            (root / "scripts").mkdir()
+            source_file = root / "scripts/example.py"
+            source_file.write_text("value = 1\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            source = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=root, text=True
+            ).strip()
+
+            receipt = remediation_receipt(head_sha=source, base_ref="staging")
+            decision, claim = MODULE.prepare_claim(
+                receipt, empty_ledger(), run_id="123", run_attempt=1
+            )
+            self.assertEqual(decision["status"], "ready")
+            self.assertIsNotNone(claim)
+            assert claim is not None
+            self.assertEqual(
+                claim["destination_policy"],
+                {
+                    "default_branch": "main",
+                    "protected_refs": ["dev", "main", "staging"],
+                },
+            )
+
+            source_file.write_text("value = 2\n", encoding="utf-8")
+            raw_patch = subprocess.check_output(
+                [
+                    "git",
+                    "diff",
+                    "--binary",
+                    "--full-index",
+                    "--no-renames",
+                    source,
+                    "--",
+                ],
+                cwd=root,
+            )
+            subprocess.run(["git", "reset", "--hard", source], cwd=root, check=True)
+            candidate, sealed_patch = MODULE.prepare_candidate_from_patch(
+                claim=claim,
+                workspace=root,
+                action_outcome="success",
+                action_result_raw=action_result(claim),
+                raw_patch=raw_patch,
+                observed_identity=dict(claim["identity"]),
+            )
+            subprocess.run(["git", "reset", "--hard", source], cwd=root, check=True)
+            plan = MODULE.apply_candidate(
+                claim=claim,
+                candidate=candidate,
+                patch=sealed_patch,
+                workspace=root,
+            )
+            self.assertEqual(plan["source_head_sha"], source)
+            self.assertEqual(plan["destination_guard"]["status"], "allowed")
 
     def test_raw_provider_patch_cannot_touch_forbidden_paths(self):
         with tempfile.TemporaryDirectory() as temp_dir:

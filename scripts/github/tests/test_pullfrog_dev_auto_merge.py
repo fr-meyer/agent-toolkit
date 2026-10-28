@@ -550,6 +550,17 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+            subprocess.run(
+                [
+                    "git",
+                    "--git-dir",
+                    str(remote),
+                    "update-ref",
+                    "refs/heads/feat/café",
+                    base_sha,
+                ],
+                check=True,
+            )
 
             class LocalClient(MODULE.GitHubMergeClient):
                 def _repository_remote(self):
