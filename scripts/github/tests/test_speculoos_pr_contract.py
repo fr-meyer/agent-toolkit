@@ -156,6 +156,22 @@ class SpeculoosPrContractIntegrationTests(unittest.TestCase):
         report = MODULE.validate(self.args())
         self.assertIn("changed_files_match: packet=8 actual=9", report["blockers"])
 
+    def test_deleted_path_must_remain_in_inventory_and_documentation_impact(self):
+        packet = self.repo / f"specs/{TASK}/pr-body.md"
+        packet.write_text(
+            packet.read_text(encoding="utf-8")
+            .replace("- `README.md`\n", "")
+            .replace("Updated `README.md`.", "No documentation changes."),
+            encoding="utf-8",
+        )
+        (self.repo / "README.md").unlink()
+        self.git("add", "-A")
+        self.git("commit", "-qm", "delete documentation")
+        self.head_sha = self.git("rev-parse", "HEAD").strip()
+        report = MODULE.validate(self.args())
+        self.assertIn("changed_files_match: packet=8 actual=9", report["blockers"])
+        self.assertIn("documentation_impact: changed_docs=1", report["blockers"])
+
 
 if __name__ == "__main__":
     unittest.main()

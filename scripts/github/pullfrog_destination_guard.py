@@ -22,6 +22,21 @@ OWNER_RE = re.compile(r"^(?=.{1,39}$)(?!-)(?!.*--)[A-Za-z0-9-]+(?<!-)$")
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 ALLOWED_HEAD_PREFIXES = ("feat/", "fix/", "docs/", "test/", "chore/")
+PROTECTED_AUTOMATION_AUTHORITY_PATHS = frozenset(
+    {
+        "scripts/github/pullfrog_cloud_coordinator.py",
+        "scripts/github/pullfrog_cloud_remediation.py",
+        "scripts/github/pullfrog_cycle_contract.py",
+        "scripts/github/pullfrog_destination_guard.py",
+        "scripts/github/pullfrog_dev_auto_merge.py",
+        "scripts/github/speculoos_pr_contract.py",
+        "scripts/github/validate_pullfrog_workflow.sh",
+        "scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py",
+        "scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py",
+        "scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py",
+        "scripts/github/tests/test_pullfrog_workflow_policy.py",
+    }
+)
 FORBIDDEN_EXACT_PATHS = frozenset(
     {
         ".github/CODEOWNERS",
@@ -29,7 +44,7 @@ FORBIDDEN_EXACT_PATHS = frozenset(
         "templates/repo-workflow-materialization-manifest.json",
         "templates/workflow-ref-sync-manifest.json",
     }
-)
+) | PROTECTED_AUTOMATION_AUTHORITY_PATHS
 FORBIDDEN_PATH_PREFIXES = (
     ".github/actions/",
     ".github/workflows/",

@@ -8,6 +8,7 @@
 - add a repository-owned exact-head automatic merge gate for clean same-repository feature PRs targeting any valid base except `main` or `master`, while assigning no merge actor role to Pullfrog itself
 - complete Speculoos task `pullfrog-cloud-remediation-20261028`; feature PRs target `dev`, and release/promotion PRs target `main`
 - replace the unreachable private cross-repository Speculoos install with a repository-bound zero-secret contract validator that persists exact-head evidence without an additional credential
+- protect validator and controller authority from provider remediation at candidate sealing and publication, and include deleted paths in the exact publication inventory
 
 ## Changed Files For Publish
 
@@ -69,7 +70,7 @@ The operator-facing workflow and safety contract were updated in `README.md`, `d
 
 ## Validation
 
-- focused remediation and workflow-policy tests
+- focused remediation, validator-authority, deletion-inventory, and workflow-policy tests
 - checksum-verified actionlint over all Pullfrog workflow copies
 - full repository unit-test discovery
 - Python compile, JSON parsing, actionlint-backed workflow YAML validation, canonical/materialized byte identity, and `git diff --check`
@@ -78,7 +79,8 @@ The operator-facing workflow and safety contract were updated in `README.md`, `d
 
 ## Security Contract
 
-- The hosted Speculoos check executes only repository-reviewed source, fetches no private cross-repository package, receives no additional credential, and validates exact head/base identity, publication packet inventory, workflow materialization, merge actor policy, whitespace, and red-list token patterns.
+- The hosted Speculoos check executes only repository-reviewed source, fetches no private cross-repository package, receives no additional credential, and validates exact head/base identity, the complete publication packet inventory including deletions, workflow materialization, merge actor policy, whitespace, and red-list token patterns.
+- The destination guard blocks provider remediation from modifying the repository-owned controller, destination, remediation, auto-merge, Speculoos contract, shell validator, or executable workflow-policy test authority; candidate sealing and publication both re-run this policy before any push.
 
 - Pullfrog receives `id-token: write` for provider routing plus a job-scoped read-only GitHub token forced through `GH_TOKEN`, preventing its normal MCP write-token minting; `authorPermission: none` withholds gh and cross-run learning writes, while `push: disabled`, restricted shell, and no publication credential remain enforced.
 - A separate read-only validator starts from fresh trusted-controller and exact-source checkouts, treats all provider output as untrusted, rejects forbidden paths and gitlinks, and emits the only candidate and patch the publisher may consume.

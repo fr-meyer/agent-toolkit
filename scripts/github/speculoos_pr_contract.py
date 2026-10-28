@@ -112,7 +112,7 @@ def _packet_changed_files(text: str) -> list[str]:
 
 
 def _changed_files(repo: Path, base_ref: str) -> list[str]:
-    output = _git(repo, "diff", "--name-only", "--diff-filter=ACMR", f"origin/{base_ref}...HEAD").stdout
+    output = _git(repo, "diff", "--name-only", "--diff-filter=ACMRD", f"origin/{base_ref}...HEAD").stdout
     return sorted({line for line in output.splitlines() if line})
 
 

@@ -42,8 +42,12 @@ Automatic remediation cannot alter automation or governance authority. The guard
 - `.github/dependabot.yml`
 - `templates/repo-workflow-materialization-manifest.json`
 - `templates/workflow-ref-sync-manifest.json`
+- the repository-owned Pullfrog coordinator, cycle, destination, remediation, and auto-merge scripts under `scripts/github/`
+- `scripts/github/speculoos_pr_contract.py`
+- `scripts/github/validate_pullfrog_workflow.sh`
+- the four `test_pullfrog_*workflow_policy.py` files executed by that validator
 
-The coordinator must supply the current PR path set before remediation and the produced patch path set afterward. Empty, malformed, duplicated, absolute, parent-traversing, or over-large path sets fail closed.
+The coordinator must supply the current PR path set before remediation and the produced patch path set afterward. Candidate sealing and publication both re-run this policy, so provider output cannot replace the validator with an unconditional success or weaken its executable policy dependencies. Empty, malformed, duplicated, absolute, parent-traversing, or over-large path sets fail closed.
 
 ## Local validation
 

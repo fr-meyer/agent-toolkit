@@ -1077,6 +1077,106 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
                     observed_identity=dict(claim["identity"]),
                 )
 
+    def test_validator_authority_patch_is_rejected_before_sealing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
+            )
+            validator = root / "scripts/github/speculoos_pr_contract.py"
+            validator.parent.mkdir(parents=True)
+            validator.write_text("raise SystemExit(1)\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            source = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=root, text=True
+            ).strip()
+            claim = make_claim(source_head=source)
+            validator.write_text("raise SystemExit(0)\n", encoding="utf-8")
+            raw_patch = subprocess.check_output(
+                [
+                    "git",
+                    "diff",
+                    "--binary",
+                    "--full-index",
+                    "--no-renames",
+                    source,
+                    "--",
+                ],
+                cwd=root,
+            )
+            subprocess.run(["git", "reset", "--hard", source], cwd=root, check=True)
+            with self.assertRaisesRegex(
+                MODULE.RemediationError, "candidate_destination_blocked"
+            ):
+                MODULE.prepare_candidate_from_patch(
+                    claim=claim,
+                    workspace=root,
+                    action_outcome="success",
+                    action_result_raw=action_result(claim),
+                    raw_patch=raw_patch,
+                    observed_identity=dict(claim["identity"]),
+                )
+
+    def test_publisher_rechecks_validator_authority_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
+            )
+            validator = root / "scripts/github/speculoos_pr_contract.py"
+            validator.parent.mkdir(parents=True)
+            validator.write_text("raise SystemExit(1)\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            source = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=root, text=True
+            ).strip()
+            claim = make_claim(source_head=source)
+            validator.write_text("raise SystemExit(0)\n", encoding="utf-8")
+            patch = subprocess.check_output(
+                [
+                    "git",
+                    "diff",
+                    "--binary",
+                    "--full-index",
+                    "--no-renames",
+                    source,
+                    "--",
+                ],
+                cwd=root,
+            )
+            subprocess.run(["git", "reset", "--hard", source], cwd=root, check=True)
+            changed_paths = ["scripts/github/speculoos_pr_contract.py"]
+            candidate = {
+                "schema": MODULE.CANDIDATE_SCHEMA,
+                "run_id": claim["run_id"],
+                "attempt_id": claim["attempt_id"],
+                "claim_key": claim["claim_key"],
+                "cycle_number": claim["cycle_number"],
+                "attempt_number": claim["attempt_number"],
+                "source_head_sha": source,
+                "patch_digest": MODULE._bytes_digest(patch),
+                "patch_bytes": len(patch),
+                "changed_paths": changed_paths,
+                "changed_paths_digest": MODULE._digest(changed_paths),
+                "action_result_digest": "a" * 64,
+                "destination_guard": {"status": "allowed"},
+            }
+            with self.assertRaisesRegex(
+                MODULE.RemediationError, "publish_destination_blocked"
+            ):
+                MODULE.apply_candidate(
+                    claim=claim,
+                    candidate=candidate,
+                    patch=patch,
+                    workspace=root,
+                )
+
     def test_forbidden_post_patch_path_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
