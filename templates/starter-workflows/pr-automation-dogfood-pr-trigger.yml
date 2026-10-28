@@ -10,12 +10,17 @@ on:
       - reopened
     paths:
       - '.github/workflows/pr-automation-dogfood-*.yml'
+      - '.github/workflows/pullfrog*.yml'
       - 'templates/reusable-workflows/pr-automation-dogfood-reusable.yml'
       - 'templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml'
+      - 'templates/starter-workflows/pullfrog*.yml'
       - 'scripts/github/pr_automation_dogfood.py'
+      - 'scripts/github/pullfrog_*.py'
+      - 'scripts/github/validate_pullfrog_workflow.sh'
       - 'scripts/github/tests/**'
       - 'templates/repo-workflow-materialization-manifest.json'
       - 'docs/pr-automation-dogfood.md'
+      - 'docs/pullfrog*.md'
       - 'docs/github-actions-template-catalog.md'
       - 'docs/workflow-asset-library-layout.md'
       - 'README.md'

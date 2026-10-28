@@ -102,6 +102,9 @@
       "secrets_in_repo": false,
       "required_for_merge": true,
       "push_enabled": false,
+      "remediation_mode": "native_fix_review_local_candidate_only",
+      "candidate_validation": "fresh_read_only_job",
+      "trusted_publisher_status": "implemented_local_not_activated",
       "review_approval_enabled": false,
       "auto_merge_enabled": false
     },

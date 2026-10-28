@@ -1,0 +1,5 @@
+feat(github): add guarded Pullfrog remediation loop
+
+Implement native fix_review remediation with provider/validator/publisher credential isolation, durable exact-head claims, bounded retries and cycles, fresh-checkout candidate sealing, and one trusted fast-forward publication step.
+
+Task: pullfrog-cloud-remediation-20261028

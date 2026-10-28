@@ -9,8 +9,8 @@ repository:
 status:
   phase: implementation
   blocker_summary:
-    - Write-capable remediation remains disabled until this dry-run coordinator and the hosted event/evidence matrix pass.
-    - Pullfrog push, approval, CI autofix, auto-merge, release, deployment, branch deletion, credentials, billing, and hosted settings remain separately gated.
+    - The write-capable source is implemented locally; publication, serving-ref activation, and the first hosted write pilot require separate exact-SHA approval.
+    - Pullfrog provider push, approval, CI autofix, auto-merge, release, deployment, branch deletion, credentials, billing, and hosted settings remain disabled or separately gated.
 publication_policy:
   repository_visibility: shared-repository
   intended_public_visibility: public
@@ -31,10 +31,12 @@ review_policy:
     policy: primary
     evidence_source: exact-head Pullfrog review plus app-bound pullfrog and pullfrog-approval checks
     controls:
-      push: disabled
+      provider_push: disabled
+      candidate_validation: fresh_read_only_job
+      trusted_publisher: implemented_local_not_activated
       shell: restricted
       approval: disabled
-      remediation: disabled
+      remediation: native_fix_review_local_candidate_only
       ci_autofix: disabled
       auto_merge: disabled
   speculoos_evidence:
@@ -69,9 +71,9 @@ surfaces:
     status: planned
     base_branch: dev
     default_branch: main
-    head_branch: chore/pullfrog-cloud-coordinator-dry-run
+    head_branch: feat/pullfrog-write-capable-loop
     head_sha: null
-    head_sha_source: Local feature branch only; publication requires separate approval and live exact-head readback
+    head_sha_source: Local feature branch only; publication and activation require separate exact-SHA approval and live readback
     merge_commit: null
 gates:
   before_publish:
@@ -80,8 +82,10 @@ gates:
     - private-data-check-pass
     - review-policy-recorded
     - review-request-dry-run-pass
+    - write-capable-publication-explicit-approval
   after_publish:
     - exact-head-pullfrog-review-requested
     - exact-head-pullfrog-ci-speculoos-evidence
-current_task: pullfrog-cloud-coordinator-20261027
-current_task_metadata: .speculoos/tasks/pullfrog-cloud-coordinator-20261027.yaml
+    - hosted-write-pilot-separate-approval
+current_task: pullfrog-cloud-remediation-20261028
+current_task_metadata: .speculoos/tasks/pullfrog-cloud-remediation-20261028.yaml

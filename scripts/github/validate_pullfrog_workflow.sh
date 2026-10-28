@@ -28,7 +28,9 @@ tar -xzf "$tmp_dir/$archive_name" -C "$tmp_dir" actionlint
   "$repo_root/templates/starter-workflows/pullfrog.yml" \
   "$repo_root/.github/workflows/pullfrog.yml" \
   "$repo_root/templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml" \
-  "$repo_root/.github/workflows/pullfrog-cloud-coordinator-dry-run.yml"
+  "$repo_root/.github/workflows/pullfrog-cloud-coordinator-dry-run.yml" \
+  "$repo_root/templates/starter-workflows/pullfrog-cloud-remediation-loop.yml" \
+  "$repo_root/.github/workflows/pullfrog-cloud-remediation-loop.yml"
 
 python3 -m unittest discover \
   -s "$repo_root/scripts/github/tests" \

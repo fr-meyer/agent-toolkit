@@ -2,7 +2,7 @@
 
 This page preserves the original observational pilot boundary. The current target architecture now uses Pullfrog as the sole AI reviewer and intended fixer, with a thin provider-free GitHub Actions coordinator for the unattended review, remediation, and exact-head re-review loop. Mergeguez is not a reviewer in that target architecture; it retains only separately approved branch-publication and human-authorized merge execution duties.
 
-The committed Pullfrog entrypoint remains non-pushing while the coordinator is in dry-run mode. Independent Speculoos evidence and explicit human merge authority remain required. See `docs/pullfrog-cloud-coordinator.md` for the current state machine and activation gates.
+The original Pullfrog review entrypoint remains non-pushing. A separate write-capable workflow is now implemented with provider/publisher credential isolation, but it is not remotely activated or pilot-accepted. Independent Speculoos evidence and explicit human merge authority remain required. See `docs/pullfrog-cloud-coordinator.md` for the current state machine and activation gates.
 
 ## Historical publication evidence
 

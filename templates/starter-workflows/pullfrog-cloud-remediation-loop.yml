@@ -1,0 +1,638 @@
+# Managed by templates/repo-workflow-materialization-manifest.json.
+# Edit templates/starter-workflows/pullfrog-cloud-remediation-loop.yml, then rematerialize the live workflow.
+name: Pullfrog cloud remediation loop
+run-name: Pullfrog remediation · ${{ github.event_name }} · ${{ github.run_id }}
+
+on:
+  check_run:
+    types:
+      - completed
+  workflow_run:
+    workflows:
+      - PR automation dogfood
+      - Speculoos
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Open pull request number
+        required: true
+        type: number
+      expected_head_sha:
+        description: Exact 40-character pull request head SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: >-
+    pullfrog-cloud-remediation-${{ github.repository_id }}-${{
+      inputs.pr_number ||
+      github.event.check_run.pull_requests[0].number ||
+      github.event.workflow_run.pull_requests[0].number ||
+      github.event.check_run.check_suite.head_branch ||
+      github.event.workflow_run.head_branch ||
+      github.run_id
+    }}
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    name: Claim exact-head remediation
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'workflow_run' ||
+      (github.event_name == 'check_run' &&
+       github.event.check_run.app.slug == 'pullfrog' &&
+       (github.event.check_run.name == 'pullfrog' ||
+        github.event.check_run.name == 'pullfrog-approval'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: read
+    outputs:
+      ready: ${{ steps.claim.outputs.ready }}
+      status: ${{ steps.claim.outputs.status }}
+      reason: ${{ steps.claim.outputs.reason }}
+      pr_number: ${{ steps.claim.outputs.pr_number }}
+      source_head_sha: ${{ steps.claim.outputs.source_head_sha }}
+      attempt_number: ${{ steps.claim.outputs.attempt_number }}
+      claim_artifact: ${{ steps.claim.outputs.claim_artifact }}
+      dispatch_artifact: ${{ steps.claim.outputs.dispatch_artifact }}
+
+    steps:
+      - name: Checkout trusted coordinator source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Resolve bounded event context
+        id: context
+        shell: bash
+        env:
+          DISPATCH_PR_NUMBER: ${{ inputs.pr_number }}
+          DISPATCH_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/pullfrog-remediation/evaluate
+          python scripts/github/pullfrog_cloud_coordinator.py resolve-event \
+            --event "$GITHUB_EVENT_PATH" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --dispatch-pr-number "$DISPATCH_PR_NUMBER" \
+            --dispatch-head-sha "$DISPATCH_HEAD_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --github-output "$GITHUB_OUTPUT" \
+            --failure-receipt artifacts/pullfrog-remediation/evaluate/coordinator.json
+
+      - name: Load trusted hosted history
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_cloud_remediation.py load-history
+          --repository "$GITHUB_REPOSITORY"
+          --pr-number "${{ steps.context.outputs.pr_number }}"
+          --out artifacts/pullfrog-remediation/evaluate/ledger.json
+
+      - name: Evaluate exact-head evidence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_cloud_coordinator.py evaluate-github
+          --repository "$GITHUB_REPOSITORY"
+          --pr-number "${{ steps.context.outputs.pr_number }}"
+          --expected-head-sha "${{ steps.context.outputs.expected_head_sha }}"
+          --event-kind "${{ steps.context.outputs.event_kind }}"
+          --delivery-id "${{ steps.context.outputs.delivery_id }}"
+          --protected-ref dev
+          --protected-ref main
+          --ci-check 'dogfood / Provider-free PR automation contract=github-actions'
+          --speculoos-check 'speculoos=github-actions'
+          --history artifacts/pullfrog-remediation/evaluate/ledger.json
+          --out artifacts/pullfrog-remediation/evaluate/coordinator.json
+
+      - name: Mint durable idempotent claim
+        id: claim
+        continue-on-error: true
+        run: >-
+          python scripts/github/pullfrog_cloud_remediation.py prepare-claim
+          --receipt artifacts/pullfrog-remediation/evaluate/coordinator.json
+          --ledger artifacts/pullfrog-remediation/evaluate/ledger.json
+          --run-id "$GITHUB_RUN_ID"
+          --run-attempt "$GITHUB_RUN_ATTEMPT"
+          --decision-out artifacts/pullfrog-remediation/evaluate/claim-decision.json
+          --claim-out artifacts/pullfrog-remediation/claim/claim.json
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Seal native fix-review dispatch with the durable claim
+        if: steps.claim.outputs.ready == 'true'
+        run: >-
+          python scripts/github/pullfrog_cloud_remediation.py build-payload
+          --claim artifacts/pullfrog-remediation/claim/claim.json
+          --payload-out artifacts/pullfrog-remediation/claim/payload.json
+
+      - name: Persist claim before provider invocation
+        if: steps.claim.outputs.ready == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.claim.outputs.claim_artifact }}
+          path: artifacts/pullfrog-remediation/claim/claim.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Persist transient sealed dispatch
+        if: steps.claim.outputs.ready == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.claim.outputs.dispatch_artifact }}
+          path: artifacts/pullfrog-remediation/claim/payload.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Persist sanitized evaluation receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-remediation-evaluation-${{ github.run_id }}
+          path: |
+            artifacts/pullfrog-remediation/evaluate/coordinator.json
+            artifacts/pullfrog-remediation/evaluate/claim-decision.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Enforce fail-closed claim preparation
+        if: steps.claim.outcome == 'failure'
+        run: exit 1
+
+  remediate:
+    name: Pullfrog read-only local remediation
+    needs: evaluate
+    if: needs.evaluate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      pull-requests: read
+
+    steps:
+      - name: Download durable claim and sealed native dispatch
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.evaluate.outputs.claim_artifact }}
+          path: artifacts/pullfrog-remediation/claim
+
+      - name: Download transient sealed native dispatch
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.evaluate.outputs.dispatch_artifact }}
+          path: artifacts/pullfrog-remediation/claim
+
+      - name: Checkout exact untrusted pull request head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.evaluate.outputs.source_head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: remediation-worktree
+
+      - name: Re-read exact head immediately before Pullfrog
+        id: verify
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import urllib.request
+          from pathlib import Path
+
+          claim = json.loads(
+              Path("artifacts/pullfrog-remediation/claim/claim.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          expected = claim["identity"]
+          request = urllib.request.Request(
+              f"{os.environ.get('GITHUB_API_URL', 'https://api.github.com')}/repos/"
+              f"{expected['repository_slug']}/pulls/{expected['pr_number']}",
+              headers={
+                  "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              pull = json.load(response)
+          observed = {
+              "repository_slug": os.environ["GITHUB_REPOSITORY"],
+              "pr_number": pull["number"],
+              "base_ref": pull["base"]["ref"],
+              "base_sha": pull["base"]["sha"],
+              "head_ref": pull["head"]["ref"],
+              "head_sha": pull["head"]["sha"],
+              "head_repository_slug": pull["head"]["repo"]["full_name"],
+          }
+          if pull["state"] != "open" or observed != expected:
+              raise SystemExit("exact_head_drift")
+          local_head = subprocess.check_output(
+              ["/usr/bin/git", "-C", "remediation-worktree", "rev-parse", "HEAD"],
+              text=True,
+          ).strip()
+          if local_head != expected["head_sha"]:
+              raise SystemExit("local_checkout_drift")
+          PY
+
+      - name: Load sealed Pullfrog dispatch
+        id: dispatch
+        if: steps.verify.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = Path(
+              "artifacts/pullfrog-remediation/claim/payload.json"
+          ).read_text(encoding="utf-8").strip()
+          value = json.loads(payload)
+          if value.get("type") != "fix_review" or value.get("event", {}).get("trigger") != "fix_review":
+              raise SystemExit("invalid_fix_review_payload")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"payload={payload}\n")
+          PY
+
+      - name: Run Pullfrog without remote write authority
+        id: pullfrog
+        if: >-
+          steps.verify.outcome == 'success' &&
+          steps.dispatch.outcome == 'success'
+        continue-on-error: true
+        env:
+          # Pullfrog otherwise mints a separate contents/pull-requests write
+          # installation token for its MCP tools, even when push is disabled.
+          # Reusing this job token keeps hosted review/comment and repository
+          # writes mechanically unavailable while preserving provider OIDC.
+          GH_TOKEN: ${{ github.token }}
+        uses: pullfrog/pullfrog@25a837a2b078177c3acdce790506d1fd1acedd82 # v0.1.102
+        with:
+          prompt: ${{ steps.dispatch.outputs.payload }}
+          timeout: 15m
+          cwd: remediation-worktree
+          push: disabled
+          shell: restricted
+          progress_comments: disabled
+          output_schema: >-
+            {"type":"object","additionalProperties":false,"required":["schema","status","source_head_sha","review_id","tests_passed"],"properties":{"schema":{"const":"pullfrog-remediation-action-result.v1"},"status":{"enum":["local_changes_ready","no_changes","stale_head","tests_failed"]},"source_head_sha":{"type":"string","pattern":"^[0-9a-f]{40}$"},"review_id":{"type":"integer","minimum":1},"tests_passed":{"type":"boolean"}}}
+
+      - name: Capture untrusted provider output
+        if: always()
+        continue-on-error: true
+        env:
+          SOURCE_HEAD_SHA: ${{ needs.evaluate.outputs.source_head_sha }}
+          PULLFROG_ACTION_OUTCOME: ${{ steps.pullfrog.outcome }}
+          PULLFROG_ACTION_RESULT: ${{ steps.pullfrog.outputs.result }}
+          PRE_PROVIDER_OUTCOME: ${{ steps.verify.outcome }}
+          DISPATCH_OUTCOME: ${{ steps.dispatch.outcome }}
+          GIT_CONFIG_NOSYSTEM: '1'
+          GIT_CONFIG_SYSTEM: /dev/null
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_CONFIG_COUNT: '0'
+          GIT_NO_REPLACE_OBJECTS: '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+          unset GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+          rm -rf artifacts/pullfrog-remediation/raw
+          mkdir -p artifacts/pullfrog-remediation/raw
+          : > artifacts/pullfrog-remediation/raw/remediation.patch
+          if [[ "$PRE_PROVIDER_OUTCOME" == "success" && -d remediation-worktree/.git ]]; then
+            python3 - <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+
+          root = "remediation-worktree"
+          git_dir = Path(root) / ".git"
+          config = git_dir / "config"
+          if git_dir.is_symlink() or not git_dir.is_dir() or config.is_symlink():
+              raise SystemExit("unsafe_provider_git_directory")
+          temporary = git_dir / "config.capture"
+          temporary.write_text(
+              "[core]\n"
+              "\trepositoryformatversion = 0\n"
+              "\tfilemode = true\n"
+              "\tbare = false\n"
+              "\thooksPath = /dev/null\n"
+              "\tfsmonitor = false\n",
+              encoding="utf-8",
+          )
+          os.replace(temporary, config)
+          (git_dir / "config.worktree").unlink(missing_ok=True)
+          subprocess.run(
+              ["/usr/bin/git", "-C", root, "reset", "--mixed", os.environ["SOURCE_HEAD_SHA"]],
+              check=True,
+          )
+          raw = subprocess.check_output(
+              ["/usr/bin/git", "-C", root, "ls-files", "--others", "--exclude-standard", "-z"]
+          )
+          paths = [os.fsdecode(item) for item in raw.split(b"\0") if item]
+          for offset in range(0, len(paths), 100):
+              subprocess.run(
+                  ["/usr/bin/git", "-C", root, "add", "-N", "--", *paths[offset : offset + 100]],
+                  check=True,
+              )
+          PY
+            /usr/bin/git -C remediation-worktree \
+              -c core.hooksPath=/dev/null \
+              diff --no-ext-diff --no-textconv --binary --full-index --no-renames \
+              "$SOURCE_HEAD_SHA" -- > artifacts/pullfrog-remediation/raw/remediation.patch
+          fi
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path("artifacts/pullfrog-remediation/raw")
+          outcome = os.environ.get("PULLFROG_ACTION_OUTCOME", "")
+          result = os.environ.get("PULLFROG_ACTION_RESULT", "")
+          if (
+              os.environ.get("PRE_PROVIDER_OUTCOME") != "success"
+              or os.environ.get("DISPATCH_OUTCOME") != "success"
+          ):
+              outcome = "pre_provider_failed"
+          if len(result.encode("utf-8")) > 32 * 1024:
+              outcome = "action_result_too_large"
+              result = ""
+          patch = root / "remediation.patch"
+          if patch.stat().st_size > 4 * 1024 * 1024:
+              outcome = "candidate_patch_too_large"
+              patch.write_bytes(b"")
+          (root / "action-outcome.txt").write_text(outcome + "\n", encoding="utf-8")
+          (root / "action-result.json").write_text(result, encoding="utf-8")
+          PY
+
+      - name: Persist untrusted provider bundle
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-remediation-raw-pr-${{ needs.evaluate.outputs.pr_number }}-${{ github.run_id }}-a${{ needs.evaluate.outputs.attempt_number }}
+          path: artifacts/pullfrog-remediation/raw/
+          if-no-files-found: error
+          retention-days: 7
+
+  validate:
+    name: Validate and seal local candidate
+    needs:
+      - evaluate
+      - remediate
+    if: >-
+      always() &&
+      needs.evaluate.outputs.ready == 'true' &&
+      needs.remediate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      ready: ${{ steps.candidate.outputs.ready }}
+      candidate_artifact: ${{ steps.candidate.outputs.candidate_artifact }}
+      terminal_artifact: ${{ steps.candidate.outputs.terminal_artifact }}
+
+    steps:
+      - name: Checkout fresh trusted coordinator source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Download durable claim
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.evaluate.outputs.claim_artifact }}
+          path: artifacts/pullfrog-remediation/claim
+
+      - name: Download untrusted provider bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pullfrog-remediation-raw-pr-${{ needs.evaluate.outputs.pr_number }}-${{ github.run_id }}-a${{ needs.evaluate.outputs.attempt_number }}
+          path: artifacts/pullfrog-remediation/raw
+
+      - name: Checkout fresh exact source for validation
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.evaluate.outputs.source_head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: validation-worktree
+
+      - name: Re-read exact head and seal trusted candidate
+        id: candidate
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_cloud_remediation.py validate-candidate
+          --claim artifacts/pullfrog-remediation/claim/claim.json
+          --workspace validation-worktree
+          --action-outcome-file artifacts/pullfrog-remediation/raw/action-outcome.txt
+          --action-result-file artifacts/pullfrog-remediation/raw/action-result.json
+          --raw-patch artifacts/pullfrog-remediation/raw/remediation.patch
+          --candidate-out artifacts/pullfrog-remediation/candidate/candidate.json
+          --patch-out artifacts/pullfrog-remediation/bundle/remediation.patch
+          --terminal-out artifacts/pullfrog-remediation/terminal/terminal.json
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Persist sanitized candidate record
+        if: steps.candidate.outputs.ready == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.candidate.outputs.candidate_artifact }}
+          path: artifacts/pullfrog-remediation/candidate/candidate.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Persist sealed patch bundle
+        if: steps.candidate.outputs.ready == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-remediation-bundle-pr-${{ needs.evaluate.outputs.pr_number }}-${{ github.run_id }}-a${{ needs.evaluate.outputs.attempt_number }}
+          path: artifacts/pullfrog-remediation/bundle/remediation.patch
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Persist provider or candidate failure
+        if: always() && steps.candidate.outputs.ready != 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-remediation-terminal-pr-${{ needs.evaluate.outputs.pr_number }}-${{ github.run_id }}-a${{ needs.evaluate.outputs.attempt_number }}
+          path: artifacts/pullfrog-remediation/terminal/terminal.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce candidate validation
+        if: always() && steps.candidate.outputs.ready != 'true'
+        run: exit 1
+
+  publish:
+    name: Guarded exact-head publish
+    needs:
+      - evaluate
+      - validate
+    if: >-
+      needs.evaluate.outputs.ready == 'true' &&
+      needs.validate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: read
+
+    steps:
+      - name: Checkout trusted coordinator source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Download durable claim
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.evaluate.outputs.claim_artifact }}
+          path: artifacts/pullfrog-remediation/claim
+
+      - name: Download sanitized candidate record
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.validate.outputs.candidate_artifact }}
+          path: artifacts/pullfrog-remediation/candidate
+
+      - name: Download sealed patch bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pullfrog-remediation-bundle-pr-${{ needs.evaluate.outputs.pr_number }}-${{ github.run_id }}-a${{ needs.evaluate.outputs.attempt_number }}
+          path: artifacts/pullfrog-remediation/bundle
+
+      - name: Checkout exact source with publication credential
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.evaluate.outputs.source_head_sha }}
+          fetch-depth: 0
+          persist-credentials: true
+          path: publish-worktree
+
+      - name: Re-read exact head before applying candidate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_cloud_remediation.py verify-head
+          --claim artifacts/pullfrog-remediation/claim/claim.json
+
+      - name: Apply, re-guard, and create one local commit
+        id: apply
+        continue-on-error: true
+        run: >-
+          python scripts/github/pullfrog_cloud_remediation.py apply-candidate
+          --claim artifacts/pullfrog-remediation/claim/claim.json
+          --candidate artifacts/pullfrog-remediation/candidate/candidate.json
+          --patch artifacts/pullfrog-remediation/bundle/remediation.patch
+          --workspace publish-worktree
+          --plan-out artifacts/pullfrog-remediation/publish/plan.json
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Re-read exact head immediately before compare-and-swap
+        if: steps.apply.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_cloud_remediation.py verify-head
+          --claim artifacts/pullfrog-remediation/claim/claim.json
+
+      - name: Push one fast-forward commit to the exact PR branch
+        id: push
+        if: steps.apply.outcome == 'success'
+        continue-on-error: true
+        working-directory: publish-worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/${{ steps.apply.outputs.head_ref }}"
+
+      - name: Verify publish and write terminal receipt
+        id: terminal
+        if: always() && steps.apply.outcome == 'success'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_cloud_remediation.py complete-publish
+          --claim artifacts/pullfrog-remediation/claim/claim.json
+          --candidate artifacts/pullfrog-remediation/candidate/candidate.json
+          --plan artifacts/pullfrog-remediation/publish/plan.json
+          --push-outcome "${{ steps.push.outcome }}"
+          --terminal-out artifacts/pullfrog-remediation/terminal/terminal.json
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Record pre-push validation failure
+        if: always() && steps.apply.outcome != 'success'
+        run: >-
+          python scripts/github/pullfrog_cloud_remediation.py record-failure
+          --claim artifacts/pullfrog-remediation/claim/claim.json
+          --status publish_failed
+          --code candidate_apply_failed
+          --terminal-out artifacts/pullfrog-remediation/terminal/terminal.json
+
+      - name: Persist terminal receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-remediation-terminal-pr-${{ needs.evaluate.outputs.pr_number }}-${{ github.run_id }}-a${{ needs.evaluate.outputs.attempt_number }}
+          path: artifacts/pullfrog-remediation/terminal/terminal.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish sanitized terminal summary
+        if: always()
+        run: >-
+          python scripts/github/pullfrog_cloud_remediation.py summarize
+          --receipt artifacts/pullfrog-remediation/terminal/terminal.json
+          --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce exact-head publication result
+        if: always() && (steps.apply.outcome != 'success' || steps.terminal.outcome != 'success')
+        run: exit 1

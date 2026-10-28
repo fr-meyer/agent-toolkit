@@ -570,6 +570,34 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 - This dry-run surface does not persist production claim history or invoke remediation. Hosted history recovery, post-patch guard enforcement, and one bounded write pilot remain separate gates.
 - See `docs/pullfrog-cloud-coordinator.md` for the state machine, receipt contract, and activation boundary.
 
+---
+
+## 15. Pullfrog cloud remediation loop
+
+- **Type:** starter workflow
+- **Canonical source:** `templates/starter-workflows/pullfrog-cloud-remediation-loop.yml`
+- **Live/runtime copy in this repo:** `.github/workflows/pullfrog-cloud-remediation-loop.yml`
+- **Governed by:**
+  - source in `templates/repo-workflow-materialization-manifest.json`
+- **Purpose:**
+  - run native Pullfrog `fix_review` remediation without giving the provider a repository write token
+  - persist exact-head claims before execution and reconstruct bounded retry/cycle history from trusted workflow artifacts
+  - treat provider output as untrusted, rebuild and seal it in a fresh read-only validation job, then publish it through a separate trusted compare-and-swap job
+  - let each successful commit trigger fresh Pullfrog, CI, and Speculoos evidence for the next bounded cycle
+
+### Security boundary
+- provider job: `id-token: write` for provider routing, `contents: read`, `pull-requests: read`, and the built-in read token mapped as `GH_TOKEN` so Pullfrog cannot mint its normal write-capable MCP token; Pullfrog also uses `push: disabled`, restricted shell, `authorPermission: none` to withhold gh and learning writes, and no provider-secret mapping
+- validator job: read-only permissions, a fresh trusted controller checkout, and a fresh exact-source checkout; it alone converts the untrusted provider bundle into a canonical digest-bound candidate
+- publisher job: one built-in-token `contents: write` permission, no provider identity token, one normal fast-forward push to the exact same-repository PR head
+- the durable claim artifact contains only `claim.json`, while the sealed dispatch is a separate transient artifact; claim, candidate, publish plan, patch, changed paths, source/result heads, and pushed terminal evidence are schema-validated and mutually digest-bound
+- forks, protected/default/base refs, stale or reused heads, workflow/governance paths, malformed history, repeated findings, unchanged output, and no-progress states fail closed
+- no force-push, approval, merge, auto-merge, release, deployment, settings change, branch deletion, or elevated token
+
+### Notes
+- Pullfrog `v0.1.102` receives the native dispatch envelope through the exact `prompt` input. `prompt_file` is deliberately not used because Pullfrog treats it as plain text and would discard the `fix_review` event contract.
+- Source availability is not activation authority. Publishing the exact local commit, activating the workflow on a serving ref, and running the first hosted write pilot each remain separately gated.
+- See `docs/pullfrog-cloud-coordinator.md` for the credential split, ledger recovery rules, cycle contract, and hosted acceptance boundary.
+
 ## Live runtime copies in this repo
 
 These files exist under `.github/workflows/` and should not be treated as the primary authoring location:
@@ -585,6 +613,7 @@ These files exist under `.github/workflows/` and should not be treated as the pr
 - `.github/workflows/pr-automation-dogfood-pr-trigger.yml`
 - `.github/workflows/pullfrog.yml`
 - `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml`
+- `.github/workflows/pullfrog-cloud-remediation-loop.yml`
 
 Their canonical sources are:
 - `templates/reusable-workflows/coderabbit-pr-automation.yml`
@@ -599,6 +628,7 @@ Their canonical sources are:
 - `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml`
 - `templates/starter-workflows/pullfrog.yml`
 - `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml`
+- `templates/starter-workflows/pullfrog-cloud-remediation-loop.yml`
 
 ## Maintenance rule for this catalog
 

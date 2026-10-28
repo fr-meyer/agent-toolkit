@@ -27,6 +27,25 @@ The workflow reads GitHub state with only `checks: read`, `contents: read`, and 
 
 A receipt can report `would_action: start_remediation`, but it always records `executed_action: none` and every mutation flag as `false`.
 
+## Write-capable implementation, not yet activated
+
+The repository now also contains the separately gated implementation of the unattended mutation stage:
+
+- trusted remediation controller: `scripts/github/pullfrog_cloud_remediation.py`
+- canonical workflow: `templates/starter-workflows/pullfrog-cloud-remediation-loop.yml`
+- live materialized copy: `.github/workflows/pullfrog-cloud-remediation-loop.yml`
+
+This source is implemented and locally validated, but publication, default-branch activation, and the first hosted write pilot remain separately authorization-gated. Merely preparing or committing this branch does not authorize a hosted run.
+
+The workflow has four permission-separated jobs:
+
+1. **Evaluate and claim** uses read-only GitHub permissions. It reloads bounded, workflow-bound artifact history, evaluates fresh exact-head Pullfrog/CI/Speculoos evidence, uploads a durable idempotent claim before provider invocation, and uploads the sealed native dispatch as a separate transient artifact. Keeping `claim.json` as the durable claim artifact's only file preserves deterministic ledger reconstruction.
+2. **Remediate locally** has `id-token: write` for provider routing but only the job-scoped read token for GitHub. The workflow maps that built-in token as `GH_TOKEN`, forcing Pullfrog to reuse it instead of minting its normal write-capable MCP installation token. It sends Pullfrog `v0.1.102` the native `fix_review` dispatch envelope (`issue_number`, exact `review_id`, `approved_only: false`, and `authorPermission: none`) through the exact `prompt` input. Pullfrog has `push: disabled`, `shell: restricted`, progress comments disabled, no gh CLI token or cross-run learning writes, and no content, pull-request, check, action-dispatch, or publication write authority. This job exports only untrusted action output and an untrusted raw patch.
+3. **Validate and seal** starts in a separate read-only job with a fresh trusted default-branch controller checkout and a fresh exact-source checkout. It re-reads the live PR identity, parses the bounded structured result, applies the raw provider patch to the fresh source, rejects forbidden paths and gitlinks, and emits a canonical digest-bound patch plus candidate record. Provider processes and modified provider-job files cannot cross this job boundary.
+4. **Publish** has the built-in job token's one bounded `contents: write` authority but no provider identity token. It reloads the claim and sealed candidate, re-reads the PR identity, reapplies and re-guards the patch, creates one commit, re-reads the exact head immediately before a normal fast-forward push, and verifies the resulting PR head before recording a terminal receipt. The publish plan and terminal are mutually bound to the exact claim, candidate digest, patch digest, changed-path digest, source head, and resulting head.
+
+Provider execution, trusted validation, and publication credentials therefore never coexist. Even if the native AddressReviews path attempts a reply, resolution, status, dispatch, approval, or push, the provider phase's job token cannot authorize it. The workflow cannot approve, merge, release, deploy, change settings, delete a branch, force-push, or use `force-with-lease`.
+
 ## Trigger and concurrency model
 
 The dry-run workflow evaluates after:
@@ -37,7 +56,7 @@ The dry-run workflow evaluates after:
 
 The concurrency key is repository plus expected head SHA. Runs for the same head are serialized rather than cancelled. Duplicate and superseding delivery safety comes from the exact-head claim contract, current-state re-read, app-bound latest-check selection, and completed-claim history input.
 
-The hosted dry-run does not yet persist production claim history. The deterministic evaluator accepts and validates that history so the hosted acceptance matrix can prove duplicate, repeated-finding, unchanged-output, unchanged-head, and three-cycle terminal behavior before mutation is enabled.
+The hosted dry-run does not persist production claim history. The write-capable workflow persists single-record claim, candidate, and terminal artifacts plus separately retained transient dispatch and patch artifacts. It reconstructs only artifacts whose run belongs to the exact workflow path, validates every record against its claim, requires every pushed terminal to match a stored candidate and sealed publish-plan digests, and derives a retryable failure only when a completed failed/cancelled/timed-out run proves that no publication occurred. An unresolved claim with possible head movement remains orphaned and blocks rather than guessing.
 
 ## Read-only collection
 
@@ -97,7 +116,7 @@ A stopped receipt is uploaded first, then the workflow exits nonzero so failure 
 
 ## Activation boundary
 
-Dry-run publication does not authorize remediation. Before any write-capable workflow is enabled, a separate approval and hosted acceptance must prove:
+Dry-run publication and the local write-capable implementation do not authorize remediation. Before the write-capable workflow is published to an active serving ref or manually dispatched, a separate exact-SHA approval and hosted acceptance must prove:
 
 1. exact-head event, review, CI, Speculoos, and destination binding;
 2. durable claim-history recovery and duplicate delivery handling;
@@ -106,15 +125,18 @@ Dry-run publication does not authorize remediation. Before any write-capable wor
 5. fresh Pullfrog review and independent checks after the produced commit;
 6. stop behavior for no progress, repeated findings, failed/cancelled/timed-out evidence, head/base drift, forbidden paths, and cycle exhaustion.
 
-Pullfrog approval and auto-merge remain disabled. Every merge remains separately human-authorized.
+Pullfrog approval and auto-merge remain disabled. The remediation job forces Pullfrog to reuse a built-in token with read-only content and pull-request permissions and no checks or actions write permission, while `authorPermission: none` withholds the gh CLI token, forces push off, and locks cross-run learnings. Its best-effort post-fix approval, thread, comment, status, and redispatch paths therefore cannot mutate repository-hosted state. Every merge remains separately human-authorized.
 
 ## Local validation
 
 ```bash
 python3 -m unittest scripts/github/tests/test_pullfrog_cloud_coordinator.py -v
 python3 -m unittest scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py -v
+python3 -m unittest scripts/github/tests/test_pullfrog_cloud_remediation.py -v
+python3 -m unittest scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py -v
 python3 -m py_compile \
   scripts/github/pullfrog_cloud_coordinator.py \
+  scripts/github/pullfrog_cloud_remediation.py \
   scripts/github/pullfrog_cycle_contract.py \
   scripts/github/pullfrog_destination_guard.py
 scripts/github/validate_pullfrog_workflow.sh
