@@ -1,4 +1,5 @@
-# Bootstrap default-branch entrypoint; canonical source currently lives on dev.
+# Managed by templates/repo-workflow-materialization-manifest.json.
+# Edit templates/starter-workflows/pullfrog.yml, then rematerialize the live workflow.
 name: Pullfrog
 run-name: ${{ inputs.name || github.workflow }}
 
