@@ -5,15 +5,65 @@
 - persist single-record identity-bound claim, candidate, and terminal artifacts, with the sealed dispatch kept separate, at most three cycles, and three per-head attempts
 - rebuild untrusted provider patches in a fresh read-only validation job, then publish only the canonical sealed patch through a separate trusted exact-head fast-forward job
 - preserve independent CI/Speculoos evidence and human-only approval and stable-branch merge authority
-- add a repository-owned exact-head automatic merge gate for clean same-repository feature PRs targeting any valid base except `main` or `master`, while keeping Pullfrog-native auto-merge disabled
+- add a repository-owned exact-head automatic merge gate for clean same-repository feature PRs targeting any valid base except `main` or `master`, while assigning no merge actor role to Pullfrog itself
+- complete Speculoos task `pullfrog-cloud-remediation-20261028`; feature PRs target `dev`, and release/promotion PRs target `main`
 
 ## Changed Files For Publish
 
-- remediation controller and focused tests under `scripts/github/`
-- canonical and materialized remediation workflow
-- checksum-verified actionlint validation coverage
-- workflow materialization manifest, catalog, layout, and coordinator documentation
-- Speculoos goal, task, actor/reviewer policy, evidence declarations, and publication metadata
+- `.github/workflows/pr-automation-dogfood-pr-trigger.yml`
+- `.github/workflows/pr-automation-dogfood-reusable.yml`
+- `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml`
+- `.github/workflows/pullfrog-cloud-remediation-loop.yml`
+- `.github/workflows/speculoos.yml`
+- `.speculoos/actors.json`
+- `.speculoos/goal.md`
+- `.speculoos/manifest.yaml`
+- `.speculoos/publish-policy.yaml`
+- `.speculoos/review-evidence.json`
+- `.speculoos/tasks/pullfrog-cloud-coordinator-20261027.yaml`
+- `.speculoos/tasks/pullfrog-cloud-cycle-contract-20261027.yaml`
+- `.speculoos/tasks/pullfrog-cloud-remediation-20261028.yaml`
+- `.speculoos/tasks/pullfrog-destination-guard-20261027.yaml`
+- `README.md`
+- `docs/github-actions-template-catalog.md`
+- `docs/pr-automation-dogfood.md`
+- `docs/pullfrog-cloud-coordinator.md`
+- `docs/pullfrog-cycle-contract.md`
+- `docs/pullfrog-destination-guard.md`
+- `docs/pullfrog-review-only-pilot.md`
+- `docs/workflow-asset-library-layout.md`
+- `scripts/github/pullfrog_cloud_coordinator.py`
+- `scripts/github/pullfrog_cloud_remediation.py`
+- `scripts/github/pullfrog_cycle_contract.py`
+- `scripts/github/pullfrog_destination_guard.py`
+- `scripts/github/pullfrog_dev_auto_merge.py`
+- `scripts/github/tests/test_pullfrog_cloud_coordinator.py`
+- `scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py`
+- `scripts/github/tests/test_pullfrog_cloud_remediation.py`
+- `scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py`
+- `scripts/github/tests/test_pullfrog_cycle_contract.py`
+- `scripts/github/tests/test_pullfrog_destination_guard.py`
+- `scripts/github/tests/test_pullfrog_dev_auto_merge.py`
+- `scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py`
+- `scripts/github/validate_pullfrog_workflow.sh`
+- `specs/pullfrog-cloud-coordinator-20261027/commit-message.txt`
+- `specs/pullfrog-cloud-coordinator-20261027/pr-body.md`
+- `specs/pullfrog-cloud-cycle-contract-20261027/commit-message.txt`
+- `specs/pullfrog-cloud-cycle-contract-20261027/pr-body.md`
+- `specs/pullfrog-cloud-remediation-20261028/commit-message.txt`
+- `specs/pullfrog-cloud-remediation-20261028/pr-body.md`
+- `specs/pullfrog-destination-guard-20261027/commit-message.txt`
+- `specs/pullfrog-destination-guard-20261027/pr-body.md`
+- `templates/repo-workflow-materialization-manifest.json`
+- `templates/reusable-workflows/pr-automation-dogfood-reusable.yml`
+- `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml`
+- `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml`
+- `templates/starter-workflows/pullfrog-cloud-remediation-loop.yml`
+- `templates/starter-workflows/speculoos.yml`
+
+## Documentation Impact
+
+The operator-facing workflow and safety contract were updated in `README.md`, `docs/github-actions-template-catalog.md`, `docs/pr-automation-dogfood.md`, `docs/pullfrog-cloud-coordinator.md`, `docs/pullfrog-cycle-contract.md`, `docs/pullfrog-destination-guard.md`, `docs/pullfrog-review-only-pilot.md`, and `docs/workflow-asset-library-layout.md`. These files document the hosted Speculoos check, exact-head controller, repository-owned non-stable merge actor, stable promotion boundary, and credential split.
 
 ## Validation
 

@@ -10,6 +10,7 @@
   "branch_policies": [
     {
       "name": "feature_to_non_stable",
+      "base_refs": ["dev"],
       "base_policy": "any_valid_branch_except_forbidden",
       "forbidden_base_refs": ["main", "master"],
       "head_patterns": ["feat/*", "fix/*", "docs/*", "test/*", "chore/*"],

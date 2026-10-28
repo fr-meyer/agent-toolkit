@@ -130,6 +130,8 @@ Pullfrog approval and native repository-wide auto-merge remain disabled. The rem
 
 A separate repository-owned `auto_merge_eligible` job owns automatic merge. It runs only after the coordinator reports a clean exact-head result, then independently revalidates the sanitized receipt, same-repository identity, approved feature-head prefix, a valid base other than `main` or `master`, live base/head SHAs, all five trusted evidence checks, the latest exact-head Pullfrog review, the destination guard, and the absence of an unresolved human changes-requested review. Immediately before mutation it refreshes the app-bound Pullfrog, approval, CI, and Speculoos check runs so a newer same-head pending or failed result supersedes the earlier receipt.
 
+The independent `Speculoos` workflow provides the required exact-head `speculoos` check. It checks out the literal PR head read-only, verifies that `.speculoos/manifest.yaml` selects task metadata bound to the same head and base refs, runs Speculoos validation plus the publication-contract check, and uploads sanitized reports. It excludes PRs targeting `main` or `master`, uses no write credential, and is also a workflow-run trigger for the coordinator so the final evidence arrival is re-evaluated automatically.
+
 The coordinator receipt also carries the exact default branch and effective protected-ref set used for its destination decision, including the live PR base. Claim preparation validates and digest-binds that policy, and both fresh candidate validation and publication reuse it rather than reconstructing a `dev`-only policy. A newly eligible non-`dev` base therefore either remains consistent through the entire remediation path or fails before provider execution.
 
 The job does not use GitHub's pull-request merge endpoint because that endpoint can predicate only on the head SHA. Instead it fetches the literal reviewed base ref and PR head, builds a two-parent merge commit, and submits one normal fast-forward Git receive-pack update to the literal reviewed base ref. The update command carries the exact reviewed base SHA as its old OID, so the server rejects any concurrent base movement in the same ref transaction; PR retargeting cannot redirect the literal ref update. Receive-pack discovery validates object IDs and capabilities separately while comparing ref names as protocol bytes, so an unrelated legal non-ASCII ref cannot block the selected destination. Force and force-with-lease are prohibited. The job explicitly rejects `main` and `master`, does not delete the source branch, has no provider or publisher credential, and is the only job with the built-in token's merge authority. Those two stable-branch merges remain human-authorized.
@@ -144,6 +146,7 @@ python3 -m unittest scripts/github/tests/test_pullfrog_cloud_coordinator_workflo
 python3 -m unittest scripts/github/tests/test_pullfrog_cloud_remediation.py -v
 python3 -m unittest scripts/github/tests/test_pullfrog_dev_auto_merge.py -v
 python3 -m unittest scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py -v
+python3 -m unittest scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py -v
 python3 -m py_compile \
   scripts/github/pullfrog_cloud_coordinator.py \
   scripts/github/pullfrog_cloud_remediation.py \

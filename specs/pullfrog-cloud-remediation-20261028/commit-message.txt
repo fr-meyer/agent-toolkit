@@ -1,5 +1,5 @@
-fix(github): preserve non-stable remediation policy
+fix(github): add hosted Speculoos evidence
 
-Keep Pullfrog's repository-wide native auto-merge disabled. Carry the coordinator's exact default branch and effective protected-ref set into the digest-bound remediation claim, then reuse that policy during candidate validation and publication so eligible non-dev bases cannot fail only after provider execution.
+Complete task `pullfrog-cloud-remediation-20261028` by adding the canonical and materialized read-only hosted Speculoos check required by the guarded Pullfrog remediation and exact-head re-review controller. Pullfrog remains the sole AI reviewer and fixer but has no merge actor role. The repository-owned exact-head controller may merge eligible same-repository feature PRs into any valid base except `main` or `master` after fresh trusted evidence passes.
 
-Parse Git receive-pack object IDs and capabilities separately from byte-preserved ref names, allowing unrelated legal Unicode refs without weakening exact destination matching or the reviewed-base old-OID compare-and-swap. Main and master remain blocked, force updates remain prohibited, and only dev merges replay path-matched dev automation.
+Feature PRs target `dev`. Release/promotion PRs target `main`.

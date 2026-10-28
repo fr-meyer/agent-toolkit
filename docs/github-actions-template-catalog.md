@@ -44,6 +44,7 @@ For exact source-to-target bindings, also consult:
 | PR automation dogfood (PR trigger) | Starter | `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml` | `.github/workflows/pr-automation-dogfood-pr-trigger.yml` | Read-only PR entrypoint for changes to the dogfood harness and its workflow assets |
 | Pullfrog review entrypoint | Starter | `templates/starter-workflows/pullfrog.yml` | `.github/workflows/pullfrog.yml` | Bounded, non-pushing Pullfrog entrypoint retained while unattended remediation stays approval-gated |
 | Pullfrog cloud coordinator (dry run) | Starter | `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml` | `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml` | Provider-free exact-head state-machine evaluator with read-only GitHub collection and sanitized receipts |
+| Speculoos PR gate | Starter | `templates/starter-workflows/speculoos.yml` | `.github/workflows/speculoos.yml` | Read-only exact-head Speculoos policy and publication-contract evidence for non-stable PRs |
 
 ## Asset details
 
@@ -603,6 +604,32 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 - Source availability is not activation authority. Publishing the exact local commit, activating the workflow on a serving ref, and running the first hosted write pilot each remain separately gated.
 - See `docs/pullfrog-cloud-coordinator.md` for the credential split, ledger recovery rules, cycle contract, and hosted acceptance boundary.
 
+---
+
+## 16. Speculoos PR gate
+
+- **Type:** starter workflow
+- **Canonical source:** `templates/starter-workflows/speculoos.yml`
+- **Live/runtime copy in this repo:** `.github/workflows/speculoos.yml`
+- **Governed by:**
+  - source in `templates/repo-workflow-materialization-manifest.json`
+- **Purpose:**
+  - emit the exact `speculoos` GitHub Actions check required by the Pullfrog coordinator
+  - bind the current manifest task to the exact PR head branch and base branch
+  - run read-only Speculoos validation and publication-contract checks against the exact PR head and fetched base
+
+### Security boundary
+- runs only for PR bases other than exactly `main` or `master`
+- checks out the exact PR head with persisted credentials disabled
+- uses only `contents: read` and never receives provider, publisher, elevated, approval, or merge credentials
+- installs Speculoos `0.7.0` from immutable commit `8156bc20fc7563941c17514eb551e894ce29c89b`
+- uploads only the generated validation reports, retained for 90 days
+
+### Notes
+- The job name is deliberately exactly `speculoos`; the coordinator rejects wrong-name or wrong-app lookalikes.
+- The task contract must identify the live PR branch and base. Missing, stale, unsafe, or mismatched task metadata fails closed.
+- The current Speculoos release selects branch policies through explicit base refs or patterns. The repository records `dev` explicitly while the independent custom merge controller remains authoritative for the broader any-valid-base-except-`main`/`master` policy.
+
 ## Live runtime copies in this repo
 
 These files exist under `.github/workflows/` and should not be treated as the primary authoring location:
@@ -619,6 +646,7 @@ These files exist under `.github/workflows/` and should not be treated as the pr
 - `.github/workflows/pullfrog.yml`
 - `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml`
 - `.github/workflows/pullfrog-cloud-remediation-loop.yml`
+- `.github/workflows/speculoos.yml`
 
 Their canonical sources are:
 - `templates/reusable-workflows/coderabbit-pr-automation.yml`
@@ -634,6 +662,7 @@ Their canonical sources are:
 - `templates/starter-workflows/pullfrog.yml`
 - `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml`
 - `templates/starter-workflows/pullfrog-cloud-remediation-loop.yml`
+- `templates/starter-workflows/speculoos.yml`
 
 ## Maintenance rule for this catalog
 

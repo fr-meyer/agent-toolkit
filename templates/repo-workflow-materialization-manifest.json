@@ -53,6 +53,10 @@
     {
       "source": "templates/starter-workflows/pullfrog-cloud-remediation-loop.yml",
       "target": ".github/workflows/pullfrog-cloud-remediation-loop.yml"
+    },
+    {
+      "source": "templates/starter-workflows/speculoos.yml",
+      "target": ".github/workflows/speculoos.yml"
     }
   ]
 }

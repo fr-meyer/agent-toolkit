@@ -4,8 +4,10 @@ status: implementation
 branch: feat/pullfrog-write-capable-loop
 base_branch: dev
 write_paths:
+  - README.md
   - .github/workflows/pr-automation-dogfood-pr-trigger.yml
   - .github/workflows/pullfrog-cloud-remediation-loop.yml
+  - .github/workflows/speculoos.yml
   - .speculoos/actors.json
   - .speculoos/goal.md
   - .speculoos/manifest.yaml
@@ -25,12 +27,14 @@ write_paths:
   - scripts/github/tests/test_pullfrog_cloud_remediation.py
   - scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py
   - scripts/github/tests/test_pullfrog_dev_auto_merge.py
+  - scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py
   - scripts/github/validate_pullfrog_workflow.sh
   - specs/pullfrog-cloud-remediation-20261028/commit-message.txt
   - specs/pullfrog-cloud-remediation-20261028/pr-body.md
   - templates/repo-workflow-materialization-manifest.json
   - templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml
   - templates/starter-workflows/pullfrog-cloud-remediation-loop.yml
+  - templates/starter-workflows/speculoos.yml
 scope:
   - reconstruct bounded claim, candidate, and terminal history only from artifacts produced by the exact trusted workflow path
   - mint a durable idempotent claim before provider invocation and cap remediation cycles and per-head attempts at three
@@ -64,6 +68,8 @@ acceptance:
   - focused tests, workflow validation, full repository tests, whitespace checks, public-safety scans, and Speculoos validation pass
 publication_boundary:
   statement: "Local source implementation and validation only. Publication, hosted activation, and the first write-capable remediation pilot require separate authorization for the exact commit SHA and scope. The repository-owned exact-head non-stable auto-merge gate is authorized for any valid base except main or master; approval, main/master merge, release, deployment, settings changes, force-push, branch deletion, billing, and credential changes remain prohibited."
+delivery_policy:
+  mode: inherit_branch_policy
 documentation_impact:
   status: updated
   rationale: The native fix_review contract, credential split, artifact ledger, compare-and-swap publisher, and activation boundary must remain recoverable from repository source.
@@ -84,5 +90,5 @@ notes:
   - Pullfrog is the sole AI reviewer and fixer. Speculoos remains independent exact-head evidence.
   - The provider job has no GitHub write token and cannot mint Pullfrog's normal MCP write token; a separate read-only validator seals its raw output; the publisher has no provider identity token and alone references `PULLFROG_REMEDIATION_PUBLISH_TOKEN`.
   - Provisioning or changing the publisher credential remains a separate hosted-settings approval and is not performed by this source change.
-  - Pullfrog approval and native auto-merge stay disabled. The repository-owned gate, not Pullfrog, may auto-merge an eligible exact-head feature PR into any valid base except `main` or `master`; those two stable bases remain human-authorized.
+  - Pullfrog remains the sole AI reviewer and fixer but has no merge actor role. The repository-owned gate may automatically merge an eligible exact-head feature PR into any valid base except `main` or `master`; those two stable bases remain human-authorized.
   - The first hosted pilot must be bounded to one explicitly authorized same-repository feature head and must stop rather than bypass an unsupported native fix_review path.
