@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Fail-closed exact-head auto-merge for clean feature PRs targeting dev only."""
+"""Fail-closed exact-head auto-merge for clean feature PRs targeting dev only.
+
+The irreversible boundary is a normal fast-forward Git push of a locally built
+two-parent merge commit. That binds the mutation to both the authorized ``dev``
+ref and its exact reviewed tip; GitHub's pull-request merge endpoint cannot
+express either base predicate.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +14,10 @@ import hashlib
 import json
 import os
 import re
+import stat
+import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -21,6 +30,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import pullfrog_cloud_coordinator as coordinator  # noqa: E402
 import pullfrog_cycle_contract as cycle_contract  # noqa: E402
+import pullfrog_destination_guard as destination_guard  # noqa: E402
 
 RECEIPT_SCHEMA = "pullfrog-dev-auto-merge-receipt.v1"
 COORDINATOR_SCHEMA = "pullfrog-cloud-coordinator-receipt.v1"
@@ -114,6 +124,8 @@ def _validated_identity(value: Any) -> dict[str, Any]:
         or pr_number < 1
         or base_ref != ALLOWED_BASE_REF
         or base_ref in FORBIDDEN_BASE_REFS
+        or not cycle_contract._valid_branch(base_ref)
+        or not cycle_contract._valid_branch(head_ref)
         or not any(
             head_ref.startswith(prefix) and len(head_ref) > len(prefix)
             for prefix in ALLOWED_HEAD_PREFIXES
@@ -131,6 +143,41 @@ def _validated_identity(value: Any) -> dict[str, Any]:
         "head_sha": head_sha,
         "head_repository_slug": head_repository_slug,
     }
+
+
+def _validated_receipt_check_rules(
+    receipt: dict[str, Any], identity: dict[str, Any]
+) -> dict[str, list[tuple[str, str]]]:
+    details = _mapping(receipt.get("checks"))
+    if set(details) != {"pullfrog", "pullfrog_approval", "ci", "speculoos"}:
+        raise AutoMergeError("invalid_receipt_check_details")
+    rules: dict[str, list[tuple[str, str]]] = {}
+    for group in ("pullfrog", "pullfrog_approval", "ci", "speculoos"):
+        values = _list(details.get(group))
+        parsed: list[tuple[str, str]] = []
+        if not values:
+            raise AutoMergeError("invalid_receipt_check_details")
+        for raw in values:
+            item = _mapping(raw)
+            rule = coordinator._check_rule(item)
+            if (
+                rule is None
+                or item.get("status") != "success"
+                or item.get("head_sha") != identity["head_sha"]
+                or (_integer(item.get("check_run_id")) or 0) < 1
+            ):
+                raise AutoMergeError("invalid_receipt_check_details")
+            parsed.append(rule)
+        if len(set(parsed)) != len(parsed):
+            raise AutoMergeError("invalid_receipt_check_details")
+        rules[group] = parsed
+    if rules["pullfrog"] != [(coordinator.PULLFROG_CHECK, coordinator.PULLFROG_APP)]:
+        raise AutoMergeError("invalid_receipt_check_details")
+    if rules["pullfrog_approval"] != [
+        (coordinator.PULLFROG_APPROVAL_CHECK, coordinator.PULLFROG_APP)
+    ]:
+        raise AutoMergeError("invalid_receipt_check_details")
+    return rules
 
 
 def validate_clean_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
@@ -193,6 +240,13 @@ def validate_clean_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
         or _text(_mapping(destination.get("destination")).get("sha")) != identity["head_sha"]
     ):
         raise AutoMergeError("destination_not_allowed")
+    collection = _mapping(receipt.get("collection"))
+    if (
+        (_integer(collection.get("changed_paths_count")) or 0) < 1
+        or not re.fullmatch(r"[0-9a-f]{64}", _text(collection.get("changed_paths_digest")))
+    ):
+        raise AutoMergeError("invalid_collection_summary")
+    _validated_receipt_check_rules(receipt, identity)
     return identity
 
 
@@ -212,59 +266,261 @@ def _latest_human_verdicts(reviews: list[Any]) -> dict[str, str]:
     return latest
 
 
+def _assert_live_pull_request(pr: dict[str, Any], identity: dict[str, Any]) -> None:
+    head = _mapping(pr.get("head"))
+    base = _mapping(pr.get("base"))
+    head_repo = _mapping(head.get("repo"))
+    if (
+        pr.get("state") != "open"
+        or pr.get("draft") is True
+        or _text(base.get("ref")) != identity["base_ref"]
+        or _text(base.get("ref")) in FORBIDDEN_BASE_REFS
+        or _text(base.get("sha")) != identity["base_sha"]
+        or _text(head.get("ref")) != identity["head_ref"]
+        or _text(head.get("sha")) != identity["head_sha"]
+        or cycle_contract._canonical_slug(_text(head_repo.get("full_name")))
+        != identity["repository_slug"]
+    ):
+        raise AutoMergeError("live_pull_request_drift")
+
+
+def _refresh_exact_head_evidence(
+    client: "GitHubMergeClient",
+    receipt: dict[str, Any],
+    identity: dict[str, Any],
+    *,
+    repository: dict[str, Any],
+    reviews: list[Any],
+    comments: list[Any],
+    changed_paths: list[str],
+) -> dict[str, Any]:
+    rules = _validated_receipt_check_rules(receipt, identity)
+    prefix = client.allowed_prefix
+    payload = _mapping(
+        client.get(f"{prefix}/commits/{identity['head_sha']}/check-runs?per_page=100")
+    )
+    check_runs = _list(payload.get("check_runs"))
+    if _integer(payload.get("total_count")) not in {None, len(check_runs)}:
+        raise AutoMergeError("fresh_check_collection_truncated")
+
+    selected: dict[str, list[dict[str, Any]]] = {}
+    for group, group_rules in rules.items():
+        selected[group] = [
+            coordinator._select_check(check_runs, identity["head_sha"], name, app_slug)
+            for name, app_slug in group_rules
+        ]
+        if any(item.get("status") != "success" for item in selected[group]):
+            raise AutoMergeError("fresh_required_evidence_not_successful")
+        if any(item.get("spoofed_count") or item.get("stale_count") for item in selected[group]):
+            raise AutoMergeError("fresh_required_evidence_ambiguous")
+
+    pullfrog = selected["pullfrog"][0]
+    approval = selected["pullfrog_approval"][0]
+    if (
+        pullfrog.get("check_suite_id") is None
+        or pullfrog.get("check_suite_id") != approval.get("check_suite_id")
+    ):
+        raise AutoMergeError("fresh_pullfrog_suite_mismatch")
+
+    review = coordinator._select_review(reviews, identity["head_sha"])
+    findings, _, review_comment_count, blockers = coordinator._review_findings(
+        review, comments, _text(approval.get("status")), identity["head_sha"]
+    )
+    if not review or findings or review_comment_count != 0 or blockers:
+        raise AutoMergeError("fresh_pullfrog_review_not_clean")
+
+    collection = _mapping(receipt.get("collection"))
+    if (
+        len(changed_paths) != _integer(collection.get("changed_paths_count"))
+        or _digest(changed_paths) != collection.get("changed_paths_digest")
+    ):
+        raise AutoMergeError("fresh_changed_paths_drift")
+
+    default_branch = _text(repository.get("default_branch"))
+    if not cycle_contract._valid_branch(default_branch):
+        raise AutoMergeError("invalid_default_branch")
+    protected_refs = sorted(
+        set((identity["base_ref"], default_branch, *FORBIDDEN_BASE_REFS))
+    )
+    guard_identity = {
+        "slug": identity["repository_slug"],
+        "head_repository_slug": identity["head_repository_slug"],
+        "pr_number": identity["pr_number"],
+        "base_ref": identity["base_ref"],
+        "base_sha": identity["base_sha"],
+        "head_ref": identity["head_ref"],
+        "head_sha": identity["head_sha"],
+        "default_branch": default_branch,
+        "protected_refs": protected_refs,
+    }
+    prior_guard = _mapping(receipt.get("destination_guard"))
+    attempt = _integer(
+        _mapping(prior_guard.get("destination")).get("attempt")
+    ) or 1
+    fresh_guard = destination_guard.evaluate_guard(
+        {
+            "schema": destination_guard.INPUT_SCHEMA,
+            "expected": guard_identity,
+            "observed": guard_identity,
+            "request": {
+                "destination_repository_slug": identity["repository_slug"],
+                "destination_ref": identity["head_ref"],
+                "destination_sha": identity["head_sha"],
+                "attempt": attempt,
+                "changed_paths": changed_paths,
+            },
+            "first_attempt": {
+                "destination_repository_slug": identity["repository_slug"],
+                "destination_ref": identity["head_ref"],
+                "destination_sha": identity["head_sha"],
+            },
+        }
+    )
+    if fresh_guard.get("status") != "allowed" or fresh_guard.get("blockers") != []:
+        raise AutoMergeError("fresh_destination_not_allowed")
+
+    return {
+        "review_id": _integer(review.get("id")),
+        "check_run_ids": {
+            group: [item.get("check_run_id") for item in values]
+            for group, values in selected.items()
+        },
+        "destination_guard_digest": _digest(fresh_guard),
+    }
+
+
 class GitHubMergeClient(coordinator.GitHubReadClient):
-    """Bounded GitHub client with one exact merge mutation."""
+    """Bounded reader plus one destination-bound, exact-base Git mutation."""
 
-    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        parsed_path = urllib.parse.urlparse(path)
-        if (
-            parsed_path.scheme
-            or parsed_path.netloc
-            or path != f"{self.allowed_prefix}/pulls/{payload.get('pull_number')}/merge"
-        ):
-            raise AutoMergeError("forbidden_github_api_path")
-        body = json.dumps(
-            {key: value for key, value in payload.items() if key != "pull_number"},
-            separators=(",", ":"),
-        ).encode("utf-8")
-        request = urllib.request.Request(
-            self.api_url + path,
-            data=body,
-            method="PUT",
-            headers={
-                "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {self.token}",
-                "Content-Type": "application/json",
-                "User-Agent": "agent-toolkit-pullfrog-dev-auto-merge",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-        )
+    @staticmethod
+    def _git(
+        workspace: Path,
+        *args: str,
+        env: dict[str, str] | None = None,
+        code: str = "git_merge_failed",
+    ) -> subprocess.CompletedProcess[str]:
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                data = response.read(MAX_RESPONSE_BYTES + 1)
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
-            raise AutoMergeError("github_merge_failed") from exc
-        if len(data) > MAX_RESPONSE_BYTES:
-            raise AutoMergeError("github_api_response_too_large")
-        try:
-            value = json.loads(data.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise AutoMergeError("invalid_github_api_response") from exc
-        if not isinstance(value, dict):
-            raise AutoMergeError("invalid_github_api_response")
-        return value
+            result = subprocess.run(
+                ["git", *args],
+                cwd=workspace,
+                env=env,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise AutoMergeError(code) from exc
+        if result.returncode != 0:
+            raise AutoMergeError(code)
+        return result
 
-    def merge_exact_head(self, identity: dict[str, Any], title: str) -> dict[str, Any]:
-        path = f"{self.allowed_prefix}/pulls/{identity['pr_number']}/merge"
-        return self._post(
-            path,
-            {
-                "pull_number": identity["pr_number"],
-                "sha": identity["head_sha"],
-                "merge_method": "merge",
-                "commit_title": f"{title} (#{identity['pr_number']})",
-            },
-        )
+    def _repository_remote(self) -> str:
+        return f"https://github.com/{self.repository_slug}.git"
+
+    def push_exact_merge(self, identity: dict[str, Any], title: str) -> dict[str, Any]:
+        """Build and normally push one merge commit onto the reviewed base.
+
+        The generated commit's first parent is the reviewed base SHA. A normal
+        (never forced) push to the literal reviewed base ref is therefore a
+        server-side compare-and-swap: retargeting cannot redirect it, and a base
+        advance makes the push non-fast-forward and fails closed.
+        """
+
+        token = self.token
+        if not token:
+            raise AutoMergeError("missing_github_token")
+        remote = self._repository_remote()
+        with tempfile.TemporaryDirectory(prefix="pullfrog-auto-merge-") as temporary:
+            workspace = Path(temporary)
+            askpass = workspace / "git-askpass.sh"
+            askpass.write_text(
+                "#!/bin/sh\n"
+                "case \"$1\" in\n"
+                "  *Username*) printf '%s\\n' x-access-token ;;\n"
+                "  *) printf '%s\\n' \"$GITHUB_TOKEN\" ;;\n"
+                "esac\n",
+                encoding="utf-8",
+            )
+            askpass.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "GITHUB_TOKEN": token,
+                    "GIT_ASKPASS": str(askpass),
+                    "GIT_TERMINAL_PROMPT": "0",
+                    "GIT_AUTHOR_NAME": "github-actions[bot]",
+                    "GIT_AUTHOR_EMAIL": "41898282+github-actions[bot]@users.noreply.github.com",
+                    "GIT_COMMITTER_NAME": "github-actions[bot]",
+                    "GIT_COMMITTER_EMAIL": "41898282+github-actions[bot]@users.noreply.github.com",
+                }
+            )
+            self._git(workspace, "init", "--quiet", env=env)
+            self._git(workspace, "remote", "add", "origin", remote, env=env)
+            self._git(
+                workspace,
+                "fetch",
+                "--quiet",
+                "--no-tags",
+                "origin",
+                f"refs/heads/{identity['base_ref']}:refs/remotes/origin/base",
+                f"refs/pull/{identity['pr_number']}/head:refs/remotes/origin/pull-head",
+                env=env,
+                code="git_fetch_failed",
+            )
+            base = self._git(
+                workspace, "rev-parse", "refs/remotes/origin/base", env=env
+            ).stdout.strip()
+            head = self._git(
+                workspace, "rev-parse", "refs/remotes/origin/pull-head", env=env
+            ).stdout.strip()
+            if base != identity["base_sha"] or head != identity["head_sha"]:
+                raise AutoMergeError("git_fetch_identity_drift")
+            tree = self._git(
+                workspace,
+                "merge-tree",
+                "--write-tree",
+                identity["base_sha"],
+                identity["head_sha"],
+                env=env,
+                code="merge_conflict_or_tree_failure",
+            ).stdout.strip()
+            if not SHA_RE.fullmatch(tree):
+                raise AutoMergeError("invalid_merge_tree")
+            message = f"{title} (#{identity['pr_number']})"
+            merge_sha = self._git(
+                workspace,
+                "commit-tree",
+                tree,
+                "-p",
+                identity["base_sha"],
+                "-p",
+                identity["head_sha"],
+                "-m",
+                message,
+                env=env,
+                code="merge_commit_creation_failed",
+            ).stdout.strip()
+            if not SHA_RE.fullmatch(merge_sha):
+                raise AutoMergeError("invalid_merge_commit")
+            self._git(
+                workspace,
+                "push",
+                "--porcelain",
+                "origin",
+                f"{merge_sha}:refs/heads/{identity['base_ref']}",
+                env=env,
+                code="base_compare_and_swap_failed",
+            )
+        return {
+            "merged": True,
+            "sha": merge_sha,
+            "base_ref": identity["base_ref"],
+            "base_sha": identity["base_sha"],
+            "head_sha": identity["head_sha"],
+            "transport": "normal-fast-forward-push",
+        }
 
     def dispatch_workflow(
         self,
@@ -349,7 +605,7 @@ def _post_merge_dispatches(
     failed: list[str] = []
     for workflow, inputs in planned:
         try:
-            client.dispatch_workflow(workflow, ref=ALLOWED_BASE_REF, inputs=inputs)
+            client.dispatch_workflow(workflow, ref=identity["base_ref"], inputs=inputs)
             dispatched.append(workflow)
         except (AutoMergeError, coordinator.CoordinatorError):
             failed.append(workflow)
@@ -367,24 +623,12 @@ def merge_clean_dev_pr(
         raise AutoMergeError("expected_head_mismatch")
     prefix = client.allowed_prefix
     pr = _mapping(client.get(f"{prefix}/pulls/{identity['pr_number']}"))
-    head = _mapping(pr.get("head"))
-    base = _mapping(pr.get("base"))
-    head_repo = _mapping(head.get("repo"))
-    if (
-        pr.get("state") != "open"
-        or pr.get("draft") is True
-        or _text(base.get("ref")) != ALLOWED_BASE_REF
-        or _text(base.get("ref")) in FORBIDDEN_BASE_REFS
-        or _text(base.get("sha")) != identity["base_sha"]
-        or _text(head.get("ref")) != identity["head_ref"]
-        or _text(head.get("sha")) != identity["head_sha"]
-        or cycle_contract._canonical_slug(_text(head_repo.get("full_name")))
-        != identity["repository_slug"]
-    ):
-        raise AutoMergeError("live_pull_request_drift")
+    _assert_live_pull_request(pr, identity)
+    repository = _mapping(client.get(prefix))
     reviews = client.paginated(f"{prefix}/pulls/{identity['pr_number']}/reviews")
     if "CHANGES_REQUESTED" in _latest_human_verdicts(reviews).values():
         raise AutoMergeError("human_changes_requested")
+    comments = client.paginated(f"{prefix}/pulls/{identity['pr_number']}/comments")
     files = client.paginated(f"{prefix}/pulls/{identity['pr_number']}/files")
     changed_paths = sorted(
         {
@@ -395,9 +639,28 @@ def merge_clean_dev_pr(
     )
     if not changed_paths or any(not coordinator._valid_path(path) for path in changed_paths):
         raise AutoMergeError("invalid_changed_paths")
-    merge = client.merge_exact_head(identity, _text(pr.get("title")) or "Merge pull request")
+    fresh_evidence = _refresh_exact_head_evidence(
+        client,
+        receipt,
+        identity,
+        repository=repository,
+        reviews=reviews,
+        comments=comments,
+        changed_paths=changed_paths,
+    )
+    _assert_live_pull_request(
+        _mapping(client.get(f"{prefix}/pulls/{identity['pr_number']}")), identity
+    )
+    merge = client.push_exact_merge(identity, _text(pr.get("title")) or "Merge pull request")
     merge_sha = _text(merge.get("sha"))
-    if merge.get("merged") is not True or not SHA_RE.fullmatch(merge_sha):
+    if (
+        merge.get("merged") is not True
+        or not SHA_RE.fullmatch(merge_sha)
+        or merge.get("base_ref") != identity["base_ref"]
+        or merge.get("base_sha") != identity["base_sha"]
+        or merge.get("head_sha") != identity["head_sha"]
+        or merge.get("transport") != "normal-fast-forward-push"
+    ):
         raise AutoMergeError("merge_not_confirmed")
     dispatched, dispatch_failures = _post_merge_dispatches(
         client, identity, merge_sha, changed_paths
@@ -412,8 +675,10 @@ def merge_clean_dev_pr(
         "head_sha": identity["head_sha"],
         "merge_commit_sha": merge_sha,
         "merge_method": "merge",
+        "merge_transport": "normal-fast-forward-push",
         "branch_deleted": False,
         "changed_paths_digest": _digest(changed_paths),
+        "fresh_evidence_digest": _digest(fresh_evidence),
         "downstream_dispatches": dispatched,
         "downstream_dispatch_failures": dispatch_failures,
         "coordinator_receipt_digest": _digest(receipt),

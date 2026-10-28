@@ -655,6 +655,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       actions: write
+      checks: read
       contents: write
       pull-requests: write
 
@@ -677,7 +678,7 @@ jobs:
           name: pullfrog-remediation-evaluation-${{ github.run_id }}
           path: artifacts/pullfrog-remediation/evaluate
 
-      - name: Merge only the clean exact head into dev
+      - name: Fast-forward an exact-base merge commit into dev
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >-

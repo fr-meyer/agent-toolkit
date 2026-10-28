@@ -278,6 +278,7 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         auto_merge = self.template.split("  auto_merge_dev:\n", 1)[1]
         self.assertIn("needs.evaluate.outputs.reason == 'clean'", auto_merge)
         self.assertIn("scripts/github/pullfrog_dev_auto_merge.py", auto_merge)
+        self.assertIn("      checks: read\n", auto_merge)
         self.assertIn(
             '--expected-head-sha "${{ needs.evaluate.outputs.source_head_sha }}"',
             auto_merge,
@@ -288,6 +289,12 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         )
         self.assertIn('ALLOWED_BASE_REF = "dev"', script)
         self.assertIn('FORBIDDEN_BASE_REFS = frozenset({"main", "master"})', script)
+        self.assertIn("def push_exact_merge", script)
+        self.assertIn('"normal-fast-forward-push"', script)
+        self.assertIn('"merge-tree"', script)
+        self.assertIn('code="base_compare_and_swap_failed"', script)
+        self.assertNotIn('"--force"', script)
+        self.assertNotIn("/pulls/{identity['pr_number']}/merge", script)
         self.assertIn("cross-repo-workflow-updater-manual-trigger.yml", script)
         self.assertIn("sync-starter-workflow-template-refs-trigger.yml", script)
         remediation = (REPO_ROOT / "scripts/github/pullfrog_cloud_remediation.py").read_text(encoding="utf-8")

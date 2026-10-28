@@ -1,5 +1,5 @@
-feat(github): gate dev auto-merge by exact-head evidence
+fix(github): bind dev auto-merge to fresh exact-base evidence
 
-Keep Pullfrog's repository-wide native auto-merge disabled. Add a repository-owned gate that merges only clean exact-head same-repository feature PRs into dev, rejects main and master, preserves merge commits, and replays path-matched dev push automation suppressed by the built-in token.
+Keep Pullfrog's repository-wide native auto-merge disabled. Add a repository-owned gate that refreshes exact-head evidence, creates a two-parent merge commit, and normally fast-forwards only the exact reviewed dev tip. Retargeting cannot redirect the mutation, base advancement fails closed, main and master remain blocked, and path-matched dev push automation suppressed by the built-in token is replayed.
 
 Task: pullfrog-cloud-remediation-20261028

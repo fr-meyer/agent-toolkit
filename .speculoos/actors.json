@@ -98,6 +98,9 @@
       "requires_explicit_approval": false,
       "exact_pr_base_head_sha_required": true,
       "same_repository_required": true,
+      "fresh_app_bound_evidence_required": true,
+      "mutation_transport": "normal_exact_base_fast_forward_merge_commit",
+      "force_push_allowed": false,
       "replays_suppressed_dev_push_automation": true,
       "secrets_in_repo": false
     },

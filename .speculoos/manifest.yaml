@@ -9,7 +9,8 @@ repository:
 status:
   phase: implementation
   blocker_summary:
-    - The write-capable source is implemented locally; publication, serving-ref activation, publisher-token provisioning, and the first hosted write pilot require separate exact-SHA approval.
+    - PR #95 is open at hosted head 11e42aee5d7ecce817653be33127e082dea1a523 with two exact-head Pullfrog P1 findings. Their destination-bound exact-base mutation and fresh-evidence repairs are validated locally but not yet published or re-reviewed.
+    - Serving-ref activation, publisher-token provisioning, independent hosted Speculoos evidence, and the first hosted write pilot remain separately gated.
     - Pullfrog provider push, approval, native repository-wide auto-merge, CI autofix, release, deployment, branch deletion, credentials, billing, and hosted settings remain disabled or separately gated. A repository-owned exact-head gate may auto-merge eligible feature PRs only into `dev`.
 publication_policy:
   repository_visibility: shared-repository
@@ -70,13 +71,13 @@ surfaces:
     authority: canonical
   github_pull_request:
     enabled: true
-    status: open-auto-merge-change-pending-publication
+    status: open-pullfrog-findings-repaired-locally
     number: 95
     base_branch: dev
     default_branch: main
     head_branch: feat/pullfrog-write-capable-loop
-    head_sha: null
-    head_sha_source: The hosted PR is clean at repaired head 814b86cb1b4bdb26296a5c8aa708816f3ce68738 until this validated target-aware auto-merge change is committed and published; use live GitHub readback for the exact current head
+    head_sha: 11e42aee5d7ecce817653be33127e082dea1a523
+    head_sha_source: Live GitHub readback at the Pullfrog review that reported the two P1 auto-merge findings; the local repair is not yet published, so re-read GitHub after guarded publication
     merge_commit: null
 gates:
   before_publish:
