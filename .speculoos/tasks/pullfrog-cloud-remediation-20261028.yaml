@@ -13,6 +13,7 @@ write_paths:
   - .speculoos/review-evidence.json
   - .speculoos/tasks/pullfrog-cloud-remediation-20261028.yaml
   - docs/github-actions-template-catalog.md
+  - docs/pr-automation-dogfood.md
   - docs/pullfrog-cloud-coordinator.md
   - docs/pullfrog-review-only-pilot.md
   - docs/workflow-asset-library-layout.md
@@ -52,7 +53,7 @@ acceptance:
   - exact head is re-read before provider execution, before patch application, and immediately before publication
   - publication is one normal fast-forward push to the current same-repository PR branch
   - automatic merge is performed only by a separate GitHub Actions job after a fresh clean coordinator receipt, same-repository and feature-head validation, exact live base/head re-read, successful Pullfrog/approval/CI/Speculoos/destination evidence, and no unresolved human changes-requested review
-  - automatic merge accepts any valid base except `main` and `master`, refreshes app-bound exact-head evidence immediately before mutation, builds a two-parent merge commit from the reviewed base and head, and sends it through one normal fast-forward Git receive-pack update to the literal reviewed base ref
+  - automatic merge accepts any valid base except `main` and `master`, the provider-free dogfood evidence trigger covers every such non-stable base including nested branch names, fresh app-bound exact-head evidence is refreshed immediately before mutation, and a two-parent merge commit is sent through one normal fast-forward Git receive-pack update to the literal reviewed base ref
   - the coordinator's exact default branch and effective protected-ref set, including the live base, are validated and digest-bound into the remediation claim and reused by candidate validation and publication so any admitted non-dev base remains consistent through the full pipeline
   - the receive-pack command carries the exact reviewed base SHA as its old OID, so the server rejects concurrent base advancement in the same ref-update transaction; concurrent PR retargeting cannot redirect the mutation, force and force-with-lease remain prohibited, and the source branch is never deleted
   - receive-pack discovery validates object IDs and capabilities separately from byte-preserved ref names, so an unrelated legal Unicode branch or tag cannot block the selected exact destination

@@ -54,6 +54,17 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         ]:
             self.assertIn(f"      - '{pattern}'\n", trigger)
 
+    def test_dogfood_evidence_runs_for_every_non_stable_base(self):
+        trigger = DOGFOOD_TRIGGER.read_text(encoding="utf-8")
+        self.assertIn(
+            "    branches:\n"
+            "      - '**'\n"
+            "      - '!main'\n"
+            "      - '!master'\n",
+            trigger,
+        )
+        self.assertNotIn("      - dev\n", trigger)
+
     def test_automatic_events_and_manual_exact_head_recovery_are_bounded(self):
         trigger = top_level_section(self.template, "on")
         keys = re.findall(r"^  ([a-zA-Z0-9_-]+):", trigger, flags=re.MULTILINE)

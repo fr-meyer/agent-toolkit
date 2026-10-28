@@ -67,3 +67,5 @@ The workflow uses `contents: read`, disables checkout credential persistence, an
 ## Workflow-library treatment
 
 Both live workflows are materialized from canonical `templates/` sources through `templates/repo-workflow-materialization-manifest.json`. The repo-local trigger calls the materialized reusable workflow through a relative path, so no reusable-workflow SHA diffusion mapping is needed for this dogfood pair.
+
+The trigger includes all pull-request base branches, including nested names, then excludes exactly `main` and `master`. This lets every non-stable base eligible for the repository-owned auto-merge gate produce the required dogfood evidence without extending automatic merge authority to stable branches.

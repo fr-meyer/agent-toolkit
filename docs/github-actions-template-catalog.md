@@ -503,13 +503,14 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 - **Governed by:**
   - source in `templates/repo-workflow-materialization-manifest.json`
 - **Purpose:**
-  - run the dogfood harness on pull requests to `dev` when its evaluator, fixtures, workflow assets, manifest, or documentation changes
+  - run the dogfood harness on pull requests to any non-stable base except `main` or `master` when its evaluator, fixtures, workflow assets, manifest, or documentation changes
 
 ### Calls
 - `./.github/workflows/pr-automation-dogfood-reusable.yml`
 
 ### Notes
 - The entrypoint is intentionally thin.
+- Its ordered base filter includes nested branch names, then excludes `main` and `master`, so every base eligible for repository-owned auto-merge can produce the required CI evidence while stable-branch PRs stay outside automatic merge authority.
 - Its path filter keeps unrelated repository changes from creating a dogfood run.
 
 ---
