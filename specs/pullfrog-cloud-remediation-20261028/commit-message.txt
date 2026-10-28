@@ -1,5 +1,5 @@
-fix(github): add hosted Speculoos evidence
+fix(github): keep hosted Speculoos zero-secret
 
-Complete task `pullfrog-cloud-remediation-20261028` by adding the canonical and materialized read-only hosted Speculoos check required by the guarded Pullfrog remediation and exact-head re-review controller. Pullfrog remains the sole AI reviewer and fixer but has no merge actor role. The repository-owned exact-head controller may merge eligible same-repository feature PRs into any valid base except `main` or `master` after fresh trusted evidence passes.
+Complete task `pullfrog-cloud-remediation-20261028` by replacing the unreachable private cross-repository package install with a repository-bound hosted contract validator. It binds the exact head and base, verifies the publication packet, workflow materialization, non-stable merge actor policy, whitespace, and red-list token patterns, then persists independent evidence without an additional credential.
 
 Feature PRs target `dev`. Release/promotion PRs target `main`.

@@ -125,7 +125,7 @@ This repository now treats GitHub Actions files as **source assets**, not as act
 - **Repo-workflow materialization manifest:** `templates/repo-workflow-materialization-manifest.json`
 - **Provider-free PR automation dogfood:** `docs/pr-automation-dogfood.md`
 - **Bounded Pullfrog review-only pilot:** `docs/pullfrog-review-only-pilot.md`, with canonical workflow source at `templates/starter-workflows/pullfrog.yml`
-- **Independent Speculoos PR gate:** `templates/starter-workflows/speculoos.yml`, materialized to `.github/workflows/speculoos.yml`
+- **Independent Speculoos PR gate:** `templates/starter-workflows/speculoos.yml`, materialized to `.github/workflows/speculoos.yml`, with zero-secret hosted contract validation in `scripts/github/speculoos_pr_contract.py`
 - **Helper scripts:** `scripts/coderabbit/` plus `scripts/github/` (including the deterministic ref updater and repo-workflow materializer)
 - **Materialized live reusable maintenance workflow:** `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
 - **Live repo entrypoint workflow:** `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`

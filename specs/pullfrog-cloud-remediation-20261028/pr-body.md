@@ -7,6 +7,7 @@
 - preserve independent CI/Speculoos evidence and human-only approval and stable-branch merge authority
 - add a repository-owned exact-head automatic merge gate for clean same-repository feature PRs targeting any valid base except `main` or `master`, while assigning no merge actor role to Pullfrog itself
 - complete Speculoos task `pullfrog-cloud-remediation-20261028`; feature PRs target `dev`, and release/promotion PRs target `main`
+- replace the unreachable private cross-repository Speculoos install with a repository-bound zero-secret contract validator that persists exact-head evidence without an additional credential
 
 ## Changed Files For Publish
 
@@ -37,6 +38,7 @@
 - `scripts/github/pullfrog_cycle_contract.py`
 - `scripts/github/pullfrog_destination_guard.py`
 - `scripts/github/pullfrog_dev_auto_merge.py`
+- `scripts/github/speculoos_pr_contract.py`
 - `scripts/github/tests/test_pullfrog_cloud_coordinator.py`
 - `scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py`
 - `scripts/github/tests/test_pullfrog_cloud_remediation.py`
@@ -45,6 +47,7 @@
 - `scripts/github/tests/test_pullfrog_destination_guard.py`
 - `scripts/github/tests/test_pullfrog_dev_auto_merge.py`
 - `scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py`
+- `scripts/github/tests/test_speculoos_pr_contract.py`
 - `scripts/github/validate_pullfrog_workflow.sh`
 - `specs/pullfrog-cloud-coordinator-20261027/commit-message.txt`
 - `specs/pullfrog-cloud-coordinator-20261027/pr-body.md`
@@ -60,7 +63,6 @@
 - `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml`
 - `templates/starter-workflows/pullfrog-cloud-remediation-loop.yml`
 - `templates/starter-workflows/speculoos.yml`
-
 ## Documentation Impact
 
 The operator-facing workflow and safety contract were updated in `README.md`, `docs/github-actions-template-catalog.md`, `docs/pr-automation-dogfood.md`, `docs/pullfrog-cloud-coordinator.md`, `docs/pullfrog-cycle-contract.md`, `docs/pullfrog-destination-guard.md`, `docs/pullfrog-review-only-pilot.md`, and `docs/workflow-asset-library-layout.md`. These files document the hosted Speculoos check, exact-head controller, repository-owned non-stable merge actor, stable promotion boundary, and credential split.
@@ -75,6 +77,8 @@ The operator-facing workflow and safety contract were updated in `README.md`, `d
 - Speculoos `validate` and `publish-check` when the local binary is available
 
 ## Security Contract
+
+- The hosted Speculoos check executes only repository-reviewed source, fetches no private cross-repository package, receives no additional credential, and validates exact head/base identity, publication packet inventory, workflow materialization, merge actor policy, whitespace, and red-list token patterns.
 
 - Pullfrog receives `id-token: write` for provider routing plus a job-scoped read-only GitHub token forced through `GH_TOKEN`, preventing its normal MCP write-token minting; `authorPermission: none` withholds gh and cross-run learning writes, while `push: disabled`, restricted shell, and no publication credential remain enforced.
 - A separate read-only validator starts from fresh trusted-controller and exact-source checkouts, treats all provider output as untrusted, rejects forbidden paths and gitlinks, and emits the only candidate and patch the publisher may consume.

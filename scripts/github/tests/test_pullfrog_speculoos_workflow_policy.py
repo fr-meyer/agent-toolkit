@@ -7,8 +7,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 TEMPLATE = REPO_ROOT / "templates/starter-workflows/speculoos.yml"
 LIVE = REPO_ROOT / ".github/workflows/speculoos.yml"
 MANIFEST = REPO_ROOT / "templates/repo-workflow-materialization-manifest.json"
-PINNED_SPECULOOS_COMMIT = "8156bc20fc7563941c17514eb551e894ce29c89b"
-
 
 class PullfrogSpeculoosWorkflowPolicyTests(unittest.TestCase):
     @classmethod
@@ -44,13 +42,17 @@ class PullfrogSpeculoosWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("persist-credentials: false", self.template)
         self.assertIn('test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"', self.template)
 
-    def test_speculoos_is_immutable_and_task_bound(self) -> None:
-        self.assertIn(PINNED_SPECULOOS_COMMIT, self.template)
-        self.assertIn("test \"$(speculoos --version)\" = 'speculoos 0.7.0'", self.template)
-        self.assertIn("current task branch does not match pull-request head", self.template)
-        self.assertIn("current task base does not match pull-request base", self.template)
-        self.assertIn("speculoos validate", self.template)
-        self.assertIn("speculoos publish-check", self.template)
+    def test_speculoos_contract_is_zero_secret_and_task_bound(self) -> None:
+        self.assertNotIn("git+https://github.com/fr-meyer/speculoos", self.template)
+        self.assertIn("scripts/github/speculoos_pr_contract.py", self.template)
+        self.assertIn("--task \"$task_id\"", self.template)
+        self.assertIn("--expected-head-ref \"$EXPECTED_HEAD_REF\"", self.template)
+        self.assertIn("--expected-head-sha \"$EXPECTED_HEAD_SHA\"", self.template)
+        self.assertIn("--expected-base-ref \"$EXPECTED_BASE_REF\"", self.template)
+        self.assertIn("--expected-base-sha \"$EXPECTED_BASE_SHA\"", self.template)
+        self.assertIn("scripts/github/validate_pullfrog_workflow.sh", self.template)
+        self.assertIn("mkdir -p artifacts/speculoos", self.template)
+        self.assertIn("if-no-files-found: warn", self.template)
 
     def test_actions_are_immutable_and_evidence_is_retained(self) -> None:
         self.assertIn(

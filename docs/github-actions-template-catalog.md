@@ -615,20 +615,23 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
   - source in `templates/repo-workflow-materialization-manifest.json`
 - **Purpose:**
   - emit the exact `speculoos` GitHub Actions check required by the Pullfrog coordinator
-  - bind the current manifest task to the exact PR head branch and base branch
-  - run read-only Speculoos validation and publication-contract checks against the exact PR head and fetched base
+  - bind the current manifest task to the exact PR head branch, head SHA, base branch, and base SHA
+  - run the repository-bound Speculoos contract validator against the exact PR diff and publication packet
+  - run the checksum-verified Pullfrog workflow validation surface independently from the controller
 
 ### Security boundary
 - runs only for PR bases other than exactly `main` or `master`
 - checks out the exact PR head with persisted credentials disabled
 - uses only `contents: read` and never receives provider, publisher, elevated, approval, or merge credentials
-- installs Speculoos `0.7.0` from immutable commit `8156bc20fc7563941c17514eb551e894ce29c89b`
+- executes only repository-reviewed source from `scripts/github/speculoos_pr_contract.py`; it does not fetch the private Speculoos repository or require a cross-repository token
+- validates exact changed-file inventory, release wording, documentation impact, workflow materialization, merge actor policy, whitespace, and red-list token patterns
 - uploads only the generated validation reports, retained for 90 days
 
 ### Notes
 - The job name is deliberately exactly `speculoos`; the coordinator rejects wrong-name or wrong-app lookalikes.
 - The task contract must identify the live PR branch and base. Missing, stale, unsafe, or mismatched task metadata fails closed.
-- The current Speculoos release selects branch policies through explicit base refs or patterns. The repository records `dev` explicitly while the independent custom merge controller remains authoritative for the broader any-valid-base-except-`main`/`master` policy.
+- The local official Speculoos CLI remains the authoring-time validator and publication-packet checker. The hosted job uses the narrower repository-bound contract so the public repository does not need credentials for the private Speculoos source repository.
+- The repository records `dev` explicitly while the independent custom merge controller remains authoritative for the broader any-valid-base-except-`main`/`master` policy.
 
 ## Live runtime copies in this repo
 

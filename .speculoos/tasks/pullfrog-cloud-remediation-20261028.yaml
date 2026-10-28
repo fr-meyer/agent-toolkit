@@ -22,12 +22,14 @@ write_paths:
   - scripts/github/pullfrog_cloud_remediation.py
   - scripts/github/pullfrog_cloud_coordinator.py
   - scripts/github/pullfrog_dev_auto_merge.py
+  - scripts/github/speculoos_pr_contract.py
   - scripts/github/tests/test_pullfrog_cloud_coordinator.py
   - scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py
   - scripts/github/tests/test_pullfrog_cloud_remediation.py
   - scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py
   - scripts/github/tests/test_pullfrog_dev_auto_merge.py
   - scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py
+  - scripts/github/tests/test_speculoos_pr_contract.py
   - scripts/github/validate_pullfrog_workflow.sh
   - specs/pullfrog-cloud-remediation-20261028/commit-message.txt
   - specs/pullfrog-cloud-remediation-20261028/pr-body.md
@@ -41,7 +43,7 @@ scope:
   - invoke Pullfrog v0.1.102 through its native fix_review dispatch contract while withholding repository write authority
   - treat provider output as untrusted and rebuild it in a fresh read-only validation job against the exact source head, same-repository destination, forbidden-path policy, and gitlink prohibition
   - isolate a trusted publisher with one normal exact-head fast-forward push and verify the resulting PR head
-  - require fresh Pullfrog, CI, Speculoos, and destination-guard evidence after every head mutation
+  - require fresh Pullfrog, CI, repository-bound zero-secret Speculoos contract, and destination-guard evidence after every head mutation
   - preserve human-only approval and `main`/`master` merge authority while allowing a repository-owned exact-head automatic merge gate for eligible same-repository feature PRs targeting any other valid base
 non_goals:
   - publishing this commit, activating the workflow on a serving ref, or running a hosted write pilot
@@ -65,7 +67,8 @@ acceptance:
   - the publisher uses a separately approved event-emitting credential so successful publication schedules fresh Pullfrog, CI, and Speculoos evidence rather than relying on suppressed built-in-token events
   - artifact enumeration is complete, expired matching history fails closed, and PRs older than the 90-day durable-history window are not eligible for unattended remediation
   - canonical and materialized workflows are byte-identical, immutable-pinned, bounded, and actionlint-clean
-  - focused tests, workflow validation, full repository tests, whitespace checks, public-safety scans, and Speculoos validation pass
+  - the hosted Speculoos check uses only repository-reviewed source, fetches no private cross-repository package, receives no extra credential, and persists exact-head contract evidence even when validation fails
+  - focused tests, workflow validation, full repository tests, whitespace checks, public-safety scans, and local official Speculoos validation pass
 publication_boundary:
   statement: "Local source implementation and validation only. Publication, hosted activation, and the first write-capable remediation pilot require separate authorization for the exact commit SHA and scope. The repository-owned exact-head non-stable auto-merge gate is authorized for any valid base except main or master; approval, main/master merge, release, deployment, settings changes, force-push, branch deletion, billing, and credential changes remain prohibited."
 delivery_policy:
