@@ -67,14 +67,13 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("  cancel-in-progress: false", self.template)
         self.assertIn("timeout-minutes: 25", self.template)
 
-    def test_provider_and_publish_permissions_are_separated(self):
+    def test_provider_publish_and_auto_merge_permissions_are_separated(self):
         self.assertEqual(top_level_section(self.template, "permissions"), "  contents: read\n")
-        self.assertNotIn("      contents: write\n", self.template)
         self.assertEqual(self.template.count("      id-token: write\n"), 1)
-        self.assertNotIn("pull-requests: write", self.template)
         remediate = self.template.split("  remediate:\n", 1)[1].split("  validate:\n", 1)[0]
         validate = self.template.split("  validate:\n", 1)[1].split("  publish:\n", 1)[0]
-        publish = self.template.split("  publish:\n", 1)[1]
+        publish = self.template.split("  publish:\n", 1)[1].split("  auto_merge_dev:\n", 1)[0]
+        auto_merge = self.template.split("  auto_merge_dev:\n", 1)[1]
         self.assertIn("      id-token: write\n", remediate)
         self.assertIn("      contents: read\n", remediate)
         self.assertNotIn("contents: write", remediate)
@@ -87,6 +86,11 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertIn(
             "token: ${{ secrets.PULLFROG_REMEDIATION_PUBLISH_TOKEN }}", publish
         )
+        self.assertIn("      contents: write\n", auto_merge)
+        self.assertIn("      pull-requests: write\n", auto_merge)
+        self.assertIn("      actions: write\n", auto_merge)
+        self.assertNotIn("id-token: write", auto_merge)
+        self.assertNotIn("PULLFROG_REMEDIATION_PUBLISH_TOKEN", auto_merge)
         self.assertNotIn("PULLFROG_REMEDIATION_PUBLISH_TOKEN", remediate)
         self.assertNotIn("PULLFROG_REMEDIATION_PUBLISH_TOKEN", validate)
 
@@ -209,7 +213,7 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
     def test_failure_paths_always_emit_terminal_evidence_before_failing_closed(self):
         remediate = self.template.split("  remediate:\n", 1)[1].split("  validate:\n", 1)[0]
         validate = self.template.split("  validate:\n", 1)[1].split("  publish:\n", 1)[0]
-        publish = self.template.split("  publish:\n", 1)[1]
+        publish = self.template.split("  publish:\n", 1)[1].split("  auto_merge_dev:\n", 1)[0]
         self.assertIn("        if: always()\n", remediate)
         self.assertIn("Persist untrusted provider bundle", remediate)
         self.assertIn("        continue-on-error: true\n", validate)
@@ -247,7 +251,7 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         )
 
     def test_publisher_push_uses_separate_event_emitting_credential(self):
-        publish = self.template.split("  publish:\n", 1)[1]
+        publish = self.template.split("  publish:\n", 1)[1].split("  auto_merge_dev:\n", 1)[0]
         checkout = publish.split(
             "      - name: Checkout exact source with publication credential\n", 1
         )[1].split("\n      - name:", 1)[0]
@@ -260,7 +264,7 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("Pullfrog, CI, and Speculoos", checkout)
         self.assertNotIn("github.token", checkout)
 
-    def test_approval_merge_and_release_remain_out_of_scope(self):
+    def test_dev_auto_merge_is_custom_exact_head_and_stable_branches_remain_blocked(self):
         for forbidden in [
             "gh pr merge",
             "enablePullRequestAutoMerge",
@@ -271,8 +275,24 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
             "repository_dispatches",
         ]:
             self.assertNotIn(forbidden, self.template)
-        self.assertIn("- Approval: `false`", (REPO_ROOT / "scripts/github/pullfrog_cloud_remediation.py").read_text(encoding="utf-8"))
-        self.assertIn("- Merge: `false`", (REPO_ROOT / "scripts/github/pullfrog_cloud_remediation.py").read_text(encoding="utf-8"))
+        auto_merge = self.template.split("  auto_merge_dev:\n", 1)[1]
+        self.assertIn("needs.evaluate.outputs.reason == 'clean'", auto_merge)
+        self.assertIn("scripts/github/pullfrog_dev_auto_merge.py", auto_merge)
+        self.assertIn(
+            '--expected-head-sha "${{ needs.evaluate.outputs.source_head_sha }}"',
+            auto_merge,
+        )
+        self.assertIn("GITHUB_TOKEN: ${{ github.token }}", auto_merge)
+        script = (REPO_ROOT / "scripts/github/pullfrog_dev_auto_merge.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('ALLOWED_BASE_REF = "dev"', script)
+        self.assertIn('FORBIDDEN_BASE_REFS = frozenset({"main", "master"})', script)
+        self.assertIn("cross-repo-workflow-updater-manual-trigger.yml", script)
+        self.assertIn("sync-starter-workflow-template-refs-trigger.yml", script)
+        remediation = (REPO_ROOT / "scripts/github/pullfrog_cloud_remediation.py").read_text(encoding="utf-8")
+        self.assertIn("- Approval: `false`", remediation)
+        self.assertIn("- Merge: `false`", remediation)
 
 
 if __name__ == "__main__":

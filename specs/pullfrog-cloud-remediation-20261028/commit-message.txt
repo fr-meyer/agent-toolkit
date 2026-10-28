@@ -1,5 +1,5 @@
-fix(github): repair guarded Pullfrog remediation loop
+feat(github): gate dev auto-merge by exact-head evidence
 
-Address the five exact-head Pullfrog findings by separating ledger and coordinator history, resolving relative patch paths, using a publisher-only event-emitting credential, failing closed on incomplete or expired artifact history, and allowing clean completion after the third remediation cycle.
+Keep Pullfrog's repository-wide native auto-merge disabled. Add a repository-owned gate that merges only clean exact-head same-repository feature PRs into dev, rejects main and master, preserves merge commits, and replays path-matched dev push automation suppressed by the built-in token.
 
 Task: pullfrog-cloud-remediation-20261028

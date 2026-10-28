@@ -4,7 +4,8 @@
 - invoke Pullfrog `v0.1.102` through its native `fix_review` contract while keeping provider push disabled
 - persist single-record identity-bound claim, candidate, and terminal artifacts, with the sealed dispatch kept separate, at most three cycles, and three per-head attempts
 - rebuild untrusted provider patches in a fresh read-only validation job, then publish only the canonical sealed patch through a separate trusted exact-head fast-forward job
-- preserve independent CI/Speculoos evidence and human-only approval and merge authority
+- preserve independent CI/Speculoos evidence and human-only approval and stable-branch merge authority
+- add a repository-owned exact-head automatic merge gate for clean same-repository feature PRs targeting only `dev`, while keeping Pullfrog-native auto-merge disabled
 
 ## Changed Files For Publish
 
@@ -31,9 +32,11 @@
 - Artifact inventory pagination must be complete, matching expired history fails closed, and PRs older than the 90-day durable-history window are ineligible for unattended remediation.
 - Pushed terminal evidence is accepted only when the exact claim, candidate, publish plan, patch digest, changed-path digest, source head, and resulting head all bind to one another.
 - The trusted controller re-reads exact PR identity before provider execution, candidate validation/application, and publication; it rejects forks, protected/default/base refs, stale/reused heads, workflow/governance paths, malformed history, unchanged output, repeated findings, and no-progress cycles.
-- The only repository mutation is one normal fast-forward push to the exact same-repository PR branch after the sealed patch digest and post-patch destination guard pass.
-- Force-push, force-with-lease, approval, auto-merge, merge, release, deployment, settings changes, branch deletion, elevated tokens, and credential/billing changes remain out of scope.
+- The remediation publisher's only mutation is one normal fast-forward push to the exact same-repository PR branch after the sealed patch digest and post-patch destination guard pass.
+- A separate least-privilege job may merge only a clean exact-head same-repository feature PR whose base is exactly `dev`; it re-reads live identity, requires all trusted evidence, rejects unresolved human changes requests, sends the reviewed SHA to GitHub's merge API, and preserves the repository's merge-commit convention.
+- Because built-in-token merges suppress ordinary push-triggered Actions runs, path-matched bounded dispatches replay only the existing `dev` cross-repository updater and reusable-ref synchronization workflows; any post-merge dispatch failure is persisted and fails visibly.
+- Force-push, force-with-lease, approval, Pullfrog-native auto-merge, merges to `main` or `master`, release, deployment, settings changes, branch deletion, elevated tokens, and credential/billing changes remain out of scope.
 
 ## Publication Boundary
 
-This commit is a locally validated source implementation. Publishing the exact commit, activating the workflow on a serving ref, and running the first hosted write pilot each require separate explicit authorization. Every merge remains human-authorized.
+This commit is a locally validated source implementation. Publishing the exact commit, activating the workflow on a serving ref, and running the first hosted remediation write pilot each require separate explicit authorization. The repository-owned exact-head gate is authorized to auto-merge eligible PRs only into `dev`; merges to `main` and `master` remain human-authorized.

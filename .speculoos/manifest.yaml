@@ -10,7 +10,7 @@ status:
   phase: implementation
   blocker_summary:
     - The write-capable source is implemented locally; publication, serving-ref activation, publisher-token provisioning, and the first hosted write pilot require separate exact-SHA approval.
-    - Pullfrog provider push, approval, CI autofix, auto-merge, release, deployment, branch deletion, credentials, billing, and hosted settings remain disabled or separately gated.
+    - Pullfrog provider push, approval, native repository-wide auto-merge, CI autofix, release, deployment, branch deletion, credentials, billing, and hosted settings remain disabled or separately gated. A repository-owned exact-head gate may auto-merge eligible feature PRs only into `dev`.
 publication_policy:
   repository_visibility: shared-repository
   intended_public_visibility: public
@@ -38,7 +38,7 @@ review_policy:
       approval: disabled
       remediation: native_fix_review_local_candidate_only
       ci_autofix: disabled
-      auto_merge: disabled
+      auto_merge: pullfrog-native-disabled; repository-owned-dev-only
   speculoos_evidence:
     policy: required
     evidence_source: independent exact-head hosted policy check
@@ -60,6 +60,8 @@ actor_policy:
   review_actor: pullfrog_review
   default_merge_actor: user_api
   feature_to_dev_merge_actor: mergeguez_dev_merge
+  feature_to_dev_auto_merge_actor: github_actions_dev_auto_merge
+  stable_auto_merge: forbidden
   native_review_requires_distinct_author: true
   exact_pr_base_head_sha_required: true
 surfaces:
@@ -68,13 +70,13 @@ surfaces:
     authority: canonical
   github_pull_request:
     enabled: true
-    status: open-repair-pending-publication
+    status: open-auto-merge-change-pending-publication
     number: 95
     base_branch: dev
     default_branch: main
     head_branch: feat/pullfrog-write-capable-loop
     head_sha: null
-    head_sha_source: The hosted PR remains on the pre-repair head until this validated repair is committed and published; use live GitHub readback for the exact current head
+    head_sha_source: The hosted PR is clean at repaired head 814b86cb1b4bdb26296a5c8aa708816f3ce68738 until this validated target-aware auto-merge change is committed and published; use live GitHub readback for the exact current head
     merge_commit: null
 gates:
   before_publish:

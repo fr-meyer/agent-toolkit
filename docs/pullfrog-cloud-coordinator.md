@@ -126,7 +126,11 @@ Dry-run publication and the local write-capable implementation do not authorize 
 6. fresh Pullfrog review and independent checks after the produced commit;
 7. stop behavior for no progress, repeated findings, failed/cancelled/timed-out evidence, head/base drift, forbidden paths, and cycle exhaustion.
 
-Pullfrog approval and auto-merge remain disabled. The remediation job forces Pullfrog to reuse a built-in token with read-only content and pull-request permissions and no checks or actions write permission, while `authorPermission: none` withholds the gh CLI token, forces push off, and locks cross-run learnings. Its best-effort post-fix approval, thread, comment, status, and redispatch paths therefore cannot mutate repository-hosted state. Every merge remains separately human-authorized.
+Pullfrog approval and native repository-wide auto-merge remain disabled. The remediation job forces Pullfrog to reuse a built-in token with read-only content and pull-request permissions and no checks or actions write permission, while `authorPermission: none` withholds the gh CLI token, forces push off, and locks cross-run learnings. Its best-effort post-fix approval, thread, comment, status, and redispatch paths therefore cannot mutate repository-hosted state.
+
+A separate repository-owned `auto_merge_dev` job owns automatic merge. It runs only after the coordinator reports a clean exact-head result, then independently revalidates the sanitized receipt, same-repository identity, approved feature-head prefix, live base/head SHAs, all five trusted evidence checks, the destination guard, and the absence of an unresolved human changes-requested review. It sends the exact reviewed SHA to GitHub's merge API using the repository's merge-commit convention only when the base is exactly `dev`. It explicitly rejects `main` and `master`, does not delete the source branch, has no provider or publisher credential, and is the only job with the built-in token's merge permissions. Stable-branch merges remain human-authorized.
+
+GitHub suppresses ordinary workflow events caused by a built-in-token merge. To preserve this repository's existing `dev` push automation, the gate reads the PR file list before merging and uses bounded `workflow_dispatch` calls afterward only when the same path filters would have selected the cross-repository workflow updater or reusable-workflow ref synchronizer. The dispatch inputs bind the old base SHA and confirmed merge SHA. A dispatch failure is recorded as `merged_with_downstream_failure` and fails the job after persisting the merge receipt, because the merge itself is already irreversible.
 
 ## Local validation
 
@@ -134,10 +138,12 @@ Pullfrog approval and auto-merge remain disabled. The remediation job forces Pul
 python3 -m unittest scripts/github/tests/test_pullfrog_cloud_coordinator.py -v
 python3 -m unittest scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py -v
 python3 -m unittest scripts/github/tests/test_pullfrog_cloud_remediation.py -v
+python3 -m unittest scripts/github/tests/test_pullfrog_dev_auto_merge.py -v
 python3 -m unittest scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py -v
 python3 -m py_compile \
   scripts/github/pullfrog_cloud_coordinator.py \
   scripts/github/pullfrog_cloud_remediation.py \
+  scripts/github/pullfrog_dev_auto_merge.py \
   scripts/github/pullfrog_cycle_contract.py \
   scripts/github/pullfrog_destination_guard.py
 scripts/github/validate_pullfrog_workflow.sh

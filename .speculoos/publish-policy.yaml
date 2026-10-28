@@ -23,6 +23,7 @@ actor_policy:
   required_profiles:
     - human_approved_agent_assisted
     - mergeguez_branch_broker
+    - github_actions_dev_auto_merge
     - franck_user_pr_author
     - pullfrog_review
     - user_api
@@ -52,6 +53,8 @@ actor_policy:
         - test/*
         - chore/*
       merge_actor: mergeguez_dev_merge
+      auto_merge_actor: github_actions_dev_auto_merge
+      auto_merge_enabled: true
     - name: dev_to_stable
       base_branches:
         - main
@@ -59,6 +62,7 @@ actor_policy:
       head_refs:
         - dev
       merge_actor: user_api
+      auto_merge_enabled: false
 planning_only:
   markers:
     - Planning/docs/metadata only

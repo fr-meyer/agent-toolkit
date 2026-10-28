@@ -269,6 +269,58 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
         self.assertIn("call `set_output` exactly once", payload["prompt"])
         self.assertNotIn("PRIVATE REVIEW TEXT", json.dumps(payload))
 
+    def test_prepare_claim_cli_emits_identity_for_clean_no_action(self):
+        receipt = remediation_receipt()
+        receipt["status"] = "clean"
+        receipt["would_action"] = "complete"
+        receipt["coordinator_blockers"] = []
+        receipt["cycle_decision"]["status"] = "clean"
+        receipt["cycle_decision"]["action"] = "complete"
+        receipt["cycle_decision"]["blockers"] = []
+        receipt["cycle_decision"]["review"]["finding_count"] = 0
+        receipt["cycle_decision"]["review"]["finding_fingerprints"] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            receipt_path = root / "receipt.json"
+            ledger_path = root / "ledger.json"
+            decision_path = root / "decision.json"
+            claim_path = root / "claim.json"
+            output_path = root / "github-output.txt"
+            receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+            ledger_path.write_text(json.dumps(empty_ledger()), encoding="utf-8")
+            argv = [
+                str(SCRIPT),
+                "prepare-claim",
+                "--receipt",
+                str(receipt_path),
+                "--ledger",
+                str(ledger_path),
+                "--run-id",
+                "123",
+                "--run-attempt",
+                "1",
+                "--decision-out",
+                str(decision_path),
+                "--claim-out",
+                str(claim_path),
+                "--github-output",
+                str(output_path),
+            ]
+            with mock.patch.object(sys, "argv", argv):
+                self.assertEqual(MODULE.main(), 0)
+
+            outputs = dict(
+                line.split("=", 1)
+                for line in output_path.read_text(encoding="utf-8").splitlines()
+            )
+            self.assertEqual(outputs["ready"], "false")
+            self.assertEqual(outputs["status"], "no_action")
+            self.assertEqual(outputs["reason"], "clean")
+            self.assertEqual(outputs["pr_number"], "94")
+            self.assertEqual(outputs["source_head_sha"], HEAD_SHA)
+            self.assertFalse(claim_path.exists())
+
     def test_duplicate_delivery_is_an_idempotent_noop(self):
         receipt = remediation_receipt()
         _, claim = MODULE.prepare_claim(

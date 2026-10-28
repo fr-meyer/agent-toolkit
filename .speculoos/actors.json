@@ -18,7 +18,10 @@
       "native_review_requires_distinct_author": true,
       "exact_pr_base_head_sha_required": true,
       "auto_merge": {
-        "enabled": false,
+        "enabled": true,
+        "actor": "github_actions_dev_auto_merge",
+        "allowed_base_refs": ["dev"],
+        "required_evidence": ["pullfrog", "pullfrog-approval", "ci", "speculoos", "destination-guard"],
         "delete_branch_after_merge": false
       }
     },
@@ -82,6 +85,20 @@
       "credential_location": "host_broker",
       "requires_explicit_approval": true,
       "exact_pr_base_head_sha_required": true,
+      "secrets_in_repo": false
+    },
+    "github_actions_dev_auto_merge": {
+      "kind": "github_actions_builtin_token",
+      "roles": ["merge_actor"],
+      "status": "enabled_policy_gated_exact_head_dev_auto_merge",
+      "bot_login": "github-actions[bot]",
+      "allowed_base_refs": ["dev"],
+      "forbidden_base_refs": ["main", "master"],
+      "credential_location": "github_actions_job_token",
+      "requires_explicit_approval": false,
+      "exact_pr_base_head_sha_required": true,
+      "same_repository_required": true,
+      "replays_suppressed_dev_push_automation": true,
       "secrets_in_repo": false
     },
     "user_api": {

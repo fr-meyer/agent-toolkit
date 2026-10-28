@@ -1502,9 +1502,10 @@ def main() -> int:
         return 0
 
     if args.command == "prepare-claim":
+        receipt = _load_object(Path(args.receipt))
         try:
             decision, claim = prepare_claim(
-                _load_object(Path(args.receipt)),
+                receipt,
                 _load_object(Path(args.ledger)),
                 run_id=args.run_id,
                 run_attempt=args.run_attempt,
@@ -1518,6 +1519,7 @@ def main() -> int:
             claim = None
         _write_object(Path(args.decision_out), decision)
         ready = claim is not None
+        identity = _mapping((claim or receipt).get("identity"))
         if claim is not None:
             _write_object(Path(args.claim_out), claim)
         _append_outputs(
@@ -1526,8 +1528,8 @@ def main() -> int:
                 "ready": ready,
                 "status": decision["status"],
                 "reason": decision["reason"],
-                "pr_number": _integer(_mapping(claim or {}).get("identity", {}).get("pr_number")) or "",
-                "source_head_sha": _text(_mapping(claim or {}).get("identity", {}).get("head_sha")),
+                "pr_number": _integer(identity.get("pr_number")) or "",
+                "source_head_sha": _text(identity.get("head_sha")),
                 "attempt_number": _integer(_mapping(claim or {}).get("attempt_number")) or "",
                 "claim_artifact": (
                     f"pullfrog-remediation-claim-pr-{claim['identity']['pr_number']}-{claim['run_id']}-a{claim['attempt_number']}"
