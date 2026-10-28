@@ -26,27 +26,27 @@
     "local_validation": {
       "kind": "local_validation",
       "status": "passed",
-      "summary": "All available local gates passed: 121 GitHub helper tests, 29 focused remediation tests, checksum-verified actionlint and workflow-policy validation, Python compilation, zero-change materialization, canonical/live workflow identity, JSON metadata parsing, whitespace checks, and public-safety/private-context scans. The local Speculoos binary is unavailable, so independent hosted Speculoos evidence remains required after publication.",
+      "summary": "All available local gates passed after the five Pullfrog findings were repaired: 127 GitHub helper tests, 52 focused coordinator/remediation/policy tests, 29 checksum-verified actionlint and workflow-policy tests, Python compilation, zero-change materialization, canonical/live workflow identity, JSON metadata parsing, whitespace checks, and public-safety/private-context scans. The local Speculoos binary is unavailable, so independent hosted Speculoos evidence remains required after publication.",
       "evidence_ref": ".speculoos/tasks/pullfrog-cloud-remediation-20261028.yaml",
       "updated_at": "pullfrog-cloud-remediation-20261028"
     },
     "github_checks": {
       "kind": "github_checks",
-      "status": "pending-publication",
-      "summary": "No pull request is recorded for this local write-capable branch. Publication, activation, and the hosted pilot require separate authorization; hosted checks must be read live at the exact published head before merge or activation.",
+      "status": "pending-repair-publication",
+      "summary": "PR #95 remains open at the pre-repair hosted head while this local repair is validated. Fresh hosted checks must be read live at the exact repair head after publication. Merge remains separately unauthorized.",
       "evidence_ref": "live GitHub exact-head checks",
       "updated_at": "pullfrog-cloud-remediation-20261028"
     },
     "pullfrog_review": {
       "kind": "pullfrog_review",
-      "status": "pending-publication",
-      "summary": "A fresh exact-head Pullfrog review plus app-bound pullfrog and pullfrog-approval checks are required after publication and after every head update.",
+      "status": "repair-pending-rereview",
+      "summary": "Exact-head Pullfrog review 5676875941 found five actionable issues at a2936bf. This repair addresses all five locally; a fresh exact-head Pullfrog review plus app-bound pullfrog and pullfrog-approval checks remain required after publication.",
       "evidence_ref": "docs/pullfrog-cloud-coordinator.md",
       "updated_at": "pullfrog-cloud-remediation-20261028"
     },
     "speculoos_evidence": {
       "kind": "speculoos_evidence",
-      "status": "pending-publication",
+      "status": "pending-repair-publication",
       "summary": "Independent hosted Speculoos evidence is required on the same exact head and cannot be replaced by Pullfrog output.",
       "evidence_ref": "live GitHub exact-head speculoos check",
       "updated_at": "pullfrog-cloud-remediation-20261028"

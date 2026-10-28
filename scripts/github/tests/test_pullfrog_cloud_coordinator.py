@@ -120,6 +120,35 @@ class PullfrogCloudCoordinatorTests(unittest.TestCase):
         self.assertEqual(receipt["cycle_decision"]["review"]["finding_count"], 1)
         self.assertFalse(any(receipt["mutation"].values()))
 
+    def test_third_cycle_allows_clean_completion_but_never_a_fourth_remediation(self):
+        for with_findings, expected_status, expected_blocker in (
+            (False, "clean", None),
+            (True, "stopped", "cycle_limit_exhausted"),
+        ):
+            with self.subTest(with_findings=with_findings):
+                snapshot = base_snapshot(with_findings=with_findings)
+                snapshot["history"] = {
+                    "schema": MODULE.HISTORY_SCHEMA,
+                    "cycle_number": 3,
+                    "completed_claim_keys": [
+                        f"fr-meyer/agent-toolkit:94:{value * 40}:{index}"
+                        for index, value in enumerate(("3", "4", "5"))
+                    ],
+                    "remediation_source_heads": ["3" * 40, "4" * 40, "5" * 40],
+                    "finding_set_digests": ["a" * 64, "b" * 64, "c" * 64],
+                    "output_digests": ["d" * 64, "e" * 64, "f" * 64],
+                }
+                receipt = MODULE.evaluate_snapshot(snapshot)
+                self.assertEqual(receipt["status"], expected_status)
+                self.assertEqual(receipt["destination_guard"]["status"], "allowed")
+                if expected_blocker:
+                    self.assertIn(
+                        expected_blocker, receipt["cycle_decision"]["blockers"]
+                    )
+                else:
+                    self.assertEqual(receipt["would_action"], "complete")
+                    self.assertEqual(receipt["cycle_decision"]["blockers"], [])
+
     def test_review_and_comment_text_never_reach_receipt(self):
         snapshot = base_snapshot(with_findings=True)
         snapshot["reviews"][0]["body"] = "PRIVATE REVIEW TEXT"

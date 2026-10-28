@@ -588,13 +588,15 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 ### Security boundary
 - provider job: `id-token: write` for provider routing, `contents: read`, `pull-requests: read`, and the built-in read token mapped as `GH_TOKEN` so Pullfrog cannot mint its normal write-capable MCP token; Pullfrog also uses `push: disabled`, restricted shell, `authorPermission: none` to withhold gh and learning writes, and no provider-secret mapping
 - validator job: read-only permissions, a fresh trusted controller checkout, and a fresh exact-source checkout; it alone converts the untrusted provider bundle into a canonical digest-bound candidate
-- publisher job: one built-in-token `contents: write` permission, no provider identity token, one normal fast-forward push to the exact same-repository PR head
+- publisher job: one separately provisioned `PULLFROG_REMEDIATION_PUBLISH_TOKEN`, no provider identity token, and one normal fast-forward push to the exact same-repository PR head; unlike `github.token`, this push emits the PR synchronize event that schedules fresh Pullfrog, CI, and Speculoos evidence
 - the durable claim artifact contains only `claim.json`, while the sealed dispatch is a separate transient artifact; claim, candidate, publish plan, patch, changed paths, source/result heads, and pushed terminal evidence are schema-validated and mutually digest-bound
 - forks, protected/default/base refs, stale or reused heads, workflow/governance paths, malformed history, repeated findings, unchanged output, and no-progress states fail closed
 - no force-push, approval, merge, auto-merge, release, deployment, settings change, branch deletion, or elevated token
 
 ### Notes
 - Pullfrog `v0.1.102` receives the native dispatch envelope through the exact `prompt` input. `prompt_file` is deliberately not used because Pullfrog treats it as plain text and would discard the `fix_review` event contract.
+- The full artifact ledger and its nested coordinator history are emitted separately. Enumeration must be complete, matching expired records fail closed, and PRs outside the 90-day durable-history window are not eligible for unattended remediation.
+- Hosted activation additionally requires separate approval and provisioning of the publisher-only `PULLFROG_REMEDIATION_PUBLISH_TOKEN`; no credential value is stored in this repository.
 - Source availability is not activation authority. Publishing the exact local commit, activating the workflow on a serving ref, and running the first hosted write pilot each remain separately gated.
 - See `docs/pullfrog-cloud-coordinator.md` for the credential split, ledger recovery rules, cycle contract, and hosted acceptance boundary.
 

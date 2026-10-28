@@ -471,6 +471,7 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     history = _validated_history(snapshot.get("history"))
     cycle_number = history["cycle_number"]
     claim_key = f"{repository_slug}:{observed.get('pr_number')}:{head_sha}:{cycle_number}"
+    guard_attempt = min(cycle_number + 1, cycle_contract.MAX_CYCLES)
 
     changed_paths = [
         _text(_mapping(item).get("filename")) for item in _list(snapshot.get("files"))
@@ -483,7 +484,7 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
             "destination_repository_slug": repository_slug,
             "destination_ref": _text(observed.get("head_ref")),
             "destination_sha": head_sha,
-            "attempt": cycle_number + 1,
+            "attempt": guard_attempt,
             "changed_paths": changed_paths,
         },
         "first_attempt": {

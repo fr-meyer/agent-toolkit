@@ -9,7 +9,7 @@ repository:
 status:
   phase: implementation
   blocker_summary:
-    - The write-capable source is implemented locally; publication, serving-ref activation, and the first hosted write pilot require separate exact-SHA approval.
+    - The write-capable source is implemented locally; publication, serving-ref activation, publisher-token provisioning, and the first hosted write pilot require separate exact-SHA approval.
     - Pullfrog provider push, approval, CI autofix, auto-merge, release, deployment, branch deletion, credentials, billing, and hosted settings remain disabled or separately gated.
 publication_policy:
   repository_visibility: shared-repository
@@ -68,12 +68,13 @@ surfaces:
     authority: canonical
   github_pull_request:
     enabled: true
-    status: planned
+    status: open-repair-pending-publication
+    number: 95
     base_branch: dev
     default_branch: main
     head_branch: feat/pullfrog-write-capable-loop
     head_sha: null
-    head_sha_source: Local feature branch only; publication and activation require separate exact-SHA approval and live readback
+    head_sha_source: The hosted PR remains on the pre-repair head until this validated repair is committed and published; use live GitHub readback for the exact current head
     merge_commit: null
 gates:
   before_publish:

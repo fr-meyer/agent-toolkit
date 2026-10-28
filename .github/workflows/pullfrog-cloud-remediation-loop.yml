@@ -105,6 +105,7 @@ jobs:
           --repository "$GITHUB_REPOSITORY"
           --pr-number "${{ steps.context.outputs.pr_number }}"
           --out artifacts/pullfrog-remediation/evaluate/ledger.json
+          --history-out artifacts/pullfrog-remediation/evaluate/history.json
 
       - name: Evaluate exact-head evidence
         env:
@@ -120,7 +121,7 @@ jobs:
           --protected-ref main
           --ci-check 'dogfood / Provider-free PR automation contract=github-actions'
           --speculoos-check 'speculoos=github-actions'
-          --history artifacts/pullfrog-remediation/evaluate/ledger.json
+          --history artifacts/pullfrog-remediation/evaluate/history.json
           --out artifacts/pullfrog-remediation/evaluate/coordinator.json
 
       - name: Mint durable idempotent claim
@@ -514,7 +515,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       actions: read
-      contents: write
+      contents: read
       pull-requests: read
 
     steps:
@@ -555,6 +556,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
           path: publish-worktree
+          # This separately provisioned credential is confined to the
+          # publisher. Unlike the built-in token, its push emits the normal PR
+          # synchronize event so Pullfrog, CI, and Speculoos revalidate the
+          # resulting exact head without human intervention.
+          token: ${{ secrets.PULLFROG_REMEDIATION_PUBLISH_TOKEN }}
 
       - name: Re-read exact head before applying candidate
         env:

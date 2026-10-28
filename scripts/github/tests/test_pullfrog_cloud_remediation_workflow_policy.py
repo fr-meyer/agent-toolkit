@@ -69,7 +69,7 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
 
     def test_provider_and_publish_permissions_are_separated(self):
         self.assertEqual(top_level_section(self.template, "permissions"), "  contents: read\n")
-        self.assertEqual(self.template.count("      contents: write\n"), 1)
+        self.assertNotIn("      contents: write\n", self.template)
         self.assertEqual(self.template.count("      id-token: write\n"), 1)
         self.assertNotIn("pull-requests: write", self.template)
         remediate = self.template.split("  remediate:\n", 1)[1].split("  validate:\n", 1)[0]
@@ -82,8 +82,13 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("      contents: read\n", validate)
         self.assertNotIn("id-token: write", validate)
         self.assertNotIn("contents: write", validate)
-        self.assertIn("      contents: write\n", publish)
+        self.assertIn("      contents: read\n", publish)
         self.assertNotIn("id-token: write", publish)
+        self.assertIn(
+            "token: ${{ secrets.PULLFROG_REMEDIATION_PUBLISH_TOKEN }}", publish
+        )
+        self.assertNotIn("PULLFROG_REMEDIATION_PUBLISH_TOKEN", remediate)
+        self.assertNotIn("PULLFROG_REMEDIATION_PUBLISH_TOKEN", validate)
 
     def test_pullfrog_is_native_pinned_and_has_no_remote_write_authority(self):
         self.assertIn(
@@ -105,7 +110,12 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertIn('"issue_number": identity["pr_number"]', remediation)
         self.assertIn('"review_id": claim["review_id"]', remediation)
         self.assertNotIn("ELEVATED_GITHUB_TOKEN", self.template)
-        self.assertNotRegex(self.template, r"\$\{\{\s*secrets\.")
+        self.assertEqual(
+            self.template.count(
+                "${{ secrets.PULLFROG_REMEDIATION_PUBLISH_TOKEN }}"
+            ),
+            1,
+        )
 
     def test_provider_uses_job_scoped_token_instead_of_minting_write_credentials(self):
         remediate = self.template.split("  remediate:\n", 1)[1].split("  validate:\n", 1)[0]
@@ -163,6 +173,18 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("retention-days: 90", self.template)
         self.assertIn("load-history", self.template)
         self.assertIn("prepare-claim", self.template)
+        self.assertIn(
+            "--history-out artifacts/pullfrog-remediation/evaluate/history.json",
+            self.template,
+        )
+        self.assertIn(
+            "--history artifacts/pullfrog-remediation/evaluate/history.json",
+            self.template,
+        )
+        self.assertNotIn(
+            "--history artifacts/pullfrog-remediation/evaluate/ledger.json",
+            self.template,
+        )
 
     def test_durable_claim_artifact_contains_only_the_ledger_record(self):
         evaluate = self.template.split("  evaluate:\n", 1)[1].split(
@@ -223,6 +245,20 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
             "--candidate artifacts/pullfrog-remediation/candidate/candidate.json",
             self.template,
         )
+
+    def test_publisher_push_uses_separate_event_emitting_credential(self):
+        publish = self.template.split("  publish:\n", 1)[1]
+        checkout = publish.split(
+            "      - name: Checkout exact source with publication credential\n", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertIn(
+            "token: ${{ secrets.PULLFROG_REMEDIATION_PUBLISH_TOKEN }}", checkout
+        )
+        self.assertIn("persist-credentials: true", checkout)
+        self.assertIn("normal PR", checkout)
+        self.assertIn("synchronize event", checkout)
+        self.assertIn("Pullfrog, CI, and Speculoos", checkout)
+        self.assertNotIn("github.token", checkout)
 
     def test_approval_merge_and_release_remain_out_of_scope(self):
         for forbidden in [

@@ -1,12 +1,16 @@
 import importlib.util
 import io
 import json
+import os
 import subprocess
+import sys
 import tempfile
 import unittest
 import urllib.request
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "pullfrog_cloud_remediation.py"
 SPEC = importlib.util.spec_from_file_location("pullfrog_cloud_remediation", SCRIPT)
@@ -24,6 +28,7 @@ def pull_request(head_sha=HEAD_SHA):
     return {
         "number": 94,
         "state": "open",
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "base": {"ref": "dev", "sha": BASE_SHA},
         "head": {
             "ref": "chore/pullfrog-full-automation",
@@ -434,6 +439,7 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
 
             def get(self, path):
                 return {
+                    "total_count": 1,
                     "artifacts": [
                         {
                             "id": 1,
@@ -470,6 +476,7 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
                 def get(self, path):
                     if "/actions/artifacts?" in path:
                         return {
+                            "total_count": len(records),
                             "artifacts": [
                                 {
                                     "id": index,
@@ -525,6 +532,254 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
 
         ambiguous = load_with({"claim": claim, "candidate": candidate}, RESULT_SHA)
         self.assertEqual(ambiguous["terminals"], [])
+
+    def test_artifact_inventory_must_be_complete_and_unexpired(self):
+        original = MODULE.GitHubArtifactClient
+
+        class IncompleteClient:
+            def __init__(self, api_url, token, repository_slug):
+                self.repository_slug = repository_slug
+
+            def get(self, path):
+                if "/actions/artifacts?" not in path:
+                    raise AssertionError(path)
+                page = int(path.rsplit("page=", 1)[1])
+                if page == 6:
+                    return {
+                        "total_count": 501,
+                        "artifacts": [
+                            {
+                                "id": 501,
+                                "name": "pullfrog-remediation-claim-pr-94-123-a1",
+                                "expired": False,
+                                "workflow_run": {"id": 123},
+                            }
+                        ],
+                    }
+                artifacts = [
+                    {
+                        "id": (page - 1) * 100 + index,
+                        "name": f"unrelated-{page}-{index}",
+                        "expired": False,
+                        "workflow_run": {"id": 1},
+                    }
+                    for index in range(1, 101)
+                ]
+                return {"total_count": 501, "artifacts": artifacts}
+
+        MODULE.GitHubArtifactClient = IncompleteClient
+        try:
+            with self.assertRaisesRegex(
+                MODULE.RemediationError, "artifact_inventory_incomplete"
+            ):
+                MODULE.load_hosted_ledger(
+                    api_url="https://api.github.com",
+                    token="test",
+                    repository_slug="fr-meyer/agent-toolkit",
+                    pr_number=94,
+                )
+        finally:
+            MODULE.GitHubArtifactClient = original
+
+        class ExpiredClient:
+            def __init__(self, api_url, token, repository_slug):
+                self.repository_slug = repository_slug
+
+            def get(self, path):
+                if "/actions/artifacts?" in path:
+                    return {
+                        "total_count": 1,
+                        "artifacts": [
+                            {
+                                "id": 1,
+                                "name": "pullfrog-remediation-claim-pr-94-123-a1",
+                                "expired": True,
+                                "workflow_run": {"id": 123},
+                            }
+                        ],
+                    }
+                raise AssertionError(path)
+
+        MODULE.GitHubArtifactClient = ExpiredClient
+        try:
+            with self.assertRaisesRegex(
+                MODULE.RemediationError, "expired_remediation_artifact"
+            ):
+                MODULE.load_hosted_ledger(
+                    api_url="https://api.github.com",
+                    token="test",
+                    repository_slug="fr-meyer/agent-toolkit",
+                    pr_number=94,
+                )
+        finally:
+            MODULE.GitHubArtifactClient = original
+
+    def test_history_retention_window_fails_closed(self):
+        original = MODULE.GitHubArtifactClient
+
+        class FakeClient:
+            def __init__(self, api_url, token, repository_slug):
+                self.repository_slug = repository_slug
+
+            def get(self, path):
+                if "/actions/artifacts?" in path:
+                    return {"total_count": 0, "artifacts": []}
+                if path.endswith("/pulls/94"):
+                    value = pull_request()
+                    value["created_at"] = "2020-01-01T00:00:00Z"
+                    return value
+                raise AssertionError(path)
+
+        MODULE.GitHubArtifactClient = FakeClient
+        try:
+            with self.assertRaisesRegex(
+                MODULE.RemediationError, "history_retention_window_exceeded"
+            ):
+                MODULE.load_hosted_ledger(
+                    api_url="https://api.github.com",
+                    token="test",
+                    repository_slug="fr-meyer/agent-toolkit",
+                    pr_number=94,
+                )
+        finally:
+            MODULE.GitHubArtifactClient = original
+
+    def test_load_history_emits_coordinator_history_for_cli(self):
+        claim = make_claim()
+        candidate = make_candidate(claim)
+        plan = make_publish_plan(claim, candidate)
+        terminal = MODULE.terminal_receipt(
+            claim,
+            "pushed",
+            "exact_head_publish_verified",
+            result_head_sha=RESULT_SHA,
+            publish_plan=plan,
+        )
+        ledgers = [
+            empty_ledger(),
+            MODULE.build_ledger(
+                "fr-meyer/agent-toolkit", 94, [claim], [candidate], [terminal]
+            ),
+        ]
+        original_argv = sys.argv
+        try:
+            for index, ledger in enumerate(ledgers):
+                with self.subTest(index=index), tempfile.TemporaryDirectory() as temp_dir:
+                    root = Path(temp_dir)
+                    ledger_path = root / "ledger.json"
+                    history_path = root / "history.json"
+                    with mock.patch.object(
+                        MODULE, "load_hosted_ledger", return_value=ledger
+                    ):
+                        sys.argv = [
+                            str(SCRIPT),
+                            "load-history",
+                            "--repository",
+                            "fr-meyer/agent-toolkit",
+                            "--pr-number",
+                            "94",
+                            "--out",
+                            str(ledger_path),
+                            "--history-out",
+                            str(history_path),
+                        ]
+                        self.assertEqual(MODULE.main(), 0)
+                    self.assertEqual(
+                        json.loads(history_path.read_text(encoding="utf-8")),
+                        ledger["history"],
+                    )
+
+                    captured = []
+
+                    def stop_after_history(**kwargs):
+                        captured.append(kwargs["history"])
+                        raise COORDINATOR.CoordinatorError("test_stop")
+
+                    with mock.patch.object(
+                        COORDINATOR,
+                        "collect_github_snapshot",
+                        side_effect=stop_after_history,
+                    ):
+                        sys.argv = [
+                            "pullfrog_cloud_coordinator.py",
+                            "evaluate-github",
+                            "--repository",
+                            "fr-meyer/agent-toolkit",
+                            "--pr-number",
+                            "94",
+                            "--expected-head-sha",
+                            HEAD_SHA,
+                            "--event-kind",
+                            "workflow_dispatch",
+                            "--delivery-id",
+                            f"dispatch-{index}",
+                            "--history",
+                            str(history_path),
+                            "--out",
+                            str(root / "receipt.json"),
+                        ]
+                        self.assertEqual(COORDINATOR.main(), 0)
+                    self.assertEqual(captured, [ledger["history"]])
+        finally:
+            sys.argv = original_argv
+
+    def test_relative_workspaces_resolve_validator_and_publisher_patches(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
+            )
+            (root / "scripts").mkdir()
+            source_file = root / "scripts/example.py"
+            source_file.write_text("value = 1\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
+            source = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=root, text=True
+            ).strip()
+            claim = make_claim(source_head=source)
+            source_file.write_text("value = 2\n", encoding="utf-8")
+            raw_patch = subprocess.check_output(
+                [
+                    "git",
+                    "diff",
+                    "--binary",
+                    "--full-index",
+                    "--no-renames",
+                    source,
+                    "--",
+                ],
+                cwd=root,
+            )
+            subprocess.run(["git", "reset", "--hard", source], cwd=root, check=True)
+
+            original_cwd = Path.cwd()
+            os.chdir(root.parent)
+            try:
+                relative = Path(root.name)
+                candidate, sealed_patch = MODULE.prepare_candidate_from_patch(
+                    claim=claim,
+                    workspace=relative,
+                    action_outcome="success",
+                    action_result_raw=action_result(claim),
+                    raw_patch=raw_patch,
+                    observed_identity=dict(claim["identity"]),
+                )
+                subprocess.run(
+                    ["git", "reset", "--hard", source], cwd=relative, check=True
+                )
+                plan = MODULE.apply_candidate(
+                    claim=claim,
+                    candidate=candidate,
+                    patch=sealed_patch,
+                    workspace=relative,
+                )
+            finally:
+                os.chdir(original_cwd)
+            self.assertEqual(plan["source_head_sha"], source)
+            self.assertEqual(source_file.read_text(encoding="utf-8"), "value = 2\n")
 
     def test_local_candidate_is_flattened_guarded_and_committed_once(self):
         with tempfile.TemporaryDirectory() as temp_dir:

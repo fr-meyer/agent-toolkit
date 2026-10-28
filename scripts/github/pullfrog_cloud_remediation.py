@@ -23,6 +23,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -47,6 +48,7 @@ MAX_ATTEMPTS = 3
 MAX_ARTIFACTS = 60
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
 MAX_PATCH_BYTES = 4 * 1024 * 1024
+HISTORY_RETENTION_DAYS = 90
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 RUN_ID_RE = re.compile(r"^[1-9][0-9]{0,19}$")
@@ -566,20 +568,34 @@ def load_hosted_ledger(
     client = GitHubArtifactClient(api_url, token, repository_slug)
     prefix = f"/repos/{client.repository_slug}"
     artifacts: list[dict[str, Any]] = []
+    total_count: int | None = None
     for page in range(1, coordinator.MAX_PAGES + 1):
         payload = _mapping(client.get(f"{prefix}/actions/artifacts?per_page=100&page={page}"))
+        observed_total = _integer(payload.get("total_count"))
+        if observed_total is None or observed_total < 0:
+            raise RemediationError("invalid_artifact_inventory")
+        if total_count is None:
+            total_count = observed_total
+        elif observed_total != total_count:
+            raise RemediationError("artifact_inventory_changed")
         page_items = [_mapping(item) for item in _list(payload.get("artifacts"))]
         artifacts.extend(page_items)
         if len(artifacts) > coordinator.MAX_ITEMS:
             raise RemediationError("artifact_collection_too_large")
-        if len(page_items) < 100:
+        if len(artifacts) >= total_count:
             break
+        if len(page_items) < 100:
+            raise RemediationError("artifact_inventory_incomplete")
+    if total_count is None or len(artifacts) != total_count:
+        raise RemediationError("artifact_inventory_incomplete")
     relevant: list[tuple[str, dict[str, Any], int, int]] = []
     for artifact in artifacts:
         name = _text(artifact.get("name"))
         match = ARTIFACT_RE.fullmatch(name)
-        if not match or int(match.group(2)) != pr_number or artifact.get("expired") is True:
+        if not match or int(match.group(2)) != pr_number:
             continue
+        if artifact.get("expired") is True:
+            raise RemediationError("expired_remediation_artifact")
         artifact_id = _integer(artifact.get("id"))
         run_id = _integer(_mapping(artifact.get("workflow_run")).get("id"))
         named_run_id = int(match.group(3))
@@ -626,6 +642,18 @@ def load_hosted_ledger(
         _text(item.get("attempt_id")): item for item in records["candidate"]
     }
     current_pr = _mapping(client.get(f"{prefix}/pulls/{pr_number}"))
+    created_at = _text(current_pr.get("created_at"))
+    try:
+        created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RemediationError("invalid_pull_request_history_window") from exc
+    if created.tzinfo is None:
+        raise RemediationError("invalid_pull_request_history_window")
+    now = datetime.now(timezone.utc)
+    if created > now + timedelta(minutes=5):
+        raise RemediationError("invalid_pull_request_history_window")
+    if now - created >= timedelta(days=HISTORY_RETENTION_DAYS):
+        raise RemediationError("history_retention_window_exceeded")
     current_head = _text(_mapping(current_pr.get("head")).get("sha"))
     recoverable_conclusions = {"failure", "cancelled", "timed_out", "action_required", "stale"}
     for claim in records["claim"]:
@@ -1068,7 +1096,7 @@ def prepare_candidate_from_patch(
             "unchanged_output" if not raw_patch else "candidate_patch_too_large"
         )
 
-    patch_path = workspace / ".git" / "pullfrog-provider.patch"
+    patch_path = (workspace / ".git" / "pullfrog-provider.patch").resolve()
     patch_path.write_bytes(raw_patch)
     try:
         _run_git(workspace, "apply", "--check", "--binary", str(patch_path))
@@ -1197,7 +1225,7 @@ def apply_candidate(
     if _run_git(workspace, "status", "--porcelain=v1").stdout:
         raise RemediationError("dirty_publish_workspace")
 
-    patch_path = workspace / ".git" / "pullfrog-remediation.patch"
+    patch_path = (workspace / ".git" / "pullfrog-remediation.patch").resolve()
     patch_path.write_bytes(patch)
     try:
         _run_git(workspace, "apply", "--index", "--binary", str(patch_path))
@@ -1384,6 +1412,7 @@ def main() -> int:
     load.add_argument("--repository", required=True)
     load.add_argument("--pr-number", required=True, type=int)
     load.add_argument("--out", required=True)
+    load.add_argument("--history-out")
 
     prepare = sub.add_parser("prepare-claim")
     prepare.add_argument("--receipt", required=True)
@@ -1468,6 +1497,8 @@ def main() -> int:
         except (RemediationError, coordinator.CoordinatorError) as exc:
             raise SystemExit(f"history load failed: {_failure_code(exc)}")
         _write_object(Path(args.out), ledger)
+        if args.history_out:
+            _write_object(Path(args.history_out), ledger["history"])
         return 0
 
     if args.command == "prepare-claim":

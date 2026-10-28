@@ -105,6 +105,8 @@
       "remediation_mode": "native_fix_review_local_candidate_only",
       "candidate_validation": "fresh_read_only_job",
       "trusted_publisher_status": "implemented_local_not_activated",
+      "trusted_publisher_credential": "PULLFROG_REMEDIATION_PUBLISH_TOKEN",
+      "trusted_publisher_credential_requires_separate_approval": true,
       "review_approval_enabled": false,
       "auto_merge_enabled": false
     },

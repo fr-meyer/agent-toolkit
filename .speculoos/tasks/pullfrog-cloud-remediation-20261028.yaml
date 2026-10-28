@@ -16,6 +16,8 @@ write_paths:
   - docs/pullfrog-review-only-pilot.md
   - docs/workflow-asset-library-layout.md
   - scripts/github/pullfrog_cloud_remediation.py
+  - scripts/github/pullfrog_cloud_coordinator.py
+  - scripts/github/tests/test_pullfrog_cloud_coordinator.py
   - scripts/github/tests/test_pullfrog_cloud_remediation.py
   - scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py
   - scripts/github/validate_pullfrog_workflow.sh
@@ -39,12 +41,14 @@ non_goals:
   - replacing Pullfrog with another reviewer, fixer, service, or fork
 acceptance:
   - native fix_review payload binds issue_number, review_id, approved_only=false, exact branch, and v0.1.102 compatibility
-  - provider, validator, and publisher credentials never coexist; Pullfrog is forced to reuse the job-scoped read token through GH_TOKEN instead of minting its normal MCP write token, authorPermission=none withholds gh and cross-run learning writes, and no secret or elevated token is mapped
+  - provider, validator, and publisher credentials never coexist; Pullfrog is forced to reuse the job-scoped read token through GH_TOKEN instead of minting its normal MCP write token, authorPermission=none withholds gh and cross-run learning writes, and the separately provisioned publisher token is referenced only by the publish checkout
   - the durable claim artifact contains only claim.json, the sealed dispatch is transient and separate, claim upload precedes provider execution, and terminal receipt follows publication or a proven retryable failure
   - forked, stale, reused, protected, detached, forbidden-path, malformed-history, repeated-finding, unchanged-output, no-progress, and exhausted states fail closed
   - provider output remains untrusted until a fresh validator checkout emits a canonical candidate; claim, candidate, publish plan, patch, changed paths, source/result heads, and pushed terminal evidence are mutually digest-bound
   - exact head is re-read before provider execution, before patch application, and immediately before publication
   - publication is one normal fast-forward push to the current same-repository PR branch
+  - the publisher uses a separately approved event-emitting credential so successful publication schedules fresh Pullfrog, CI, and Speculoos evidence rather than relying on suppressed built-in-token events
+  - artifact enumeration is complete, expired matching history fails closed, and PRs older than the 90-day durable-history window are not eligible for unattended remediation
   - canonical and materialized workflows are byte-identical, immutable-pinned, bounded, and actionlint-clean
   - focused tests, workflow validation, full repository tests, whitespace checks, public-safety scans, and Speculoos validation pass
 publication_boundary:
@@ -66,6 +70,7 @@ private_data_scan: required
 publish_authority: Local commit preparation only; hosted publication, activation, and every write-capable run remain separately gated.
 notes:
   - Pullfrog is the sole AI reviewer and fixer. Speculoos remains independent exact-head evidence.
-  - The provider job has no GitHub write token and cannot mint Pullfrog's normal MCP write token; a separate read-only validator seals its raw output; the publisher has no provider identity token.
+  - The provider job has no GitHub write token and cannot mint Pullfrog's normal MCP write token; a separate read-only validator seals its raw output; the publisher has no provider identity token and alone references `PULLFROG_REMEDIATION_PUBLISH_TOKEN`.
+  - Provisioning or changing the publisher credential remains a separate hosted-settings approval and is not performed by this source change.
   - Pullfrog approval and auto-merge stay disabled, and every merge remains human-authorized.
   - The first hosted pilot must be bounded to one explicitly authorized same-repository feature head and must stop rather than bypass an unsupported native fix_review path.
