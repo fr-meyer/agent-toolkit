@@ -1,4 +1,7 @@
 import json
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -53,6 +56,37 @@ class PullfrogSpeculoosWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("scripts/github/validate_pullfrog_workflow.sh", self.template)
         self.assertIn("mkdir -p artifacts/speculoos", self.template)
         self.assertIn("if-no-files-found: warn", self.template)
+
+    def test_python_entrypoints_are_import_isolated(self) -> None:
+        self.assertIn("task_id=\"$(python -I - <<'PY'", self.template)
+        self.assertIn(
+            "python -I scripts/github/speculoos_pr_contract.py",
+            self.template,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            scripts = root / "scripts/github"
+            scripts.mkdir(parents=True)
+            validator = scripts / "speculoos_pr_contract.py"
+            validator.write_text(
+                (REPO_ROOT / "scripts/github/speculoos_pr_contract.py").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            (scripts / "argparse.py").write_text(
+                "raise SystemExit(87)\n", encoding="utf-8"
+            )
+            result = subprocess.run(
+                [sys.executable, "-I", str(validator), "--help"],
+                cwd=root,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("usage:", result.stdout)
 
     def test_actions_are_immutable_and_evidence_is_retained(self) -> None:
         self.assertIn(

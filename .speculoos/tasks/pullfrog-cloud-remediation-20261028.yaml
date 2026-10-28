@@ -29,6 +29,7 @@ write_paths:
   - scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py
   - scripts/github/tests/test_pullfrog_dev_auto_merge.py
   - scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py
+  - scripts/github/tests/test_pullfrog_workflow_policy.py
   - scripts/github/tests/test_speculoos_pr_contract.py
   - scripts/github/validate_pullfrog_workflow.sh
   - specs/pullfrog-cloud-remediation-20261028/commit-message.txt
@@ -69,7 +70,7 @@ acceptance:
   - the publisher uses a separately approved event-emitting credential so successful publication schedules fresh Pullfrog, CI, and Speculoos evidence rather than relying on suppressed built-in-token events
   - artifact enumeration is complete, expired matching history fails closed, and PRs older than the 90-day durable-history window are not eligible for unattended remediation
   - canonical and materialized workflows are byte-identical, immutable-pinned, bounded, and actionlint-clean
-  - the hosted Speculoos check uses only repository-reviewed source, fetches no private cross-repository package, receives no extra credential, and persists exact-head contract evidence even when validation fails
+  - the hosted Speculoos check uses only repository-reviewed source, fetches no private cross-repository package, receives no extra credential, runs candidate-facing Python entrypoints in isolated mode so repository files cannot shadow standard-library imports, and persists exact-head contract evidence even when validation fails
   - focused tests, workflow validation, full repository tests, whitespace checks, public-safety scans, and local official Speculoos validation pass
 publication_boundary:
   statement: "Local source implementation and validation only. Publication, hosted activation, and the first write-capable remediation pilot require separate authorization for the exact commit SHA and scope. The repository-owned exact-head non-stable auto-merge gate is authorized for any valid base except main or master; approval, main/master merge, release, deployment, settings changes, force-push, branch deletion, billing, and credential changes remain prohibited."

@@ -34,7 +34,7 @@ tar -xzf "$tmp_dir/$archive_name" -C "$tmp_dir" actionlint
   "$repo_root/templates/starter-workflows/speculoos.yml" \
   "$repo_root/.github/workflows/speculoos.yml"
 
-python3 -m unittest discover \
+python3 -I -m unittest discover \
   -s "$repo_root/scripts/github/tests" \
   -p 'test_pullfrog_*workflow_policy.py' \
   -v

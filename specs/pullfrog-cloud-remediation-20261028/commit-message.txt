@@ -1,5 +1,5 @@
-fix(github): protect hosted validation authority
+fix(github): isolate hosted validation imports
 
-Complete task `pullfrog-cloud-remediation-20261028` by keeping the repository-bound Speculoos validator and its executable policy authority outside provider remediation. Candidate sealing and publication both reject changes to controller, validator, and workflow-policy authority, while the exact publication inventory now includes deleted paths and deleted documentation.
+Complete task `pullfrog-cloud-remediation-20261028` by running candidate-facing Speculoos Python entrypoints in isolated mode. Repository files can no longer shadow standard-library imports used by the contract validator or workflow-policy discovery, while canonical and live workflow copies remain identical.
 
 Feature PRs target `dev`. Release/promotion PRs target `main`.

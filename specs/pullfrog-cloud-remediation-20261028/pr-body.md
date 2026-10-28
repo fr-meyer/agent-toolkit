@@ -9,6 +9,7 @@
 - complete Speculoos task `pullfrog-cloud-remediation-20261028`; feature PRs target `dev`, and release/promotion PRs target `main`
 - replace the unreachable private cross-repository Speculoos install with a repository-bound zero-secret contract validator that persists exact-head evidence without an additional credential
 - protect validator and controller authority from provider remediation at candidate sealing and publication, and include deleted paths in the exact publication inventory
+- isolate candidate-facing Python imports so repository files cannot shadow the standard library used by hosted validation
 
 ## Changed Files For Publish
 
@@ -48,6 +49,7 @@
 - `scripts/github/tests/test_pullfrog_destination_guard.py`
 - `scripts/github/tests/test_pullfrog_dev_auto_merge.py`
 - `scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py`
+- `scripts/github/tests/test_pullfrog_workflow_policy.py`
 - `scripts/github/tests/test_speculoos_pr_contract.py`
 - `scripts/github/validate_pullfrog_workflow.sh`
 - `specs/pullfrog-cloud-coordinator-20261027/commit-message.txt`
@@ -79,7 +81,7 @@ The operator-facing workflow and safety contract were updated in `README.md`, `d
 
 ## Security Contract
 
-- The hosted Speculoos check executes only repository-reviewed source, fetches no private cross-repository package, receives no additional credential, and validates exact head/base identity, the complete publication packet inventory including deletions, workflow materialization, merge actor policy, whitespace, and red-list token patterns.
+- The hosted Speculoos check executes only repository-reviewed source, fetches no private cross-repository package, receives no additional credential, runs candidate-facing Python entrypoints in isolated mode, and validates exact head/base identity, the complete publication packet inventory including deletions, workflow materialization, merge actor policy, whitespace, and red-list token patterns.
 - The destination guard blocks provider remediation from modifying the repository-owned controller, destination, remediation, auto-merge, Speculoos contract, shell validator, or executable workflow-policy test authority; candidate sealing and publication both re-run this policy before any push.
 
 - Pullfrog receives `id-token: write` for provider routing plus a job-scoped read-only GitHub token forced through `GH_TOKEN`, preventing its normal MCP write-token minting; `authorPermission: none` withholds gh and cross-run learning writes, while `push: disabled`, restricted shell, and no publication credential remain enforced.

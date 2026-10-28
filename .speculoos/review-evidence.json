@@ -26,29 +26,29 @@
     "local_validation": {
       "kind": "local_validation",
       "status": "passed",
-      "summary": "All available local gates pass for the repaired repository-owned auto-merge and remediation policy: 147 GitHub helper tests, 59 focused auto-merge/coordinator/workflow-policy tests, 29 checksum-verified actionlint and workflow-policy tests, Python compilation, coordinator-to-consumer policy binding, eligible non-stable-base and stable-base-rejection coverage, a full staging findings-to-claim-to-validator-to-publisher regression, a real exact-old-OID receive-pack race with an unrelated Unicode ref, deterministic workflow materialization, canonical/live byte identity, JSON parsing, public-safety and secret-pattern scans, and whitespace checks. The local Speculoos binary is unavailable, so independent hosted Speculoos evidence remains required after publication.",
+      "summary": "All available local gates pass for the repaired repository-owned auto-merge and remediation policy: 164 GitHub helper tests, 36 checksum-verified actionlint and workflow-policy tests, the adversarial argparse import-shadow regression, Python compilation, coordinator-to-consumer policy binding, eligible non-stable-base and stable-base-rejection coverage, a full staging findings-to-claim-to-validator-to-publisher regression, a real exact-old-OID receive-pack race with an unrelated Unicode ref, deterministic workflow materialization, canonical/live byte identity, JSON parsing, public-safety and secret-pattern scans, whitespace checks, and official Speculoos validation.",
       "evidence_ref": ".speculoos/tasks/pullfrog-cloud-remediation-20261028.yaml",
       "updated_at": "pullfrog-cloud-remediation-20261028"
     },
     "github_checks": {
       "kind": "github_checks",
-      "status": "blocked-by-current-pullfrog-findings",
-      "summary": "PR #95 remains open at hosted head 80c7b328d6ce0ddad26df2db2358a7cda53b79ba. The exact-head Pullfrog run succeeded but pullfrog-approval failed on two P2 findings: unrelated Unicode refs could block receive-pack discovery, and non-dev remediation policy was not carried into candidate validation and publication. Both are repaired locally and require guarded publication plus fresh exact-head hosted checks.",
+      "status": "blocked-by-current-pullfrog-finding",
+      "summary": "PR #95 remains open at exact hosted head 5588d7e760391537d5f0ea888b4aeb50f4ae9ae6. Speculoos and provider-free dogfood succeeded, but Pullfrog failed after confirming the deletion-inventory repair and identifying one remaining validator import-shadow path. That finding is repaired locally and requires guarded publication plus fresh exact-head hosted checks.",
       "evidence_ref": "live GitHub exact-head checks",
       "updated_at": "pullfrog-cloud-remediation-20261028"
     },
     "pullfrog_review": {
       "kind": "pullfrog_review",
-      "status": "findings-repaired-locally-pending-rereview",
-      "summary": "Pullfrog review 5678460231 found that receive-pack discovery ASCII-decoded arbitrary ref names and that newly admitted non-dev bases were not carried through the remediation validator and publisher. The local repair preserves advertised ref-name bytes while validating object IDs and capabilities separately, and digest-binds the coordinator's exact default/protected-ref policy into the claim for every downstream guard. Fresh hosted Pullfrog review and approval remain required.",
-      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/95#pullrequestreview-5678460231",
+      "status": "finding-repaired-locally-pending-rereview",
+      "summary": "Exact-head Pullfrog reviews 5679732677 and 5679733175 confirmed the deleted-path repair and showed that an allowed scripts/github/argparse.py could shadow the standard library before the unchanged Speculoos validator ran. The local repair invokes candidate-facing Speculoos Python entrypoints and workflow-policy discovery with isolated mode, and an adversarial regression proves the shadow module is ignored. Fresh hosted Pullfrog review and approval remain required.",
+      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/95#discussion_r4398368622",
       "updated_at": "pullfrog-cloud-remediation-20261028"
     },
     "speculoos_evidence": {
       "kind": "speculoos_evidence",
-      "status": "pending-auto-merge-publication",
-      "summary": "Independent hosted Speculoos evidence is required on the new exact head and cannot be replaced by Pullfrog output.",
-      "evidence_ref": "live GitHub exact-head speculoos check",
+      "status": "passed-current-head-pending-repair-publication",
+      "summary": "Independent hosted Speculoos evidence passed on 5588d7e760391537d5f0ea888b4aeb50f4ae9ae6. Publishing the import-isolation repair will create a new exact head, so fresh hosted Speculoos evidence will again be required and cannot be replaced by Pullfrog output.",
+      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/actions/runs/40655820063/job/122706476939",
       "updated_at": "pullfrog-cloud-remediation-20261028"
     },
     "self_managed": {

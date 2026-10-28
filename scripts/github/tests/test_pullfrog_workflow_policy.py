@@ -77,6 +77,7 @@ class PullfrogWorkflowPolicyTests(unittest.TestCase):
             validator,
         )
         self.assertIn("sha256sum --check --status", validator)
+        self.assertIn("python3 -I -m unittest discover", validator)
 
     def test_pullfrog_inputs_are_review_only(self):
         pullfrog_inputs = re.search(
