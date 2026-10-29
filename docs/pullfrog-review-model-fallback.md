@@ -90,9 +90,14 @@ The fallback controller:
 7. rejects fallback when a complete exact-head Pullfrog verdict already exists;
 8. records partial exact-head reviews/comments only as counts and digests, never
    as raw receipt text;
-9. rejects a second fallback when the exact-head composite gate external ID
-   already exists;
-10. authorizes one `openai/gpt-astra` / `xhigh` run and no recursive model chain.
+9. treats the exact-head initial composite gate as the durable attempt claim and
+   rejects every fresh duplicate evaluation for that head;
+10. permits provider execution only on `github.run_attempt == 1`, with the same
+    invariant rechecked by the trusted preflight, so failed-job and individual-job
+    reruns cannot consume another Astra attempt;
+11. allows a later workflow-run attempt to reuse the bounded first-attempt artifact
+    only for trusted finalization recovery, never for provider execution;
+12. authorizes one `openai/gpt-astra` / `xhigh` run and no recursive model chain.
 
 A complete verdict requires an exact-head Pullfrog review with a nonempty body
 and Pullfrog's completion marker. Inline comments attached to an empty-body,
@@ -112,10 +117,18 @@ Its jobs separate authority:
 1. **Evaluate** has only Actions/check/content/PR read access.
 2. **Publish initial gate** has check-write authority but no provider identity
    or content/PR write authority.
-3. **Run fallback** has Pullfrog OIDC plus content/PR read access. It has no
-   check, action-dispatch, content-write, publication, approval, or merge
-   credential. Pullfrog is forced to `push: disabled`, `shell: restricted`, and
-   a strict structured output schema.
+3. **Run fallback** has Pullfrog OIDC plus content/PR read access. Immediately
+   before provider execution, the sealed trusted controller exchanges the runner
+   OIDC assertion for one short-lived Pullfrog App installation token scoped
+   exactly to `contents: read` and `pull_requests: write`. That lease is forced
+   through the action's documented external `GH_TOKEN` route, so Pullfrog can
+   publish its bot-authored review without minting its normal MCP token with
+   content, issue, check, and action-dispatch write scopes. The provider still
+   has no check, action-dispatch, content-write, approval, merge, or publication
+   credential beyond the narrow review authority. Pullfrog is forced to
+   `push: disabled`, `shell: restricted`, and a strict structured output schema.
+   The lease is revoked after result capture, and both its exact scope receipt
+   and successful revocation are required for a valid verdict.
 4. **Finalize** has check-write plus read access, no provider identity, and no
    publication or merge credential. It accepts only a structured result whose
    repository, PR, head, base, model, effort, review ID, verdict, and finding
@@ -124,9 +137,12 @@ Its jobs separate authority:
    Pullfrog, bind to that exact head, and match the structured count; a clean
    verdict must have zero comments.
 
-Only bounded action outcome/result files cross from the provider job to the
-trusted finalizer. No patch, provider credential, prompt, raw log, or repository
-write token crosses the boundary.
+Only bounded action outcome/result files and sanitized lease/revocation receipts
+cross from the provider job to the trusted finalizer. No token value, patch,
+provider credential, prompt, raw log, or content/check/action-dispatch write
+token crosses the boundary. Failed-job reruns skip the entire provider job via
+`github.run_attempt == 1`; when the first attempt already persisted its bounded
+artifact, a later attempt may rerun only the fresh validator and gate finalizer.
 
 ## Composite required check
 
@@ -158,8 +174,10 @@ or merge. Activation requires separate approval for each of these stages:
 1. publish the implementation through the approved App/Mergeguez lane;
 2. place the trusted controller on the serving default branch without enabling
    the fallback variable;
-3. confirm the Pullfrog credential route can run Astra and still exposes no
-   publication/merge credentials;
+3. confirm the scoped Pullfrog App lease can run Astra, authors the review as
+   `pullfrog[bot]`, carries only `contents: read` plus `pull_requests: write`,
+   revokes successfully, and exposes no content/check/action-dispatch or
+   publication/merge credential;
 4. manually pilot one exact PR/head/base with `authorize_fallback: true`;
 5. prove Astra behavior, exact-head structured output, partial-comment
    reconciliation, one-attempt idempotency, and fail-closed second refusal;

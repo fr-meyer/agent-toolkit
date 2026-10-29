@@ -176,6 +176,7 @@ jobs:
     if: >-
       needs.evaluate.result == 'success' &&
       needs.gate_initial.result == 'success' &&
+      github.run_attempt == 1 &&
       needs.evaluate.outputs.status == 'fallback_ready' &&
       needs.evaluate.outputs.authorized_fallback == 'true'
     runs-on: ubuntu-latest
@@ -229,11 +230,29 @@ jobs:
             --pr-number "${{ needs.evaluate.outputs.pr_number }}" \
             --expected-head-sha "${{ needs.evaluate.outputs.head_sha }}" \
             --expected-base-sha "${{ needs.evaluate.outputs.base_sha }}" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --out artifacts/pullfrog-review-fallback/evaluate/preflight.json
+
+      - name: Mint least-privilege Pullfrog review token
+        id: review_token
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/pullfrog_review_fallback.py" mint-review-token \
+            --repository "$GITHUB_REPOSITORY" \
+            --github-output "$GITHUB_OUTPUT" \
+            --out "$RUNNER_TEMP/pullfrog-review-token-lease.json"
 
       - name: Run review-only Astra fallback
         id: pullfrog
         continue-on-error: true
+        env:
+          # Force the action's documented external-token route. The token is a
+          # short-lived Pullfrog App installation token scoped only to
+          # contents:read plus pull_requests:write, so the provider can publish
+          # its Pullfrog-authored review but cannot write contents/checks or
+          # dispatch Actions through the action's normal MCP credential.
+          GH_TOKEN: ${{ steps.review_token.outputs.credential }}
         uses: pullfrog/pullfrog@25a837a2b078177c3acdce790506d1fd1acedd82 # v0.1.102
         with:
           prompt: >-
@@ -275,6 +294,33 @@ jobs:
           else
             printf '{}\n' > artifacts/pullfrog-review-fallback/raw/action-result.json
           fi
+          install -m 0400 \
+            "$RUNNER_TEMP/pullfrog-review-token-lease.json" \
+            artifacts/pullfrog-review-fallback/raw/token-lease.json
+
+      - name: Revoke least-privilege Pullfrog review token
+        id: revoke_token
+        if: always() && steps.review_token.outputs.credential != ''
+        continue-on-error: true
+        shell: bash
+        env:
+          PULLFROG_REVIEW_TOKEN: ${{ steps.review_token.outputs.credential }}
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/pullfrog_review_fallback.py" revoke-review-token \
+            --repository "$GITHUB_REPOSITORY" \
+            --out artifacts/pullfrog-review-fallback/raw/token-revocation.json
+
+      - name: Record credential disposal outcome
+        if: always()
+        shell: bash
+        env:
+          TOKEN_REVOCATION_OUTCOME: ${{ steps.revoke_token.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/pullfrog-review-fallback/raw
+          printf '%s\n' "$TOKEN_REVOCATION_OUTCOME" \
+            > artifacts/pullfrog-review-fallback/raw/token-revocation-outcome.txt
 
       - name: Upload bounded untrusted fallback result
         if: always()
@@ -290,7 +336,10 @@ jobs:
         shell: bash
         env:
           PULLFROG_ACTION_OUTCOME: ${{ steps.pullfrog.outcome }}
-        run: test "$PULLFROG_ACTION_OUTCOME" = 'success'
+          TOKEN_REVOCATION_OUTCOME: ${{ steps.revoke_token.outcome }}
+        run: >-
+          test "$PULLFROG_ACTION_OUTCOME" = 'success' &&
+          test "$TOKEN_REVOCATION_OUTCOME" = 'success'
 
   finalize:
     name: Validate fallback and finalize review gate
@@ -301,8 +350,9 @@ jobs:
     if: >-
       always() &&
       needs.evaluate.result == 'success' &&
+      needs.gate_initial.result == 'success' &&
       needs.evaluate.outputs.status == 'fallback_ready' &&
-      needs.fallback.result != 'skipped'
+      (needs.fallback.result != 'skipped' || github.run_attempt > 1)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -346,6 +396,9 @@ jobs:
             --coordinator artifacts/pullfrog-review-fallback/evaluate/coordinator.json \
             --action-outcome-file artifacts/pullfrog-review-fallback/raw/action-outcome.txt \
             --action-result-file artifacts/pullfrog-review-fallback/raw/action-result.json \
+            --token-lease-file artifacts/pullfrog-review-fallback/raw/token-lease.json \
+            --token-revocation-file artifacts/pullfrog-review-fallback/raw/token-revocation.json \
+            --token-revocation-outcome-file artifacts/pullfrog-review-fallback/raw/token-revocation-outcome.txt \
             --out artifacts/pullfrog-review-fallback/final/result.json
 
       - name: Finalize composite exact-head gate

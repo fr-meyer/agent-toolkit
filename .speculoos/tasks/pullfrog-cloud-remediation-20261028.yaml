@@ -61,7 +61,7 @@ scope:
   - publish a composite exact-head review gate without giving the provider job content-write, check-write, publication, approval, dispatch, or merge authority
 non_goals:
   - publishing this commit, activating the workflow on a serving ref, or running a hosted write pilot
-  - force-push, force-with-lease, approval, Pullfrog-native auto-merge, merges to main or master, release, deployment, settings changes, branch deletion, billing changes, or credential creation
+  - force-push, force-with-lease, approval, Pullfrog-native auto-merge, merges to main or master, release, deployment, settings changes, branch deletion, billing changes, or persistent credential creation/configuration
   - giving Pullfrog or another provider a repository write token
   - replacing Pullfrog with another reviewer, fixer, service, or fork
   - enabling the review fallback variable, running the Astra pilot, changing required checks, or treating Astra as independent cross-provider evidence
@@ -85,9 +85,11 @@ acceptance:
   - artifact enumeration is complete, expired matching history fails closed, and PRs older than the 90-day durable-history window are not eligible for unattended remediation
   - canonical and materialized workflows are byte-identical, immutable-pinned, bounded, and actionlint-clean
   - the primary review is explicitly pinned to openai/gpt-sol at xhigh, and only one openai/gpt-astra at xhigh fallback may run for an unchanged exact PR/head/base identity
+  - fallback provider execution is restricted to github.run_attempt=1 and the trusted preflight repeats that invariant; failed-job reruns may recover trusted finalization from the bounded first-attempt artifact but cannot invoke Astra again
+  - the fallback's sealed controller mints one short-lived Pullfrog App token scoped exactly to contents:read and pull_requests:write, forces the action's external GH_TOKEN route, records only a sanitized lease receipt, and requires successful revocation before the composite gate can succeed; no content-write, issue-write, check-write, or action-dispatch token reaches the provider
   - fallback eligibility requires exactly one failed Run review-only agent step, no other failed step, and exactly one failure annotation whose text literally equals one approved refusal variant
-  - fallback results are size-bounded and schema-exact; review identity, model footer, finding count, comment actor, and comment head are freshly validated before the composite gate can succeed
-  - ordinary failures, partial or malformed reviews, extra annotations or failed steps, whitespace-altered refusals, duplicate attempts, recursion, forks, identity drift, and Astra refusal all fail closed
+  - fallback results are size-bounded and schema-exact; review identity, model footer, finding count, comment actor, comment head, token lease scope, and token revocation are freshly validated before the composite gate can succeed
+  - ordinary failures, partial or malformed reviews, extra annotations or failed steps, whitespace-altered refusals, duplicate attempts, recursion, forks, identity drift, token-scope drift, revocation failure, and Astra refusal all fail closed
   - the hosted Speculoos check uses only repository-reviewed source, fetches no private cross-repository package, receives no extra credential, runs candidate-facing Python entrypoints in isolated mode so repository files cannot shadow standard-library imports, and persists exact-head contract evidence even when validation fails
   - focused tests, workflow validation, full repository tests, whitespace checks, public-safety scans, and local official Speculoos validation pass
 publication_boundary:

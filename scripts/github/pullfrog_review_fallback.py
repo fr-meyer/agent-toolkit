@@ -25,6 +25,8 @@ SNAPSHOT_SCHEMA = "pullfrog-review-fallback-snapshot.v1"
 RECEIPT_SCHEMA = "pullfrog-review-fallback-receipt.v1"
 RESULT_SCHEMA = "pullfrog-review-fallback-result.v1"
 RESULT_RECEIPT_SCHEMA = "pullfrog-review-fallback-result-receipt.v1"
+TOKEN_LEASE_SCHEMA = "pullfrog-review-fallback-token-lease.v1"
+TOKEN_REVOCATION_SCHEMA = "pullfrog-review-fallback-token-revocation.v1"
 PRIMARY_MODEL = "openai/gpt-sol"
 PRIMARY_RESOLVED_MODEL = "gpt-6.1-sol"
 FALLBACK_MODEL = "openai/gpt-astra"
@@ -42,8 +44,18 @@ MAX_OUTCOME_BYTES = 4096
 MAX_PAGES = 5
 MAX_ITEMS = 500
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+REPOSITORY_SLUG_RE = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}[A-Za-z0-9])?/[A-Za-z0-9._-]{1,100}$"
+)
+INSTALLATION_TOKEN_RE = re.compile(r"^[A-Za-z0-9_]{20,512}$")
 RUN_ID_RE = re.compile(r"/actions/runs/(?P<run_id>[1-9][0-9]*)(?:/|$)")
 REVIEW_MARKER = "PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ"
+PULLFROG_TOKEN_ENDPOINT = "https://pullfrog.com/api/github/installation-token"
+PULLFROG_OIDC_AUDIENCE = "pullfrog-api"
+REVIEW_TOKEN_PERMISSIONS = {
+    "contents": "read",
+    "pull_requests": "write",
+}
 
 # Keep this narrow. Any wording change is a fail-closed policy update, not a
 # fuzzy retry. The two entries differ only in the apostrophe GitHub may render.
@@ -118,6 +130,136 @@ def _load_outcome(path: Path) -> str:
 def _write_object(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _bounded_json_response(
+    request: urllib.request.Request,
+    error_code: str,
+) -> dict[str, Any]:
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            raw = response.read(MAX_RESPONSE_BYTES + 1)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+        raise FallbackError(error_code) from exc
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise FallbackError(error_code)
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise FallbackError(error_code) from exc
+    if not isinstance(value, dict):
+        raise FallbackError(error_code)
+    return value
+
+
+def mint_review_token(
+    oidc_request_url: str,
+    oidc_request_token: str,
+    repository_slug: str,
+) -> tuple[str, dict[str, Any]]:
+    """Mint one Pullfrog App token limited to review publication authority."""
+
+    if not REPOSITORY_SLUG_RE.fullmatch(repository_slug):
+        raise FallbackError("invalid_token_repository")
+    if not oidc_request_url or not oidc_request_token:
+        raise FallbackError("missing_oidc_credentials")
+    try:
+        parsed = urllib.parse.urlsplit(oidc_request_url)
+    except ValueError as exc:
+        raise FallbackError("invalid_oidc_request_url") from exc
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
+        raise FallbackError("invalid_oidc_request_url")
+    query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    query = [(key, value) for key, value in query if key != "audience"]
+    query.append(("audience", PULLFROG_OIDC_AUDIENCE))
+    audience_url = urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, urllib.parse.urlencode(query), parsed.fragment)
+    )
+    oidc_request = urllib.request.Request(
+        audience_url,
+        method="GET",
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {oidc_request_token}",
+            "User-Agent": "agent-toolkit-pullfrog-review-fallback",
+        },
+    )
+    oidc_response = _bounded_json_response(oidc_request, "oidc_token_request_failed")
+    oidc_token = _text(oidc_response.get("value"))
+    if not oidc_token or len(oidc_token) > 16_384 or any(character.isspace() for character in oidc_token):
+        raise FallbackError("invalid_oidc_token")
+
+    repository_name = repository_slug.split("/", 1)[1]
+    endpoint = PULLFROG_TOKEN_ENDPOINT + "?" + urllib.parse.urlencode({"repos": repository_name})
+    payload = json.dumps(
+        {"permissions": REVIEW_TOKEN_PERMISSIONS},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    token_request = urllib.request.Request(
+        endpoint,
+        data=payload,
+        method="POST",
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {oidc_token}",
+            "Content-Type": "application/json",
+            "User-Agent": "agent-toolkit-pullfrog-review-fallback",
+        },
+    )
+    token_response = _bounded_json_response(token_request, "review_token_request_failed")
+    credential = _text(token_response.get("token"))
+    expires_at = _text(token_response.get("expires_at"))
+    if not INSTALLATION_TOKEN_RE.fullmatch(credential) or not expires_at:
+        raise FallbackError("invalid_review_token_response")
+    return credential, {
+        "schema": TOKEN_LEASE_SCHEMA,
+        "status": "active",
+        "repository": repository_slug,
+        "permissions": REVIEW_TOKEN_PERMISSIONS,
+        "expires_at": expires_at,
+        "actor": PULLFROG_LOGIN,
+        "raw_token_included": False,
+    }
+
+
+def _append_secret_output(path: Path, credential: str, expires_at: str) -> None:
+    if not INSTALLATION_TOKEN_RE.fullmatch(credential):
+        raise FallbackError("invalid_review_token_output")
+    print(f"::add-mask::{credential}")
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(f"credential={credential}\n")
+        handle.write(f"expires_at={expires_at}\n")
+
+
+def revoke_review_token(api_url: str, credential: str, repository_slug: str) -> dict[str, Any]:
+    if not api_url.startswith("https://") or not REPOSITORY_SLUG_RE.fullmatch(repository_slug):
+        raise FallbackError("invalid_token_revocation_configuration")
+    if not INSTALLATION_TOKEN_RE.fullmatch(credential):
+        raise FallbackError("invalid_review_token")
+    request = urllib.request.Request(
+        api_url.rstrip("/") + "/installation/token",
+        method="DELETE",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {credential}",
+            "User-Agent": "agent-toolkit-pullfrog-review-fallback",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            if response.status not in {200, 204}:
+                raise FallbackError("review_token_revocation_failed")
+            response.read(MAX_RESPONSE_BYTES + 1)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+        raise FallbackError("review_token_revocation_failed") from exc
+    return {
+        "schema": TOKEN_REVOCATION_SCHEMA,
+        "status": "revoked",
+        "repository": repository_slug,
+        "raw_token_included": False,
+    }
 
 
 def _identity(repository_slug: str, pr: dict[str, Any]) -> dict[str, Any]:
@@ -515,7 +657,10 @@ def verify_live_identity(
     pr_number: int,
     expected_head_sha: str,
     expected_base_sha: str,
+    run_attempt: int,
 ) -> dict[str, Any]:
+    if run_attempt != 1:
+        raise FallbackError("fallback_run_attempt_consumed")
     if pr_number < 1 or not SHA_RE.fullmatch(expected_head_sha) or not SHA_RE.fullmatch(expected_base_sha):
         raise FallbackError("invalid_expected_identity")
     pr = _mapping(client.get(f"/repos/{client.repository_slug}/pulls/{pr_number}"))
@@ -553,12 +698,39 @@ def verify_fallback_result(
     coordinator: dict[str, Any],
     outcome: str,
     result: dict[str, Any],
+    token_lease: dict[str, Any],
+    token_revocation: dict[str, Any],
+    token_revocation_outcome: str,
 ) -> dict[str, Any]:
     blockers: list[str] = []
     if coordinator.get("schema") != RECEIPT_SCHEMA or coordinator.get("status") != "fallback_ready":
         raise FallbackError("invalid_fallback_coordinator_receipt")
     if outcome != "success":
         blockers.append("fallback_action_failed")
+    expected_token_lease = {
+        "schema": TOKEN_LEASE_SCHEMA,
+        "status": "active",
+        "repository": coordinator.get("repository"),
+        "permissions": REVIEW_TOKEN_PERMISSIONS,
+        "actor": PULLFROG_LOGIN,
+        "raw_token_included": False,
+    }
+    for key, expected in expected_token_lease.items():
+        if token_lease.get(key) != expected:
+            blockers.append(f"invalid_review_token_lease_{key}")
+    if not _text(token_lease.get("expires_at")):
+        blockers.append("invalid_review_token_lease_expiry")
+    expected_revocation = {
+        "schema": TOKEN_REVOCATION_SCHEMA,
+        "status": "revoked",
+        "repository": coordinator.get("repository"),
+        "raw_token_included": False,
+    }
+    for key, expected in expected_revocation.items():
+        if token_revocation.get(key) != expected:
+            blockers.append(f"invalid_review_token_revocation_{key}")
+    if token_revocation_outcome != "success":
+        blockers.append("review_token_revocation_failed")
     required = {
         "schema",
         "status",
@@ -770,7 +942,19 @@ def main() -> int:
     identity.add_argument("--pr-number", required=True, type=int)
     identity.add_argument("--expected-head-sha", required=True)
     identity.add_argument("--expected-base-sha", required=True)
+    identity.add_argument("--run-attempt", required=True, type=int)
     identity.add_argument("--out", required=True)
+
+    mint = sub.add_parser("mint-review-token")
+    mint.add_argument("--repository", required=True)
+    mint.add_argument("--github-output", required=True)
+    mint.add_argument("--out", required=True)
+
+    revoke = sub.add_parser("revoke-review-token")
+    revoke.add_argument("--api-url", default=os.environ.get("GITHUB_API_URL", "https://api.github.com"))
+    revoke.add_argument("--repository", required=True)
+    revoke.add_argument("--token-env", default="PULLFROG_REVIEW_TOKEN")
+    revoke.add_argument("--out", required=True)
 
     verify = sub.add_parser("verify-fallback-result")
     verify.add_argument("--api-url", default=os.environ.get("GITHUB_API_URL", "https://api.github.com"))
@@ -779,6 +963,9 @@ def main() -> int:
     verify.add_argument("--coordinator", required=True)
     verify.add_argument("--action-outcome-file", required=True)
     verify.add_argument("--action-result-file", required=True)
+    verify.add_argument("--token-lease-file", required=True)
+    verify.add_argument("--token-revocation-file", required=True)
+    verify.add_argument("--token-revocation-outcome-file", required=True)
     verify.add_argument("--out", required=True)
 
     publish = sub.add_parser("publish-gate")
@@ -825,16 +1012,46 @@ def main() -> int:
                     args.pr_number,
                     args.expected_head_sha,
                     args.expected_base_sha,
+                    args.run_attempt,
                 ),
             }
             _write_object(Path(args.out), identity_receipt)
+            return 0
+        if args.command == "mint-review-token":
+            credential, token_receipt = mint_review_token(
+                os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL", ""),
+                os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN", ""),
+                args.repository,
+            )
+            _write_object(Path(args.out), token_receipt)
+            _append_secret_output(
+                Path(args.github_output),
+                credential,
+                _text(token_receipt.get("expires_at")),
+            )
+            return 0
+        if args.command == "revoke-review-token":
+            credential = os.environ.get(args.token_env, "")
+            receipt = revoke_review_token(args.api_url, credential, args.repository)
+            _write_object(Path(args.out), receipt)
             return 0
         if args.command == "verify-fallback-result":
             coordinator = _load_object(Path(args.coordinator))
             outcome = _load_outcome(Path(args.action_outcome_file))
             result = _load_object(Path(args.action_result_file))
+            token_lease = _load_object(Path(args.token_lease_file))
+            token_revocation = _load_object(Path(args.token_revocation_file))
+            token_revocation_outcome = _load_outcome(Path(args.token_revocation_outcome_file))
             client = GitHubClient(args.api_url, args.token, args.repository)
-            receipt = verify_fallback_result(client, coordinator, outcome, result)
+            receipt = verify_fallback_result(
+                client,
+                coordinator,
+                outcome,
+                result,
+                token_lease,
+                token_revocation,
+                token_revocation_outcome,
+            )
             _write_object(Path(args.out), receipt)
             return 0 if receipt["status"] == "valid" else 2
         if args.command == "publish-gate":

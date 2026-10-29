@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "pullfrog_review_fallback.py"
 SPEC = importlib.util.spec_from_file_location("pullfrog_review_fallback", SCRIPT)
@@ -306,10 +307,38 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
             "finding_count": count,
         }
 
-    def test_valid_structured_astra_clean_verdict_is_accepted(self):
-        receipt = MODULE.verify_fallback_result(
-            FakeClient(), self.coordinator(), "success", self.result()
+    def token_lease(self):
+        return {
+            "schema": MODULE.TOKEN_LEASE_SCHEMA,
+            "status": "active",
+            "repository": REPOSITORY,
+            "permissions": MODULE.REVIEW_TOKEN_PERMISSIONS,
+            "expires_at": "2026-10-29T06:00:00Z",
+            "actor": "pullfrog[bot]",
+            "raw_token_included": False,
+        }
+
+    def token_revocation(self):
+        return {
+            "schema": MODULE.TOKEN_REVOCATION_SCHEMA,
+            "status": "revoked",
+            "repository": REPOSITORY,
+            "raw_token_included": False,
+        }
+
+    def verify(self, client, outcome, result, *, lease=None, revocation=None, revocation_outcome="success"):
+        return MODULE.verify_fallback_result(
+            client,
+            self.coordinator(),
+            outcome,
+            result,
+            lease or self.token_lease(),
+            revocation or self.token_revocation(),
+            revocation_outcome,
         )
+
+    def test_valid_structured_astra_clean_verdict_is_accepted(self):
+        receipt = self.verify(FakeClient(), "success", self.result())
         self.assertEqual(receipt["status"], "valid")
         self.assertEqual(receipt["blockers"], [])
         self.assertEqual(receipt["model"], "openai/gpt-astra")
@@ -317,9 +346,7 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
     def test_wrong_model_or_failed_action_is_rejected(self):
         result = self.result()
         result["model"] = "openai/gpt-sol"
-        receipt = MODULE.verify_fallback_result(
-            FakeClient(), self.coordinator(), "failure", result
-        )
+        receipt = self.verify(FakeClient(), "failure", result)
         self.assertEqual(receipt["status"], "invalid")
         self.assertIn("fallback_action_failed", receipt["blockers"])
         self.assertIn("fallback_result_model_mismatch", receipt["blockers"])
@@ -333,9 +360,8 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
                 "user": {"login": "pullfrog[bot]"},
             }
         ]
-        receipt = MODULE.verify_fallback_result(
+        receipt = self.verify(
             FakeClient(body=complete_body(MODULE.FALLBACK_RESOLVED_MODEL, clean=False), comments=comments),
-            self.coordinator(),
             "success",
             self.result("findings", 2),
         )
@@ -351,9 +377,7 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
                 "user": {"login": "pullfrog[bot]"},
             }
         ]
-        receipt = MODULE.verify_fallback_result(
-            FakeClient(comments=comments), self.coordinator(), "success", self.result()
-        )
+        receipt = self.verify(FakeClient(comments=comments), "success", self.result())
         self.assertEqual(receipt["status"], "invalid")
         self.assertIn("fallback_finding_count_mismatch", receipt["blockers"])
 
@@ -366,14 +390,31 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
                 "user": {"login": "someone-else"},
             }
         ]
-        receipt = MODULE.verify_fallback_result(
+        receipt = self.verify(
             FakeClient(body=complete_body(MODULE.FALLBACK_RESOLVED_MODEL, clean=False), comments=comments),
-            self.coordinator(),
             "success",
             self.result("findings", 1),
         )
         self.assertEqual(receipt["status"], "invalid")
         self.assertIn("invalid_exact_head_fallback_comment", receipt["blockers"])
+
+    def test_token_scope_and_revocation_are_required_for_a_valid_verdict(self):
+        lease = self.token_lease()
+        lease["permissions"] = {
+            "contents": "write",
+            "pull_requests": "write",
+            "checks": "write",
+        }
+        receipt = self.verify(
+            FakeClient(),
+            "success",
+            self.result(),
+            lease=lease,
+            revocation_outcome="failure",
+        )
+        self.assertEqual(receipt["status"], "invalid")
+        self.assertIn("invalid_review_token_lease_permissions", receipt["blockers"])
+        self.assertIn("review_token_revocation_failed", receipt["blockers"])
 
     def test_gate_is_created_then_updated_by_stable_external_id(self):
         coordinator = self.coordinator()
@@ -395,7 +436,13 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
             ]
         )
         result_receipt = MODULE.verify_fallback_result(
-            FakeClient(), coordinator, "success", self.result()
+            FakeClient(),
+            coordinator,
+            "success",
+            self.result(),
+            self.token_lease(),
+            self.token_revocation(),
+            "success",
         )
         updated = MODULE.publish_gate(
             client, coordinator, "https://example.test/run", True, result_receipt
@@ -403,6 +450,92 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
         self.assertEqual(updated["operation"], "updated")
         self.assertEqual(updated["conclusion"], "success")
         self.assertEqual(client.patches[0][0], f"/repos/{REPOSITORY}/check-runs/900")
+
+
+class FakeHttpResponse:
+    def __init__(self, value=None, *, status=200):
+        self.value = value
+        self.status = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def read(self, limit=-1):
+        if self.value is None:
+            return b""
+        return json.dumps(self.value).encode("utf-8")
+
+
+class PullfrogReviewFallbackCredentialTests(unittest.TestCase):
+    def test_mint_uses_exact_review_only_pullfrog_app_scope(self):
+        installation_token = "ghs_" + "a" * 40
+        responses = [
+            FakeHttpResponse({"value": "oidc-token-value"}),
+            FakeHttpResponse(
+                {
+                    "token": installation_token,
+                    "expires_at": "2026-10-29T06:00:00Z",
+                }
+            ),
+        ]
+        with mock.patch.object(MODULE.urllib.request, "urlopen", side_effect=responses) as opened:
+            token, receipt = MODULE.mint_review_token(
+                "https://oidc.actions.githubusercontent.com/token?api-version=2.0",
+                "runner-request-token",
+                REPOSITORY,
+            )
+
+        self.assertEqual(token, installation_token)
+        self.assertEqual(receipt["permissions"], {"contents": "read", "pull_requests": "write"})
+        self.assertEqual(receipt["actor"], "pullfrog[bot]")
+        self.assertFalse(receipt["raw_token_included"])
+        self.assertNotIn(installation_token, json.dumps(receipt))
+
+        oidc_request = opened.call_args_list[0].args[0]
+        self.assertIn("audience=pullfrog-api", oidc_request.full_url)
+        self.assertEqual(oidc_request.get_header("Authorization"), "Bearer runner-request-token")
+
+        token_request = opened.call_args_list[1].args[0]
+        self.assertEqual(token_request.get_method(), "POST")
+        self.assertEqual(
+            token_request.full_url,
+            "https://pullfrog.com/api/github/installation-token?repos=agent-toolkit",
+        )
+        self.assertEqual(
+            json.loads(token_request.data.decode("utf-8")),
+            {"permissions": {"contents": "read", "pull_requests": "write"}},
+        )
+        serialized = token_request.data.decode("utf-8")
+        self.assertNotIn("checks", serialized)
+        self.assertNotIn("actions", serialized)
+        self.assertNotIn('"contents":"write"', serialized)
+
+    def test_revoke_uses_the_installation_token_it_disposes(self):
+        installation_token = "ghs_" + "b" * 40
+        with mock.patch.object(
+            MODULE.urllib.request,
+            "urlopen",
+            return_value=FakeHttpResponse(status=204),
+        ) as opened:
+            receipt = MODULE.revoke_review_token(
+                "https://api.github.com",
+                installation_token,
+                REPOSITORY,
+            )
+        request = opened.call_args.args[0]
+        self.assertEqual(request.get_method(), "DELETE")
+        self.assertEqual(request.full_url, "https://api.github.com/installation/token")
+        self.assertEqual(request.get_header("Authorization"), f"Bearer {installation_token}")
+        self.assertEqual(receipt["status"], "revoked")
+        self.assertNotIn(installation_token, json.dumps(receipt))
+
+    def test_provider_preflight_rejects_every_rerun_attempt(self):
+        with self.assertRaises(MODULE.FallbackError) as error:
+            MODULE.verify_live_identity(FakeClient(), 95, HEAD_SHA, BASE_SHA, 2)
+        self.assertEqual(error.exception.code, "fallback_run_attempt_consumed")
 
 
 class PullfrogReviewFallbackInputTests(unittest.TestCase):

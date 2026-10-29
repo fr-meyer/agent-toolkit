@@ -85,6 +85,8 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         self.assertNotIn("actions: write", fallback_section)
         self.assertNotRegex(fallback_section, r"\$\{\{\s*secrets\.")
         self.assertNotIn("PULLFROG_REMEDIATION_PUBLISH_TOKEN", self.template)
+        self.assertIn("          GH_TOKEN: ${{ steps.review_token.outputs.credential }}\n", fallback_section)
+        self.assertNotIn("          GH_TOKEN: ${{ github.token }}\n", fallback_section)
 
     def test_single_fallback_is_astra_xhigh_with_structured_output(self):
         self.assertEqual(self.template.count("uses: pullfrog/pullfrog@"), 1)
@@ -100,6 +102,32 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("needs.evaluate.outputs.status == 'fallback_ready'", self.template)
         self.assertIn("needs.evaluate.outputs.status != 'ignored_fallback_run'", self.template)
         self.assertIn("cancel-in-progress: false", self.template)
+        self.assertIn("      github.run_attempt == 1 &&\n", self.template)
+        self.assertIn('            --run-attempt "$GITHUB_RUN_ATTEMPT" \\\n', self.template)
+
+    def test_provider_uses_one_scoped_pullfrog_app_lease_and_revokes_it(self):
+        fallback_section = self.template.split("  fallback:\n", 1)[1].split("  finalize:\n", 1)[0]
+        self.assertIn("Mint least-privilege Pullfrog review token", fallback_section)
+        self.assertIn("mint-review-token", fallback_section)
+        self.assertIn("Revoke least-privilege Pullfrog review token", fallback_section)
+        self.assertIn("revoke-review-token", fallback_section)
+        self.assertIn("TOKEN_REVOCATION_OUTCOME", fallback_section)
+        self.assertIn("token-revocation-outcome.txt", fallback_section)
+        self.assertIn("token-lease.json", fallback_section)
+        self.assertNotIn("checks: write", fallback_section)
+        self.assertNotIn("actions: write", fallback_section)
+        self.assertNotIn("contents: write", fallback_section)
+
+    def test_failed_job_rerun_skips_provider_but_can_recover_finalization(self):
+        fallback_section = self.template.split("  fallback:\n", 1)[1].split("  finalize:\n", 1)[0]
+        finalize_section = self.template.split("  finalize:\n", 1)[1]
+        self.assertIn("github.run_attempt == 1", fallback_section)
+        self.assertIn("needs.gate_initial.result == 'success'", finalize_section)
+        self.assertIn(
+            "(needs.fallback.result != 'skipped' || github.run_attempt > 1)",
+            finalize_section,
+        )
+        self.assertIn("token-revocation-outcome-file", finalize_section)
 
     def test_custom_gate_is_exact_head_and_not_the_raw_primary_check(self):
         self.assertIn("pullfrog-review-gate", self.template)

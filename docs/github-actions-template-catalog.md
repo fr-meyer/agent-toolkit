@@ -591,10 +591,11 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 ### Security boundary
 - inert unless `PULLFROG_REVIEW_FALLBACK_ENABLED` is exactly `true` or a manual dispatch authorizes one exact check/PR/head/base identity
 - evaluator has read-only Actions, checks, contents, and PR access
-- provider job has Pullfrog OIDC plus read-only contents/PR access, `push: disabled`, restricted shell, one immutable action pin, and no check-write or publication credential
+- provider job has Pullfrog OIDC plus read-only job permissions; the sealed controller mints one short-lived Pullfrog App lease scoped exactly to `contents: read` plus `pull_requests: write`, forces it through the action's external `GH_TOKEN` route, and revokes it after result capture, preventing the action from minting its normal content/issue/check/action-write MCP token
+- provider execution is allowed only on `github.run_attempt == 1` and the trusted preflight repeats that check; failed-job reruns skip Astra while retaining the ability to rerun trusted finalization against the first attempt's bounded artifact
 - fresh finalizer has read access plus check-write but no provider identity, content-write, approval, dispatch, publication, or merge credential
 - exactly one failed `Run review-only agent` step and exactly one literal matching failure annotation are required; extra failed steps, annotations, or wording variation fail closed
-- structured result files are size-bounded, and the exact-head review, Astra footer, finding count, comment actor, and comment head are revalidated before gate success
+- structured result and sanitized token lease/revocation receipts are size-bounded, and the exact-head review, Astra footer, finding count, comment actor, comment head, exact token scope, and successful revocation are revalidated before gate success
 
 ### Notes
 - Sol and Astra are both OpenAI models, so this is not independent cross-provider evidence. A second refusal or any other failure stops without a third model.

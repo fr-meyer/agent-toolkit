@@ -2,6 +2,8 @@
 
 - add the guarded unattended Pullfrog review → remediation → exact-head re-review workflow
 - add an activation-gated Pullfrog Sol-to-Astra review fallback for only the exact recorded cybersecurity-policy refusal, with one attempt per unchanged head
+- force the fallback through one short-lived Pullfrog App token scoped to `contents: read` plus `pull_requests: write`, revoke it after result capture, and reject any token-scope or revocation drift
+- prevent failed-job and individual-job reruns from invoking Astra again while preserving finalizer-only recovery from the bounded first-attempt artifact
 - add the exact-head `pullfrog-review-gate` composite while keeping publication, approval, merge, settings, and required-check changes separately gated
 - invoke Pullfrog `v0.1.102` through its native `fix_review` contract while keeping provider push disabled
 - persist single-record identity-bound claim, candidate, and terminal artifacts, with the sealed dispatch kept separate, at most three cycles, and three per-head attempts
@@ -87,14 +89,16 @@ The operator-facing workflow and safety contract were updated in `README.md`, `d
 - full repository unit-test discovery
 - Python compile, JSON parsing, actionlint-backed workflow YAML validation, canonical/materialized byte identity, and `git diff --check`
 - public-safety/private-data scan
-- exact-signature, extra-failed-step, bounded-result, comment-identity, one-attempt, recursion, and identity-drift fallback regression tests
+- exact-signature, extra-failed-step, bounded-result, comment-identity, scoped-token, token-revocation, retained-output rerun, one-attempt, recursion, and identity-drift fallback regression tests
 - Speculoos `validate` and `publish-check` when the local binary is available
 
 ## Security Contract
 
 - The review fallback matches only the two literal apostrophe variants of the recorded OpenAI cybersecurity refusal, requires exactly one failed review step and one matching failure annotation, rejects whitespace or wording variation, and permits one Astra attempt for the unchanged exact PR/head/base identity.
-- The provider job receives OIDC plus read-only repository/PR access but no check-write, content-write, publication, approval, dispatch, or merge credential. A fresh trusted finalizer validates the schema, exact-head Pullfrog review, Astra footer, finding count, comment actor, and comment head before updating the composite gate.
-- Astra and Sol are both OpenAI models. A second refusal or any malformed, stale, duplicate, recursive, forked, or ordinary-failure path stops without a third model.
+- The fallback provider job receives OIDC plus read-only job permissions. Its sealed controller mints one short-lived Pullfrog App installation token scoped exactly to `contents: read` plus `pull_requests: write`, forces the action's external `GH_TOKEN` route so the review remains Pullfrog-authored, and revokes the lease after result capture. No content-write, issue-write, check-write, action-dispatch, publication, approval, or merge credential reaches the provider.
+- Provider execution is restricted to `github.run_attempt == 1`, and the trusted preflight repeats that invariant. Later failed-job reruns can reuse only the first attempt's bounded artifacts for fresh trusted finalization.
+- A fresh trusted finalizer validates the schema, exact-head Pullfrog review, Astra footer, finding count, comment actor, comment head, exact token scope, and successful revocation before updating the composite gate.
+- Astra and Sol are both OpenAI models. A second refusal or any malformed, stale, duplicate, recursive, forked, token-drift, revocation-failure, or ordinary-failure path stops without a third model.
 
 - The hosted Speculoos check executes only repository-reviewed source, fetches no private cross-repository package, receives no additional credential, runs candidate-facing Python entrypoints in isolated mode, and validates exact head/base identity, the complete publication packet inventory including deletions, workflow materialization, merge actor policy, whitespace, and red-list token patterns.
 - The destination guard blocks provider remediation from modifying the repository-owned controller, destination, remediation, auto-merge, Speculoos contract, shell validator, or executable workflow-policy test authority; candidate sealing and publication both re-run this policy before any push.

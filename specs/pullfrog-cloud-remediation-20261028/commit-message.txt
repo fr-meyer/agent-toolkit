@@ -1,9 +1,11 @@
-feat(github): add bounded Pullfrog review fallback
+fix(github): harden Pullfrog fallback boundary
 
-Prepare one exact-head openai/gpt-astra fallback after only the recorded
-openai/gpt-sol cybersecurity-policy refusal. Keep the workflow inert by
-default, bind one attempt to the unchanged PR head/base, isolate provider and
-check-write authority, validate structured review evidence, and fail closed on
-all other outcomes.
+Mint one short-lived Pullfrog App review token with only contents:read and
+pull_requests:write, force the action's external GH_TOKEN route, revoke the
+lease after result capture, and require scope/revocation evidence before gate
+success.
+
+Block Astra whenever github.run_attempt is not 1 while allowing later attempts
+to recover trusted finalization from the bounded first-attempt artifact.
 
 Feature PRs target `dev`. Release/promotion PRs target `main`.

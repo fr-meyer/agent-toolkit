@@ -9,8 +9,8 @@ repository:
 status:
   phase: implementation
   blocker_summary:
-    - PR #95 remains open and fail-closed at hosted head 56d4dde95e457c51cbcab3f9efee7f105f905552 against base dev at 75418a1557b501b82c1ec0f7ee901a8dccaaacb7. Pullfrog check 122715968993 ended with the exact OpenAI cybersecurity-policy refusal, review 5679976549 has no complete verdict body, and inline finding 4398558244 remains actionable.
-    - A bounded Sol-to-Astra Pullfrog review fallback and composite pullfrog-review-gate are prepared locally but not published or activated. The exact-refusal policy, one-attempt limit, credential split, hosted pilot, consumer integration, and required-check migration remain separate gates.
+    - PR #95 remains open and fail-closed at hosted head 5363904f2b0d1313084c2a76943ad24cf6f9eaa8 against base dev at 75418a1557b501b82c1ec0f7ee901a8dccaaacb7. Pullfrog produced complete exact-head review 5692731389 with two findings: the fallback credential route was broader than documented and failed-job reruns could exceed the one-attempt limit. Both findings are repaired locally and require guarded publication plus fresh exact-head review.
+    - The bounded Sol-to-Astra Pullfrog review fallback and composite pullfrog-review-gate remain unpublished and inactive. The local repair adds one scoped Pullfrog App review lease with required revocation, blocks provider execution after github.run_attempt=1, and preserves finalizer-only rerun recovery; hosted pilot, consumer integration, and required-check migration remain separate gates.
     - Serving-ref activation, publisher-token provisioning, independent hosted Speculoos evidence, and the first hosted write pilot remain separately gated.
     - Pullfrog provider push, approval, native repository-wide auto-merge, CI autofix, release, deployment, branch deletion, credentials, billing, and hosted settings remain disabled or separately gated. A repository-owned exact-head gate may auto-merge eligible feature PRs into any valid base except `main` or `master`.
 publication_policy:
@@ -73,13 +73,13 @@ surfaces:
     authority: canonical
   github_pull_request:
     enabled: true
-    status: open-primary-refusal-fallback-prepared-locally
+    status: open-exact-head-review-findings-repaired-locally
     number: 95
     base_branch: dev
     default_branch: main
     head_branch: feat/pullfrog-write-capable-loop
-    head_sha: 56d4dde95e457c51cbcab3f9efee7f105f905552
-    head_sha_source: Exact hosted PR #95 identity used for local fallback audit; re-read GitHub before publication, pilot, required-check changes, or merge
+    head_sha: 5363904f2b0d1313084c2a76943ad24cf6f9eaa8
+    head_sha_source: Exact hosted PR #95 identity reviewed in Pullfrog review 5692731389 before this local repair; re-read GitHub before publication, pilot, required-check changes, or merge
     merge_commit: null
 gates:
   before_publish:
