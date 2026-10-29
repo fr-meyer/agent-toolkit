@@ -458,23 +458,52 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         if any(item["stale_count"] for item in details):
             coordinator_blockers.append(f"{group}_check_stale")
 
-    review_receipt = review_contract.evaluate_contract(
-        {
-            "schema": review_contract.SNAPSHOT_SCHEMA,
-            "expected_identity": expected,
-            "observed_identity": observed,
-            "reviews": _list(snapshot.get("reviews")),
-            "review_comments": _list(snapshot.get("review_comments")),
-            "review_threads": _list(snapshot.get("review_threads")),
-            "check_runs": check_runs,
-        }
+    contract_snapshot = {
+        "schema": review_contract.SNAPSHOT_SCHEMA,
+        "expected_identity": expected,
+        "observed_identity": observed,
+        "reviews": _list(snapshot.get("reviews")),
+        "review_comments": _list(snapshot.get("review_comments")),
+        "review_threads": _list(snapshot.get("review_threads")),
+        "check_runs": check_runs,
+    }
+    native_review_receipt = review_contract.evaluate_contract(contract_snapshot)
+    review_only_receipt = review_contract.evaluate_contract(
+        contract_snapshot,
+        review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
     )
+    gate = review_contract.select_gate(
+        check_runs,
+        observed,
+        [native_review_receipt, review_only_receipt],
+    )
+    review_receipt = native_review_receipt
+    matched_profile = _text(gate.get("evidence_profile"))
+    matched_digest = _text(gate.get("evidence_digest"))
+    matched_contract_status = _text(gate.get("contract_status"))
+    for candidate in (native_review_receipt, review_only_receipt):
+        candidate_status = _text(candidate.get("status"))
+        expected_gate_status = (
+            "success" if candidate_status == "clean" else "failure"
+        )
+        if (
+            candidate_status in {"clean", "findings"}
+            and candidate.get("blockers") == []
+            and candidate_status == matched_contract_status
+            and gate.get("status") == expected_gate_status
+            and candidate.get("evidence_profile") == matched_profile
+            and candidate.get("evidence_digest") == matched_digest
+        ):
+            review_receipt = candidate
+            break
     review_evidence = _mapping(review_receipt.get("review"))
     findings = _list(review_evidence.get("findings"))
     output_digest = _text(review_evidence.get("output_digest"))
     review_comment_count = _integer(review_evidence.get("comment_count")) or 0
     if review_receipt.get("status") in {"incomplete", "reconciliation_required"}:
-        coordinator_blockers.extend(_text(item) for item in _list(review_receipt.get("blockers")))
+        coordinator_blockers.extend(
+            _text(item) for item in _list(review_receipt.get("blockers"))
+        )
 
     history = _validated_history(snapshot.get("history"))
     cycle_number = history["cycle_number"]
@@ -504,7 +533,29 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     guard_receipt = destination_guard.evaluate_guard(guard_payload)
     guard_status = "success" if guard_receipt["status"] == "allowed" else "failure"
 
-    review_status = pullfrog["status"]
+    gated_clean = bool(
+        gate.get("status") == "success"
+        and review_receipt.get("status") == "clean"
+        and review_receipt.get("evidence_profile") == gate.get("evidence_profile")
+        and review_receipt.get("evidence_digest") == gate.get("evidence_digest")
+    )
+    gated_findings = bool(
+        gate.get("status") == "failure"
+        and review_receipt.get("status") == "findings"
+        and review_receipt.get("evidence_profile") == gate.get("evidence_profile")
+        and review_receipt.get("evidence_digest") == gate.get("evidence_digest")
+    )
+    effective_pullfrog_status = (
+        "success" if gated_clean or gated_findings else pullfrog["status"]
+    )
+    effective_approval_status = (
+        "success"
+        if gated_clean
+        else "failure"
+        if gated_findings
+        else approval["status"]
+    )
+    review_status = effective_pullfrog_status
     if review_receipt.get("status") in {"incomplete", "reconciliation_required"}:
         review_status = "missing"
     cycle_state = {
@@ -539,8 +590,16 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
             "findings": findings,
         },
         "checks": [
-            {"name": "pullfrog", "status": pullfrog["status"], "head_sha": head_sha},
-            {"name": "pullfrog-approval", "status": approval["status"], "head_sha": head_sha},
+            {
+                "name": "pullfrog",
+                "status": effective_pullfrog_status,
+                "head_sha": head_sha,
+            },
+            {
+                "name": "pullfrog-approval",
+                "status": effective_approval_status,
+                "head_sha": head_sha,
+            },
             ci,
             speculoos,
             {"name": "destination-guard", "status": guard_status, "head_sha": head_sha},
@@ -555,7 +614,6 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "forbidden_changed_path" in _list(guard_receipt.get("blockers"))
         or _text(observed.get("base_ref")) in {"main", "master"}
     )
-    gate = review_contract.select_gate(check_runs, observed)
     policy_decision = {
         "remediation_allowed": bool(
             effective_status == "remediation_ready"

@@ -100,20 +100,24 @@ The fallback controller:
     only for trusted finalization recovery, never for provider execution;
 12. authorizes one `openai/gpt-astra` / `xhigh` run and no recursive model chain.
 
-A complete verdict requires an exact-head Pullfrog review with a nonempty body
-and Pullfrog's completion marker, trusted exact-head `pullfrog` and
-`pullfrog-approval` checks from the Pullfrog App in one check suite, and no
-unresolved Pullfrog review thread. Inline comments attached to an empty-body,
-failed review remain evidence to reconcile, but do not manufacture a complete
-verdict.
+A native complete verdict requires an exact-head Pullfrog review with a
+nonempty body and Pullfrog's completion marker, trusted exact-head `pullfrog`
+and `pullfrog-approval` checks from the Pullfrog App in one check suite, and no
+unresolved Pullfrog review thread. A scoped fallback or Sol re-review instead
+uses the `review-only` evidence profile because its short-lived token has no
+check-write authority. The separate trusted publisher supplies the composite
+gate only after it re-reads and matches the authoritative review ID and current
+evidence digest. Inline comments attached to an empty-body, failed review remain
+evidence to reconcile, but do not manufacture a complete verdict.
 
 After a remediation commit, a finding-free Sol re-review may enter the explicit
 `reconciliation_required` state when only prior `pullfrog[bot]` threads remain
+open, even when the raw approval check is failed because those threads are still
 open. A separate trusted job with no provider identity can resolve only those
 bounded prior threads. It rejects current-review threads, human threads,
-identity or evidence drift, and any non-thread blocker, then re-reads the full
-contract and requires `clean` before the check-write-only publisher can emit a
-successful gate.
+identity or evidence drift, genuine findings, and any non-thread blocker, then
+re-reads the full contract and requires `clean` before the check-write-only
+publisher can emit a successful digest-bound gate.
 
 ## Workflow and credential separation
 
@@ -160,15 +164,16 @@ artifact, a later attempt may rerun only the fresh validator and gate finalizer.
 ## Composite required check
 
 The repository-owned check is `pullfrog-review-gate`. It uses a deterministic
-external ID containing repository, PR number, exact base SHA, and exact head
-SHA. The check is:
+external ID containing repository, PR number, exact base SHA, exact head SHA,
+evidence profile, and evidence digest. The check is:
 
-- successful for a valid complete Sol verdict;
+- successful for a valid clean complete Sol verdict;
 - in progress while the one authorized Astra fallback runs;
-- successful for a valid structured exact-head Astra verdict;
-- failed for every other state, including Astra refusal, malformed output,
-  review/model mismatch, drift, ordinary findings from an incomplete primary
-  run, API failure, or duplicate attempt.
+- successful for a valid clean structured exact-head Astra verdict;
+- failed with the matching review-only digest for valid findings that may enter
+  bounded remediation but can never authorize merge;
+- failed for every invalid state, including Astra refusal, malformed output,
+  review/model mismatch, drift, API failure, or duplicate attempt.
 
 While Astra activation is disabled, a recognized refusal publishes
 `action_required` and cannot invoke the fallback provider. Complete primary Sol
@@ -176,10 +181,12 @@ reviews are still evaluated and can publish a success gate.
 
 Branch protection should eventually require `pullfrog-review-gate`, not the raw
 `pullfrog` run-status check: the original Sol check remains failed after an
-authorized successful Astra fallback. The gate itself requires trusted
-`pullfrog` plus `pullfrog-approval` evidence and Pullfrog-thread reconciliation.
-It does not remove the separate destination guard, CI, Speculoos, human-review,
-and Mergeguez/governance evidence.
+authorized successful Astra fallback. A native gate requires trusted
+`pullfrog` plus `pullfrog-approval` evidence from one Pullfrog check suite. A
+review-only gate requires a freshly reconstructed complete review and Pullfrog
+thread contract from the scoped fallback or re-review. It does not remove the
+separate destination guard, CI, Speculoos, human-review, and
+Mergeguez/governance evidence.
 
 ## Remaining activation gates
 
@@ -203,9 +210,9 @@ or merge. Activation requires separate approval for each of these stages:
    identity, and exact-base checks before any automated merge.
 
 PR #95 remains open and fail-closed until the unresolved inline finding and all
-required exact-head evidence are reconciled. A fallback review is review
-evidence only; it does not authorize remediation, publication, approval, or
-merge.
+required exact-head evidence are reconciled. A valid digest-matched fallback
+finding may authorize only the same bounded remediation path as a native
+finding. It never directly authorizes publication, approval, or merge.
 
 ## Local verification
 

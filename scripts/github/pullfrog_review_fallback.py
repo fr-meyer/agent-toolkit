@@ -309,6 +309,8 @@ def _gate_external_id(
     pr_number: int,
     head_sha: str,
     base_sha: str,
+    evidence_profile: str,
+    evidence_digest: str,
 ) -> str:
     return review_contract.gate_external_id(
         {
@@ -320,7 +322,9 @@ def _gate_external_id(
             "head_sha": head_sha,
             "head_repository_slug": repository_slug,
             "base_repository_slug": repository_slug,
-        }
+        },
+        evidence_profile,
+        evidence_digest,
     )
 
 
@@ -344,6 +348,26 @@ def _selected_gate(check_runs: list[Any], external_id: str, head_sha: str) -> di
             and (_integer(item.get("id")) or 0) > 0
         ):
             eligible.append(item)
+    return max(eligible, key=lambda item: _integer(item.get("id")) or 0) if eligible else {}
+
+
+def _selected_identity_gate(
+    check_runs: list[Any],
+    identity: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        prefix = review_contract.gate_identity_prefix(identity)
+    except review_contract.ReviewContractError:
+        return {}
+    eligible = [
+        item
+        for item in (_mapping(raw) for raw in check_runs)
+        if _text(item.get("name")) == GATE_CHECK_NAME
+        and _text(_mapping(item.get("app")).get("slug")) == GATE_APP
+        and _text(item.get("head_sha")) == identity.get("head_sha")
+        and _text(item.get("external_id")).startswith(prefix)
+        and (_integer(item.get("id")) or 0) > 0
+    ]
     return max(eligible, key=lambda item: _integer(item.get("id")) or 0) if eligible else {}
 
 
@@ -458,9 +482,17 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     ]
 
     external_id = _gate_external_id(
-        repository_slug, pr_number or 0, head_sha, base_sha
+        repository_slug,
+        pr_number or 0,
+        head_sha,
+        base_sha,
+        _text(contract_receipt.get("evidence_profile")),
+        _text(contract_receipt.get("evidence_digest")),
     )
-    prior_gate = _selected_gate(_list(snapshot.get("check_runs")), external_id, head_sha)
+    prior_gate = _selected_identity_gate(
+        _list(snapshot.get("check_runs")),
+        observed,
+    )
     conclusion = _text(check_run.get("conclusion"))
     refusal_ok, refusal, refusal_blockers = _refusal_evidence(
         _list(snapshot.get("primary_jobs")), _list(snapshot.get("primary_annotations"))
@@ -866,10 +898,15 @@ def verify_fallback_result(
                 "review_comments": all_comments,
                 "review_threads": review_threads,
                 "check_runs": check_runs,
-            }
+            },
+            review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
         )
-        expected_contract_status = "clean" if verdict == "clean" else "findings"
-        if contract_receipt.get("status") != expected_contract_status:
+        expected_contract_statuses = (
+            {"clean", "reconciliation_required"}
+            if verdict == "clean"
+            else {"findings"}
+        )
+        if contract_receipt.get("status") not in expected_contract_statuses:
             blockers.append("fallback_review_contract_mismatch")
         if _integer(_mapping(contract_receipt.get("review")).get("finding_count")) != finding_count:
             blockers.append("fallback_contract_finding_count_mismatch")
@@ -1060,7 +1097,8 @@ def verify_exact_head_rereview_result(
                 "review_comments": all_comments,
                 "review_threads": review_threads,
                 "check_runs": check_runs,
-            }
+            },
+            review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
         )
         expected_contract_statuses = (
             {"clean", "reconciliation_required"}
@@ -1105,6 +1143,43 @@ def verify_exact_head_rereview_result(
     }
 
 
+def _rereview_source_summary(receipt: dict[str, Any]) -> dict[str, Any]:
+    verdict = _text(receipt.get("verdict"))
+    finding_count = _integer(receipt.get("finding_count"))
+    contract_status = _text(receipt.get("review_contract_status"))
+    contract_digest = _text(receipt.get("review_contract_digest"))
+    valid = bool(
+        receipt.get("schema") == REREVIEW_RECEIPT_SCHEMA
+        and receipt.get("status") == "valid"
+        and receipt.get("model") == PRIMARY_MODEL
+        and receipt.get("resolved_model") == PRIMARY_RESOLVED_MODEL
+        and receipt.get("effort") == EFFORT
+        and (_integer(receipt.get("review_id")) or 0) > 0
+        and receipt.get("blockers") == []
+        and receipt.get("raw_text_included") is False
+        and re.fullmatch(r"[0-9a-f]{64}", contract_digest)
+        and (
+            (
+                verdict == "clean"
+                and finding_count == 0
+                and contract_status in {"clean", "reconciliation_required"}
+            )
+            or (
+                verdict == "findings"
+                and (finding_count or 0) > 0
+                and contract_status == "findings"
+            )
+        )
+    )
+    return {
+        "valid": valid,
+        "verdict": verdict,
+        "finding_count": finding_count if finding_count is not None else -1,
+        "contract_status": contract_status,
+        "contract_digest": contract_digest,
+    }
+
+
 def reconcile_rereview_threads(
     client: GitHubClient,
     rereview_receipt: dict[str, Any],
@@ -1117,6 +1192,7 @@ def reconcile_rereview_threads(
     """
 
     blockers: list[str] = []
+    source_review = _rereview_source_summary(rereview_receipt)
     if rereview_receipt.get("schema") != REREVIEW_RECEIPT_SCHEMA:
         raise FallbackError("invalid_rereview_reconciliation_receipt")
     if (
@@ -1179,7 +1255,8 @@ def reconcile_rereview_threads(
             "review_comments": comments,
             "review_threads": threads_before,
             "check_runs": check_runs,
-        }
+        },
+        review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
     )
     before_status = _text(contract_before.get("status"))
     before_review = _mapping(contract_before.get("review"))
@@ -1264,7 +1341,8 @@ def reconcile_rereview_threads(
                 "review_comments": comments_after,
                 "review_threads": threads_after,
                 "check_runs": checks_after,
-            }
+            },
+            review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
         )
         if (
             contract_after.get("status") != "clean"
@@ -1288,6 +1366,7 @@ def reconcile_rereview_threads(
         "base_sha": base_sha,
         "head_sha": head_sha,
         "review_id": review_id,
+        "source_review": source_review,
         "resolved_thread_count": resolved_count,
         "before_contract_status": before_status,
         "before_contract_digest": _text(contract_before.get("evidence_digest")),
@@ -1351,6 +1430,52 @@ def _publish_gate_check(
     }
 
 
+def _collect_live_contract(
+    client: GitHubClient,
+    *,
+    pr_number: int,
+    base_sha: str,
+    head_sha: str,
+    evidence_profile: str,
+) -> dict[str, Any]:
+    prefix = f"/repos/{client.repository_slug}"
+    pr = _mapping(client.get(f"{prefix}/pulls/{pr_number}"))
+    identity = _identity(client.repository_slug, pr)
+    if (
+        identity.get("repository_slug") != client.repository_slug
+        or identity.get("pr_number") != pr_number
+        or identity.get("state") != "open"
+        or identity.get("base_sha") != base_sha
+        or identity.get("head_sha") != head_sha
+        or identity.get("base_repository_slug") != client.repository_slug
+        or identity.get("head_repository_slug") != client.repository_slug
+    ):
+        raise FallbackError("live_review_gate_identity_drift")
+    reviews = client.paginated(f"{prefix}/pulls/{pr_number}/reviews")
+    comments = client.paginated(f"{prefix}/pulls/{pr_number}/comments")
+    checks_payload = _mapping(
+        client.get(f"{prefix}/commits/{head_sha}/check-runs?per_page=100")
+    )
+    check_runs = _list(checks_payload.get("check_runs"))
+    if (_integer(checks_payload.get("total_count")) or len(check_runs)) != len(
+        check_runs
+    ):
+        raise FallbackError("live_review_gate_check_collection_truncated")
+    threads = review_contract.collect_review_threads(client, identity)
+    return review_contract.evaluate_contract(
+        {
+            "schema": review_contract.SNAPSHOT_SCHEMA,
+            "expected_identity": identity,
+            "observed_identity": identity,
+            "reviews": reviews,
+            "review_comments": comments,
+            "review_threads": threads,
+            "check_runs": check_runs,
+        },
+        evidence_profile,
+    )
+
+
 def publish_rereview_gate(
     client: GitHubClient,
     receipt: dict[str, Any],
@@ -1366,6 +1491,7 @@ def publish_rereview_gate(
         "base_sha",
         "head_sha",
         "review_id",
+        "source_review",
         "resolved_thread_count",
         "before_contract_status",
         "before_contract_digest",
@@ -1393,8 +1519,23 @@ def publish_rereview_gate(
     before_status = _text(receipt.get("before_contract_status"))
     before_digest = _text(receipt.get("before_contract_digest"))
     after_digest = _text(receipt.get("after_contract_digest"))
+    source_review = _mapping(receipt.get("source_review"))
+    source_shape_valid = set(source_review) == {
+        "valid",
+        "verdict",
+        "finding_count",
+        "contract_status",
+        "contract_digest",
+    }
     clean = (
-        receipt.get("status") == "clean"
+        source_shape_valid
+        and source_review.get("valid") is True
+        and source_review.get("verdict") == "clean"
+        and _integer(source_review.get("finding_count")) == 0
+        and source_review.get("contract_status")
+        in {"clean", "reconciliation_required"}
+        and source_review.get("contract_digest") == before_digest
+        and receipt.get("status") == "clean"
         and receipt.get("after_contract_status") == "clean"
         and receipt.get("blockers") == []
         and (_integer(receipt.get("review_id")) or 0) > 0
@@ -1406,20 +1547,71 @@ def publish_rereview_gate(
         and not (before_status == "clean" and resolved_count != 0)
         and not (before_status == "reconciliation_required" and resolved_count < 1)
     )
+    live_contract: dict[str, Any] = {}
+    try:
+        live_contract = _collect_live_contract(
+            client,
+            pr_number=_integer(identity["pr_number"]) or 0,
+            base_sha=_text(identity["base_sha"]),
+            head_sha=_text(identity["head_sha"]),
+            evidence_profile=review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
+        )
+    except FallbackError:
+        clean = False
+    live_digest = _text(live_contract.get("evidence_digest"))
+    if (
+        live_contract.get("status") != "clean"
+        or live_contract.get("blockers") != []
+        or _integer(_mapping(live_contract.get("review")).get("review_id"))
+        != _integer(receipt.get("review_id"))
+        or live_digest != after_digest
+    ):
+        clean = False
+    findings_authorized = bool(
+        source_shape_valid
+        and source_review.get("valid") is True
+        and source_review.get("verdict") == "findings"
+        and (_integer(source_review.get("finding_count")) or 0) > 0
+        and source_review.get("contract_status") == "findings"
+        and source_review.get("contract_digest") == live_digest
+        and live_contract.get("status") == "findings"
+        and live_contract.get("blockers") == []
+        and _integer(_mapping(live_contract.get("review")).get("review_id"))
+        == _integer(receipt.get("review_id"))
+    )
+    publication_digest = (
+        live_digest
+        if clean or findings_authorized
+        else _digest({"invalid_receipt": receipt, "live_contract": live_contract})
+    )
+    gate_identity = _mapping(live_contract.get("identity"))
+    if not gate_identity:
+        live_pr = _mapping(
+            client.get(f"/repos/{client.repository_slug}/pulls/{identity['pr_number']}")
+        )
+        gate_identity = _identity(client.repository_slug, live_pr)
     return _publish_gate_check(
         client,
         head_sha=_text(identity["head_sha"]),
-        external_id=review_contract.gate_external_id(identity),
+        external_id=review_contract.gate_external_id(
+            gate_identity,
+            review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
+            publication_digest,
+        ),
         details_url=details_url,
         title=(
             "Pullfrog exact-head re-review produced a clean valid verdict"
             if clean
+            else "Pullfrog exact-head re-review produced valid findings"
+            if findings_authorized
             else "Pullfrog exact-head re-review failed closed"
         ),
         summary=(
-            "The bounded Sol re-review and complete exact-head evidence were validated."
+            "The bounded Sol re-review and live exact-head evidence were validated."
             if clean
-            else "The bounded Sol re-review did not produce complete clean exact-head evidence."
+            else "Validated exact-head findings may enter bounded remediation only."
+            if findings_authorized
+            else "The bounded Sol re-review did not match current clean exact-head evidence."
         ),
         check_status="completed",
         conclusion="success" if clean else "failure",
@@ -1436,13 +1628,35 @@ def publish_gate(
     if coordinator.get("schema") != RECEIPT_SCHEMA:
         raise FallbackError("invalid_gate_coordinator_receipt")
     status = _text(coordinator.get("status"))
+    identity = {
+        "repository_slug": coordinator.get("repository"),
+        "pr_number": coordinator.get("pr_number"),
+        "base_ref": coordinator.get("base_ref"),
+        "base_sha": coordinator.get("base_sha"),
+        "head_ref": coordinator.get("head_ref"),
+        "head_sha": coordinator.get("head_sha"),
+        "head_repository_slug": coordinator.get("repository"),
+        "base_repository_slug": coordinator.get("repository"),
+    }
+    evidence_profile = review_contract.NATIVE_EVIDENCE_PROFILE
+    evidence_digest = _text(
+        _mapping(coordinator.get("primary")).get("review_contract_digest")
+    )
+    authoritative_review_id = _integer(
+        _mapping(coordinator.get("primary")).get("complete_review_id")
+    )
     title = "Pullfrog review gate failed closed"
     summary = "The exact-head Pullfrog review evidence did not authorize a valid review verdict."
     check_status = "completed"
     conclusion = "failure"
+    require_live_clean = False
+    live_contract: dict[str, Any] = {}
     if result_receipt is not None:
         if result_receipt.get("schema") != RESULT_RECEIPT_SCHEMA:
             raise FallbackError("invalid_gate_result_receipt")
+        evidence_profile = review_contract.REVIEW_ONLY_EVIDENCE_PROFILE
+        evidence_digest = _text(result_receipt.get("review_contract_digest"))
+        authoritative_review_id = _integer(result_receipt.get("review_id"))
         if (
             result_receipt.get("status") == "valid"
             and result_receipt.get("review_contract_status") == "clean"
@@ -1450,18 +1664,17 @@ def publish_gate(
         ):
             title = "Pullfrog Astra fallback produced a clean valid verdict"
             summary = "One clean structured exact-head Astra fallback verdict was validated."
-            conclusion = "success"
+            require_live_clean = True
         elif result_receipt.get("status") == "valid":
             title = "Pullfrog Astra fallback produced findings"
             summary = "The exact-head fallback verdict is complete but contains findings."
-            conclusion = "failure"
         else:
             title = "Pullfrog Astra fallback failed closed"
             summary = "The single authorized fallback did not produce a valid structured exact-head verdict."
     elif status == "primary_valid":
         title = "Pullfrog primary review produced a valid verdict"
         summary = "The exact-head Sol review completed with a valid Pullfrog verdict."
-        conclusion = "success"
+        require_live_clean = True
     elif status == "fallback_ready" and enabled:
         title = "Pullfrog Astra fallback in progress"
         summary = "One exact-head Astra fallback was authorized after the recognized Sol policy refusal."
@@ -1472,11 +1685,50 @@ def publish_gate(
         summary = "A fallback is eligible, but the repository fallback activation flag is disabled."
         conclusion = "action_required"
 
-    external_id = _text(_mapping(coordinator.get("gate")).get("external_id"))
-    head_sha = _text(coordinator.get("head_sha"))
+    if require_live_clean:
+        try:
+            live_contract = _collect_live_contract(
+                client,
+                pr_number=_integer(identity["pr_number"]) or 0,
+                base_sha=_text(identity["base_sha"]),
+                head_sha=_text(identity["head_sha"]),
+                evidence_profile=evidence_profile,
+            )
+        except FallbackError:
+            live_contract = {}
+        live_digest = _text(live_contract.get("evidence_digest"))
+        if (
+            live_contract.get("status") == "clean"
+            and live_contract.get("blockers") == []
+            and live_digest == evidence_digest
+            and _integer(_mapping(live_contract.get("review")).get("review_id"))
+            == authoritative_review_id
+        ):
+            conclusion = "success"
+            evidence_digest = live_digest
+        else:
+            conclusion = "failure"
+            title = "Pullfrog review gate failed live revalidation"
+            summary = "Saved review evidence no longer matches the current exact-head contract."
+            if re.fullmatch(r"[0-9a-f]{64}", live_digest):
+                evidence_digest = live_digest
+
+    if not re.fullmatch(r"[0-9a-f]{64}", evidence_digest):
+        evidence_digest = _digest(
+            {
+                "coordinator": coordinator,
+                "result_receipt": result_receipt or {},
+                "live_contract": live_contract,
+            }
+        )
+    external_id = review_contract.gate_external_id(
+        identity,
+        evidence_profile,
+        evidence_digest,
+    )
     return _publish_gate_check(
         client,
-        head_sha=head_sha,
+        head_sha=_text(identity["head_sha"]),
         external_id=external_id,
         details_url=details_url,
         title=title,
@@ -1785,6 +2037,7 @@ def main() -> int:
                 "base_sha": _text(source_receipt.get("base_sha")),
                 "head_sha": _text(source_receipt.get("head_sha")),
                 "review_id": _integer(source_receipt.get("review_id")) or 0,
+                "source_review": _rereview_source_summary(source_receipt),
                 "resolved_thread_count": 0,
                 "before_contract_status": "",
                 "before_contract_digest": "",

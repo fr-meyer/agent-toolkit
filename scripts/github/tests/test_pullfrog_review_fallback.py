@@ -234,7 +234,14 @@ class PullfrogReviewFallbackDecisionTests(unittest.TestCase):
 
     def test_prior_exact_head_gate_blocks_duplicate_fallback(self):
         fixture = snapshot()
-        external_id = MODULE._gate_external_id(REPOSITORY, 95, HEAD_SHA, BASE_SHA)
+        external_id = MODULE._gate_external_id(
+            REPOSITORY,
+            95,
+            HEAD_SHA,
+            BASE_SHA,
+            MODULE.review_contract.NATIVE_EVIDENCE_PROFILE,
+            "a" * 64,
+        )
         fixture["check_runs"] = [
             {
                 "id": 800,
@@ -474,7 +481,7 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
         self.assertIn("invalid_review_token_lease_permissions", receipt["blockers"])
         self.assertIn("review_token_revocation_failed", receipt["blockers"])
 
-    def test_gate_is_created_then_updated_by_stable_external_id(self):
+    def test_new_review_evidence_gets_an_immutable_gate_identity(self):
         coordinator = self.coordinator()
         client = FakeClient()
         created = MODULE.publish_gate(client, coordinator, "https://example.test/run", True, None)
@@ -484,13 +491,15 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
 
         client = FakeClient(
             checks=[
+                evidence_check("pullfrog", "success", 810),
+                evidence_check("pullfrog-approval", "success", 811),
                 {
                     "id": 900,
                     "name": MODULE.GATE_CHECK_NAME,
                     "head_sha": HEAD_SHA,
                     "external_id": external_id,
                     "app": {"slug": MODULE.GATE_APP},
-                }
+                },
             ]
         )
         result_receipt = MODULE.verify_fallback_result(
@@ -505,9 +514,10 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
         updated = MODULE.publish_gate(
             client, coordinator, "https://example.test/run", True, result_receipt
         )
-        self.assertEqual(updated["operation"], "updated")
+        self.assertEqual(updated["operation"], "created")
         self.assertEqual(updated["conclusion"], "success")
-        self.assertEqual(client.patches[0][0], f"/repos/{REPOSITORY}/check-runs/900")
+        self.assertNotEqual(updated["external_id"], external_id)
+        self.assertEqual(client.patches, [])
 
 
 class PullfrogExactHeadRereviewTests(unittest.TestCase):
@@ -571,16 +581,11 @@ class PullfrogExactHeadRereviewTests(unittest.TestCase):
             "https://example.test/run",
         )
         self.assertEqual(publication["conclusion"], "success")
-        self.assertEqual(
-            publication["external_id"],
-            MODULE.review_contract.gate_external_id(
-                {
-                    "repository_slug": REPOSITORY,
-                    "pr_number": 95,
-                    "base_sha": BASE_SHA,
-                    "head_sha": HEAD_SHA,
-                }
-            ),
+        self.assertTrue(
+            publication["external_id"].startswith(
+                f"pullfrog-review-gate:v3:{REPOSITORY}:95:{BASE_SHA}:{HEAD_SHA}:"
+                "review-only:"
+            )
         )
 
     def test_empty_or_markerless_rereview_fails_closed(self):
@@ -590,20 +595,24 @@ class PullfrogExactHeadRereviewTests(unittest.TestCase):
                 self.assertEqual(receipt["status"], "invalid")
                 self.assertIn("invalid_exact_head_rereview", receipt["blockers"])
 
-    def test_missing_checks_and_identity_drift_fail_closed(self):
-        variants = (
+    def test_review_only_rereview_does_not_require_check_write_authority(self):
+        receipt = self.verify(
             FakeClient(
-                body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL), checks=[]
-            ),
+                body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL),
+                checks=[],
+            )
+        )
+        self.assertEqual(receipt["status"], "valid")
+        self.assertEqual(receipt["review_contract_status"], "clean")
+
+    def test_identity_drift_still_fails_closed(self):
+        receipt = self.verify(
             FakeClient(
                 body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL),
                 pull=pr(head_sha="3" * 40),
-            ),
+            )
         )
-        for client in variants:
-            with self.subTest(client=client):
-                receipt = self.verify(client)
-                self.assertEqual(receipt["status"], "invalid")
+        self.assertEqual(receipt["status"], "invalid")
 
     def test_old_pullfrog_threads_are_reconciled_by_isolated_clean_step(self):
         unresolved = {
@@ -622,6 +631,10 @@ class PullfrogExactHeadRereviewTests(unittest.TestCase):
         }
         client = FakeClient(
             body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL),
+            checks=[
+                evidence_check("pullfrog", "failure", 810),
+                evidence_check("pullfrog-approval", "failure", 811),
+            ],
             threads=[unresolved],
         )
         receipt = self.verify(client)
@@ -656,6 +669,150 @@ class PullfrogExactHeadRereviewTests(unittest.TestCase):
                         client, changed, "https://example.test/run"
                     )
                     self.assertEqual(publication["conclusion"], "failure")
+
+    def test_stale_reconciliation_receipt_cannot_publish_a_success_gate(self):
+        for newer_evidence in ("finding", "failed_approval"):
+            with self.subTest(newer_evidence=newer_evidence):
+                client = FakeClient(body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL))
+                receipt = self.verify(client)
+                reconciliation = MODULE.reconcile_rereview_threads(client, receipt)
+                stale_digest = reconciliation["after_contract_digest"]
+                if newer_evidence == "finding":
+                    client.body = complete_body(MODULE.PRIMARY_RESOLVED_MODEL, clean=False)
+                    client.comments = [
+                        {
+                            "id": 801,
+                            "pull_request_review_id": 700,
+                            "commit_id": HEAD_SHA,
+                            "path": "scripts/example.py",
+                            "line": 12,
+                            "body": "A newer exact-head finding.",
+                            "user": {"login": "pullfrog[bot]"},
+                        }
+                    ]
+                else:
+                    client.checks.append(
+                        evidence_check("pullfrog-approval", "failure", 900)
+                    )
+                publication = MODULE.publish_rereview_gate(
+                    client,
+                    reconciliation,
+                    "https://example.test/run",
+                )
+                self.assertEqual(publication["conclusion"], "failure")
+                self.assertFalse(publication["external_id"].endswith(stale_digest))
+
+    def test_valid_rereview_findings_publish_only_a_digest_bound_failed_gate(self):
+        comments = [
+            {
+                "id": 801,
+                "pull_request_review_id": 700,
+                "commit_id": HEAD_SHA,
+                "path": "scripts/example.py",
+                "line": 12,
+                "body": "A current exact-head finding.",
+                "user": {"login": "pullfrog[bot]"},
+            }
+        ]
+        client = FakeClient(
+            body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL, clean=False),
+            comments=comments,
+        )
+        result = self.result()
+        result["verdict"] = "findings"
+        result["finding_count"] = 1
+        receipt = MODULE.verify_exact_head_rereview_result(
+            client,
+            95,
+            HEAD_SHA,
+            BASE_SHA,
+            "success",
+            result,
+            self.token_lease(),
+            self.token_revocation(),
+            "success",
+        )
+        self.assertEqual(receipt["status"], "valid")
+        self.assertEqual(receipt["review_contract_status"], "findings")
+        reconciliation = {
+            "schema": MODULE.REREVIEW_RECONCILIATION_SCHEMA,
+            "status": "invalid",
+            "repository": REPOSITORY,
+            "pr_number": 95,
+            "base_sha": BASE_SHA,
+            "head_sha": HEAD_SHA,
+            "review_id": 700,
+            "source_review": MODULE._rereview_source_summary(receipt),
+            "resolved_thread_count": 0,
+            "before_contract_status": "",
+            "before_contract_digest": "",
+            "after_contract_status": "",
+            "after_contract_digest": "",
+            "blockers": ["rereview_not_clean_for_reconciliation"],
+            "raw_text_included": False,
+        }
+        publication = MODULE.publish_rereview_gate(
+            client, reconciliation, "https://example.test/run"
+        )
+        self.assertEqual(publication["conclusion"], "failure")
+        self.assertTrue(
+            publication["external_id"].endswith(receipt["review_contract_digest"])
+        )
+
+    def test_invalid_rereview_receipt_cannot_mint_findings_remediation_evidence(self):
+        comments = [
+            {
+                "id": 801,
+                "pull_request_review_id": 700,
+                "commit_id": HEAD_SHA,
+                "path": "scripts/example.py",
+                "line": 12,
+                "body": "A current exact-head finding.",
+                "user": {"login": "pullfrog[bot]"},
+            }
+        ]
+        client = FakeClient(
+            body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL, clean=False),
+            comments=comments,
+        )
+        result = self.result()
+        result["verdict"] = "findings"
+        result["finding_count"] = 1
+        receipt = MODULE.verify_exact_head_rereview_result(
+            client,
+            95,
+            HEAD_SHA,
+            BASE_SHA,
+            "success",
+            result,
+            self.token_lease(),
+            self.token_revocation(),
+            "failure",
+        )
+        self.assertEqual(receipt["status"], "invalid")
+        live_digest = receipt["review_contract_digest"]
+        reconciliation = {
+            "schema": MODULE.REREVIEW_RECONCILIATION_SCHEMA,
+            "status": "invalid",
+            "repository": REPOSITORY,
+            "pr_number": 95,
+            "base_sha": BASE_SHA,
+            "head_sha": HEAD_SHA,
+            "review_id": 700,
+            "source_review": MODULE._rereview_source_summary(receipt),
+            "resolved_thread_count": 0,
+            "before_contract_status": "",
+            "before_contract_digest": "",
+            "after_contract_status": "",
+            "after_contract_digest": "",
+            "blockers": ["rereview_not_clean_for_reconciliation"],
+            "raw_text_included": False,
+        }
+        publication = MODULE.publish_rereview_gate(
+            client, reconciliation, "https://example.test/run"
+        )
+        self.assertEqual(publication["conclusion"], "failure")
+        self.assertFalse(publication["external_id"].endswith(live_digest))
 
     def test_reconciliation_rejects_current_review_or_non_pullfrog_thread(self):
         current = {

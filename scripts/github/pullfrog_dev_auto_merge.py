@@ -158,15 +158,34 @@ def _validated_receipt_check_rules(
     receipt: dict[str, Any], identity: dict[str, Any]
 ) -> dict[str, list[tuple[str, str]]]:
     details = _mapping(receipt.get("checks"))
-    if not {"pullfrog", "pullfrog_approval", "ci", "speculoos"}.issubset(details):
+    if not {"pullfrog_review_gate", "ci", "speculoos"}.issubset(details):
+        raise AutoMergeError("invalid_receipt_check_details")
+    contract = _mapping(receipt.get("review_contract"))
+    evidence_profile = _text(contract.get("evidence_profile"))
+    evidence_digest = _text(contract.get("evidence_digest"))
+    try:
+        expected_gate_external_id = review_contract.gate_external_id(
+            identity,
+            evidence_profile,
+            evidence_digest,
+        )
+    except review_contract.ReviewContractError as exc:
+        raise AutoMergeError("invalid_receipt_check_details") from exc
+    gate = _mapping(details.get("pullfrog_review_gate"))
+    if (
+        coordinator._check_rule(gate)
+        != (review_contract.GATE_NAME, review_contract.GATE_APP)
+        or gate.get("status") != "success"
+        or gate.get("head_sha") != identity["head_sha"]
+        or (_integer(gate.get("check_run_id")) or 0) < 1
+        or gate.get("external_id") != expected_gate_external_id
+        or gate.get("evidence_profile") != evidence_profile
+        or gate.get("evidence_digest") != evidence_digest
+    ):
         raise AutoMergeError("invalid_receipt_check_details")
     rules: dict[str, list[tuple[str, str]]] = {}
-    for group in ("pullfrog", "pullfrog_approval", "ci", "speculoos"):
-        raw_values = details.get(group)
-        if group in {"pullfrog", "pullfrog_approval"}:
-            values = [raw_values] if isinstance(raw_values, dict) else []
-        else:
-            values = raw_values if isinstance(raw_values, list) else []
+    for group in ("ci", "speculoos"):
+        values = details.get(group) if isinstance(details.get(group), list) else []
         parsed: list[tuple[str, str]] = []
         if not values:
             raise AutoMergeError("invalid_receipt_check_details")
@@ -184,12 +203,6 @@ def _validated_receipt_check_rules(
         if len(set(parsed)) != len(parsed):
             raise AutoMergeError("invalid_receipt_check_details")
         rules[group] = parsed
-    if rules["pullfrog"] != [(coordinator.PULLFROG_CHECK, coordinator.PULLFROG_APP)]:
-        raise AutoMergeError("invalid_receipt_check_details")
-    if rules["pullfrog_approval"] != [
-        (coordinator.PULLFROG_APPROVAL_CHECK, coordinator.PULLFROG_APP)
-    ]:
-        raise AutoMergeError("invalid_receipt_check_details")
     return rules
 
 
@@ -248,6 +261,17 @@ def validate_clean_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
     expected_contract_identity = review_contract.normalize_identity(identity)
     contract_review = _mapping(contract.get("review"))
     contract_threads = _mapping(contract.get("threads"))
+    contract_gate = _mapping(contract.get("gate"))
+    evidence_profile = _text(contract.get("evidence_profile"))
+    evidence_digest = _text(contract.get("evidence_digest"))
+    try:
+        expected_gate_external_id = review_contract.gate_external_id(
+            contract_identity,
+            evidence_profile,
+            evidence_digest,
+        )
+    except review_contract.ReviewContractError as exc:
+        raise AutoMergeError("invalid_review_contract") from exc
     if (
         contract.get("schema") != review_contract.CONTRACT_SCHEMA
         or contract.get("status") != "clean"
@@ -257,6 +281,10 @@ def validate_clean_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
         != _text(review.get("review_id"))
         or _integer(contract_review.get("finding_count")) != 0
         or _integer(contract_threads.get("unresolved_pullfrog_count")) != 0
+        or contract_gate.get("name") != review_contract.GATE_NAME
+        or contract_gate.get("app_slug") != review_contract.GATE_APP
+        or contract_gate.get("external_id") != expected_gate_external_id
+        or contract_gate.get("conclusion") != "success"
     ):
         raise AutoMergeError("invalid_review_contract")
 
@@ -321,6 +349,7 @@ def _refresh_exact_head_evidence(
     *,
     repository: dict[str, Any],
     changed_paths: list[str],
+    reviews: list[Any],
 ) -> dict[str, Any]:
     rules = _validated_receipt_check_rules(receipt, identity)
     prefix = client.allowed_prefix
@@ -342,14 +371,37 @@ def _refresh_exact_head_evidence(
         if any(item.get("spoofed_count") or item.get("stale_count") for item in selected[group]):
             raise AutoMergeError("fresh_required_evidence_ambiguous")
 
-    gate = review_contract.select_gate(check_runs, identity)
+    comments = client.paginated(
+        f"{prefix}/pulls/{identity['pr_number']}/comments"
+    )
+    try:
+        review_threads = review_contract.collect_review_threads(client, identity)
+    except review_contract.ReviewContractError as exc:
+        raise AutoMergeError("fresh_review_contract_collection_failed") from exc
+    contract_snapshot = {
+        "schema": review_contract.SNAPSHOT_SCHEMA,
+        "expected_identity": identity,
+        "observed_identity": identity,
+        "reviews": reviews,
+        "review_comments": comments,
+        "review_threads": review_threads,
+        "check_runs": check_runs,
+    }
+    contracts = [
+        review_contract.evaluate_contract(contract_snapshot),
+        review_contract.evaluate_contract(
+            contract_snapshot,
+            review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
+        ),
+    ]
+    gate = review_contract.select_gate(check_runs, identity, contracts)
     if (
         gate.get("spoofed_count")
         or gate.get("stale_count")
         or gate.get("external_id_mismatch")
     ):
         raise AutoMergeError("fresh_pullfrog_review_gate_ambiguous")
-    if gate.get("status") != "success":
+    if gate.get("status") != "success" or gate.get("contract_status") != "clean":
         raise AutoMergeError("fresh_pullfrog_review_gate_not_successful")
 
     collection = _mapping(receipt.get("collection"))
@@ -405,6 +457,8 @@ def _refresh_exact_head_evidence(
     return {
         "pullfrog_review_gate_id": gate.get("check_run_id"),
         "pullfrog_review_gate_external_id": gate.get("external_id"),
+        "pullfrog_review_evidence_profile": gate.get("evidence_profile"),
+        "pullfrog_review_evidence_digest": gate.get("evidence_digest"),
         "check_run_ids": {
             group: [item.get("check_run_id") for item in values]
             for group, values in selected.items()
@@ -910,6 +964,7 @@ def merge_clean_pr(
         identity,
         repository=repository,
         changed_paths=changed_paths,
+        reviews=reviews,
     )
     _assert_live_pull_request(
         _mapping(client.get(f"{prefix}/pulls/{identity['pr_number']}")), identity

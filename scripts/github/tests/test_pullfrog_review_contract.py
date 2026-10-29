@@ -99,7 +99,11 @@ class PullfrogReviewContractTests(unittest.TestCase):
         self.assertEqual(receipt["checks"]["pullfrog"]["check_run_id"], 100)
         self.assertEqual(
             receipt["gate"]["external_id"],
-            f"pullfrog-review-gate:v2:{REPOSITORY}:95:{BASE_SHA}:{HEAD_SHA}",
+            MODULE.gate_external_id(
+                identity(),
+                MODULE.NATIVE_EVIDENCE_PROFILE,
+                receipt["evidence_digest"],
+            ),
         )
 
     def test_empty_or_markerless_review_is_never_complete(self):
@@ -142,6 +146,70 @@ class PullfrogReviewContractTests(unittest.TestCase):
         self.assertEqual(receipt["status"], "reconciliation_required")
         self.assertIn("unresolved_pullfrog_review_threads", receipt["blockers"])
 
+    def test_review_only_profile_allows_clean_reconciliation_before_approval(self):
+        fixture = snapshot()
+        fixture["check_runs"] = [
+            check("pullfrog-approval", conclusion="failure", check_id=101)
+        ]
+        fixture["review_threads"] = [thread(resolved=False, review_id=500)]
+        receipt = MODULE.evaluate_contract(
+            fixture,
+            MODULE.REVIEW_ONLY_EVIDENCE_PROFILE,
+        )
+        self.assertEqual(receipt["status"], "reconciliation_required")
+        self.assertEqual(receipt["review"]["finding_count"], 0)
+        self.assertEqual(receipt["evidence_profile"], "review-only")
+
+        fixture["review_threads"] = [thread(resolved=True, review_id=500)]
+        clean = MODULE.evaluate_contract(
+            fixture,
+            MODULE.REVIEW_ONLY_EVIDENCE_PROFILE,
+        )
+        self.assertEqual(clean["status"], "clean")
+        self.assertEqual(clean["blockers"], [])
+
+    def test_review_only_profile_keeps_genuine_findings(self):
+        fixture = snapshot()
+        fixture["check_runs"] = []
+        fixture["reviews"] = [
+            review(body=MARKER_BODY.replace("No new issues found", "One issue"))
+        ]
+        fixture["review_comments"] = [
+            {
+                "id": 701,
+                "pull_request_review_id": 601,
+                "commit_id": HEAD_SHA,
+                "path": "scripts/example.py",
+                "line": 12,
+                "body": "Fix the exact-head comparison.",
+                "user": {"login": "pullfrog[bot]"},
+            }
+        ]
+        receipt = MODULE.evaluate_contract(
+            fixture,
+            MODULE.REVIEW_ONLY_EVIDENCE_PROFILE,
+        )
+        self.assertEqual(receipt["status"], "findings")
+        self.assertEqual(receipt["review"]["finding_count"], 1)
+
+    def test_review_only_profile_requires_the_exact_clean_verdict_line(self):
+        fixture = snapshot()
+        fixture["check_runs"] = []
+        fixture["reviews"] = [
+            review(
+                body=(
+                    "> One issue remains; the phrase no new issues found is not a verdict.\n"
+                    "<!-- PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ -->"
+                )
+            )
+        ]
+        receipt = MODULE.evaluate_contract(
+            fixture,
+            MODULE.REVIEW_ONLY_EVIDENCE_PROFILE,
+        )
+        self.assertEqual(receipt["status"], "findings")
+        self.assertEqual(receipt["review"]["finding_count"], 1)
+
     def test_non_pullfrog_thread_does_not_block(self):
         fixture = snapshot()
         fixture["review_threads"] = [thread(resolved=False, author="human-reviewer")]
@@ -172,7 +240,12 @@ class PullfrogReviewContractTests(unittest.TestCase):
 
     def test_gate_selector_binds_repository_pr_base_and_head(self):
         expected = identity()
-        external_id = MODULE.gate_external_id(expected)
+        contract = MODULE.evaluate_contract(snapshot())
+        external_id = MODULE.gate_external_id(
+            expected,
+            contract["evidence_profile"],
+            contract["evidence_digest"],
+        )
         runs = [
             {
                 "id": 900,
@@ -185,13 +258,73 @@ class PullfrogReviewContractTests(unittest.TestCase):
                 "check_suite": {"id": 80},
             }
         ]
-        selected = MODULE.select_gate(runs, expected)
+        selected = MODULE.select_gate(runs, expected, [contract])
         self.assertEqual(selected["status"], "success")
+        self.assertEqual(selected["evidence_profile"], "native")
         drift = copy.deepcopy(expected)
         drift["base_sha"] = "3" * 40
-        selected = MODULE.select_gate(runs, drift)
+        selected = MODULE.select_gate(runs, drift, [contract])
         self.assertEqual(selected["status"], "missing")
         self.assertTrue(selected["external_id_mismatch"])
+
+    def test_gate_is_invalidated_by_newer_same_head_check_evidence(self):
+        contract = MODULE.evaluate_contract(snapshot())
+        external_id = contract["gate"]["external_id"]
+        runs = [
+            {
+                "id": 900,
+                "name": MODULE.GATE_NAME,
+                "status": "completed",
+                "conclusion": "success",
+                "head_sha": HEAD_SHA,
+                "external_id": external_id,
+                "app": {"slug": MODULE.GATE_APP},
+                "check_suite": {"id": 80},
+            }
+        ]
+        changed = snapshot()
+        changed["check_runs"][1] = check(
+            "pullfrog-approval", conclusion="failure", check_id=202
+        )
+        changed_contract = MODULE.evaluate_contract(changed)
+        selected = MODULE.select_gate(runs, identity(), [changed_contract])
+        self.assertEqual(selected["status"], "missing")
+        self.assertTrue(selected["external_id_mismatch"])
+
+    def test_gate_selector_binds_failed_gate_to_current_findings_contract(self):
+        changed = snapshot()
+        changed["check_runs"][1] = check(
+            "pullfrog-approval", conclusion="failure", check_id=202
+        )
+        changed["review_comments"] = [
+            {
+                "id": 701,
+                "pull_request_review_id": 601,
+                "commit_id": HEAD_SHA,
+                "path": "scripts/example.py",
+                "line": 12,
+                "body": "A current exact-head finding.",
+                "user": {"login": "pullfrog[bot]"},
+            }
+        ]
+        contract = MODULE.evaluate_contract(changed)
+        self.assertEqual(contract["status"], "findings")
+        runs = [
+            {
+                "id": 900,
+                "name": MODULE.GATE_NAME,
+                "status": "completed",
+                "conclusion": "failure",
+                "head_sha": HEAD_SHA,
+                "external_id": contract["gate"]["external_id"],
+                "app": {"slug": MODULE.GATE_APP},
+                "check_suite": {"id": 80},
+            }
+        ]
+        selected = MODULE.select_gate(runs, identity(), [contract])
+        self.assertEqual(selected["status"], "failure")
+        self.assertEqual(selected["contract_status"], "findings")
+        self.assertEqual(selected["evidence_digest"], contract["evidence_digest"])
 
     def test_thread_collection_fails_closed_on_missing_connection(self):
         class Client:

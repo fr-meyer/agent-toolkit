@@ -47,9 +47,9 @@ separate merge job:
 3. **Validate and seal** starts in a separate read-only job with a fresh trusted default-branch controller checkout and a fresh exact-source checkout. It re-reads the live PR identity, parses the bounded structured result, applies the raw provider patch to the fresh source, rejects forbidden paths and gitlinks, and emits a canonical digest-bound patch plus candidate record. Provider processes and modified provider-job files cannot cross this job boundary.
 4. **Publish** has no provider identity token. It alone receives the separately provisioned `PULLFROG_REMEDIATION_PUBLISH_TOKEN`, reloads the claim and sealed candidate, re-reads the PR identity, reapplies and re-guards the patch, creates one commit, re-reads the exact head immediately before a normal fast-forward push, and verifies the resulting PR head before recording a terminal receipt. Unlike a built-in-token push, this narrowly scoped publication credential emits the normal PR synchronize event so Pullfrog, CI, and Speculoos schedule fresh exact-head evidence without human workflow approval. The publish plan and terminal are mutually bound to the exact claim, candidate digest, patch digest, changed-path digest, source head, and resulting head.
 5. **Re-review** runs once on `github.run_attempt == 1` after a verified publish. It re-reads the exact repository/PR/base/new-head identity, checks out that head read-only, mints one short-lived Pullfrog App token scoped exactly to `contents: read` plus `pull_requests: write`, runs one Sol/xhigh review-only attempt, revokes the token, and persists only the bounded structured result plus sanitized lease/revocation evidence. No content, check, action-dispatch, approval, merge, or publication authority reaches the provider.
-6. **Validate re-review** has read-only GitHub authority and no provider identity. It downloads the fixed first-attempt artifact, re-reads the complete exact-head canonical contract, and emits an attempt-scoped sanitized receipt. Later workflow-run attempts may repeat only this validator and the downstream finalizers; they cannot mint another token or invoke Sol again.
-7. **Reconcile Pullfrog threads** has pull-request write authority but no provider identity, content-write, check-write, or publication credential. Only after a valid finding-free exact-head re-review, it re-reads the complete contract, resolves a bounded set of prior unresolved `pullfrog[bot]` threads (never a current-review or human thread), then re-reads the identity, reviews, checks, and threads and requires the contract to be clean.
-8. **Publish re-review gate** has check-write authority but no provider identity or repository-write credential. It consumes only the attempt-scoped sanitized clean reconciliation receipt and creates or updates `pullfrog-review-gate` bound to repository, PR, base SHA, and new head SHA. A failed, empty, markerless, stale, spoofed, unresolved-thread, or structurally incomplete re-review publishes a failed gate rather than becoming merge evidence.
+6. **Validate re-review** has read-only GitHub authority and no provider identity. It downloads the fixed first-attempt artifact, re-reads the complete exact-head canonical contract under the `review-only` evidence profile, and emits an attempt-scoped sanitized receipt. This profile validates the review and genuine findings without requiring raw checks that the scoped provider token cannot publish. Later workflow-run attempts may repeat only this validator and the downstream finalizers; they cannot mint another token or invoke Sol again.
+7. **Reconcile Pullfrog threads** has pull-request write authority but no provider identity, content-write, check-write, or publication credential. Only after a valid finding-free exact-head re-review, it re-reads the complete `review-only` contract, resolves a bounded set of prior unresolved `pullfrog[bot]` threads (never a current-review or human thread), then re-reads the identity, reviews, checks, and threads and requires the contract to be clean. A failed raw approval caused only by those prior threads does not become a synthetic finding; genuine current-review findings still block reconciliation.
+8. **Publish re-review gate** has check-write authority but no provider identity or repository-write credential. It consumes the attempt-scoped sanitized clean reconciliation receipt, re-reads current exact-head review/check/thread evidence, and publishes an immutable `pullfrog-review-gate` identity bound to repository, PR, base SHA, head SHA, evidence profile, and evidence digest. New evidence therefore creates a new gate identity instead of overwriting an older successful gate. Any failed, empty, markerless, stale, spoofed, unresolved-thread, structurally incomplete, review-ID-mismatched, or digest-mismatched re-review publishes a failed gate rather than becoming merge evidence.
 
 Provider execution, trusted validation, and publication credentials therefore never coexist. Even if the native AddressReviews path attempts a reply, resolution, status, dispatch, approval, or push, the provider phase's job token cannot authorize it. The workflow cannot approve, merge, release, deploy, change settings, delete a branch, force-push, or use `force-with-lease`.
 
@@ -78,11 +78,11 @@ The coordinator performs bounded GitHub REST `GET` requests only. It reads:
 
 The before and after PR identities must match. The triggering head, review head, and every required check head must equal the same current PR head.
 
-Check names are accepted only from their configured GitHub App slugs. The `pullfrog` and `pullfrog-approval` checks must come from the `pullfrog` app and share one check suite. A same-named check from another app is counted as spoofed and ignored. When an allowed app has rerun a check, only its newest exact-head check is authoritative and earlier runs are counted as superseded.
+Check names are accepted only from their configured GitHub App slugs. On the native profile, the `pullfrog` and `pullfrog-approval` checks must come from the `pullfrog` app and share one check suite. On the scoped re-review profile, a GitHub Actions `pullfrog-review-gate` is accepted only when its immutable external ID matches the freshly reconstructed clean review-only contract's evidence profile and digest. A same-named check from another app is counted as spoofed and ignored. When an allowed app has rerun a check, only its newest exact-head check is authoritative and earlier runs are counted as superseded.
 
 ## Required evidence
 
-The current repository template requires:
+The native path requires:
 
 - `pullfrog` from the Pullfrog app;
 - `pullfrog-approval` from the same Pullfrog check suite;
@@ -90,7 +90,9 @@ The current repository template requires:
 - `speculoos` from GitHub Actions as independent policy evidence;
 - a successful local destination-guard decision over the current PR identity and changed-path set.
 
-Missing, pending, failed, skipped, cancelled, timed-out, stale, malformed, wrong-app, or inconsistent evidence stops the decision. The required names and allowed apps are intentionally explicit and must be changed through reviewed workflow source, not an untrusted event or PR field.
+The scoped fallback/re-review path may replace the two raw Pullfrog checks with a repository-owned `pullfrog-review-gate`, but only after the coordinator reconstructs the current review-only contract and verifies the gate's exact repository, PR, base SHA, head SHA, evidence profile, and evidence digest. A successful gate may authorize only a clean contract for merge evaluation. A failed gate may carry a matching valid findings contract only into bounded remediation, never into merge. CI, Speculoos, and destination-guard evidence remain mandatory on both paths.
+
+Missing, pending, skipped, cancelled, timed-out, stale, malformed, wrong-app, superseding, or digest-inconsistent evidence stops the decision. A failed gate is accepted only when it exactly matches a current findings contract, and then it can authorize remediation only. A newer same-head finding, failed or pending raw check, unresolved Pullfrog thread, or newer failed gate invalidates an earlier clean success. The required names and allowed apps are intentionally explicit and must be changed through reviewed workflow source, not an untrusted event or PR field.
 
 ## Sanitized evidence
 
@@ -98,7 +100,7 @@ Raw review bodies and comments are processed in memory and are never copied into
 
 - repository, PR, ref, and SHA identity;
 - check IDs, app slugs, statuses, and superseded/spoofed counts;
-- finding fingerprints and output digests;
+- finding fingerprints, evidence profile, and evidence/output digests;
 - changed-path count and digest, plus only the names of paths that violate the forbidden-path policy;
 - destination-guard and cycle-contract decisions;
 - explicit all-false mutation flags.
@@ -111,7 +113,7 @@ The coordinator stops on all cycle-contract and destination-guard failures, incl
 
 - repository, PR, base, head, destination, or event drift;
 - fork, detached ref, protected/default/base destination, or forbidden authority path;
-- stale or missing Pullfrog review;
+- stale or missing Pullfrog review, or a review gate that does not match the current evidence digest;
 - missing, pending, failed, skipped, cancelled, or timed-out CI or Speculoos evidence;
 - wrong-app check spoofing or Pullfrog check-suite mismatch;
 - duplicate, malformed, or incomplete history;

@@ -46,9 +46,11 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'workflow_run' ||
       (github.event_name == 'check_run' &&
-       github.event.check_run.app.slug == 'pullfrog' &&
-       (github.event.check_run.name == 'pullfrog' ||
-        github.event.check_run.name == 'pullfrog-approval'))
+       ((github.event.check_run.app.slug == 'pullfrog' &&
+         (github.event.check_run.name == 'pullfrog' ||
+          github.event.check_run.name == 'pullfrog-approval')) ||
+        (github.event.check_run.app.slug == 'github-actions' &&
+         github.event.check_run.name == 'pullfrog-review-gate')))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -964,6 +966,7 @@ jobs:
       actions: read
       checks: write
       contents: read
+      pull-requests: read
 
     steps:
       - name: Checkout trusted default-branch gate publisher

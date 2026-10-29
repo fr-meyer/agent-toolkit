@@ -129,6 +129,7 @@ jobs:
     permissions:
       checks: write
       contents: read
+      pull-requests: read
 
     steps:
       - name: Checkout trusted gate publisher

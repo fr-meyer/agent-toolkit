@@ -75,6 +75,9 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("pullfrog-cloud-remediation-", self.template)
         self.assertIn("github.event.check_run.check_suite.head_branch ||", self.template)
         self.assertIn("github.event.workflow_run.head_branch ||", self.template)
+        self.assertIn("github.event.check_run.app.slug == 'pullfrog'", self.template)
+        self.assertIn("github.event.check_run.app.slug == 'github-actions'", self.template)
+        self.assertIn("github.event.check_run.name == 'pullfrog-review-gate'", self.template)
         self.assertIn("  cancel-in-progress: false", self.template)
         self.assertIn("timeout-minutes: 25", self.template)
 
@@ -113,6 +116,7 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertNotIn("contents: write", reconcile)
         self.assertNotIn("checks: write", reconcile)
         self.assertIn("      checks: write\n", rereview_gate)
+        self.assertIn("      pull-requests: read\n", rereview_gate)
         self.assertNotIn("id-token: write", rereview_gate)
         self.assertNotIn("contents: write", rereview_gate)
         self.assertIn(

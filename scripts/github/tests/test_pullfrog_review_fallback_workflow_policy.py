@@ -76,7 +76,7 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         )
         self.assertRegex(
             self.template,
-            r"(?s)  gate_initial:.*?    permissions:\n      checks: write\n      contents: read\n",
+            r"(?s)  gate_initial:.*?    permissions:\n      checks: write\n      contents: read\n      pull-requests: read\n",
         )
         self.assertRegex(
             self.template,

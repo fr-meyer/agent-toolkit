@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Canonical fail-closed Pullfrog review evidence contract.
 
-This module evaluates one exact repository/PR/base/head identity. A clean verdict
-requires a marker-bearing Pullfrog review, zero findings, zero unresolved
+This module evaluates one exact repository/PR/base/head identity. A native clean
+verdict requires a marker-bearing Pullfrog review, zero findings, zero unresolved
 Pullfrog review threads, and exact-head app-bound Pullfrog checks from one check
-suite. Finding verdicts remain eligible for bounded remediation, but never for
-merge. Raw review or comment text is represented only by digests in receipts.
+suite. A scoped review-only verdict validates the same review/thread evidence
+without requiring checks that its token cannot publish. Finding verdicts remain
+eligible for bounded remediation, but never for merge. Raw review or comment
+text is represented only by digests in receipts.
 """
 
 from __future__ import annotations
@@ -22,8 +24,8 @@ import urllib.request
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-CONTRACT_SCHEMA = "pullfrog-review-contract.v1"
-GATE_SCHEMA = "pullfrog-review-gate-publication.v2"
+CONTRACT_SCHEMA = "pullfrog-review-contract.v2"
+GATE_SCHEMA = "pullfrog-review-gate-publication.v3"
 SNAPSHOT_SCHEMA = "pullfrog-review-contract-snapshot.v1"
 REVIEW_MARKER = "PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ"
 PULLFROG_LOGIN = "pullfrog[bot]"
@@ -32,6 +34,15 @@ PULLFROG_CHECK = "pullfrog"
 PULLFROG_APPROVAL_CHECK = "pullfrog-approval"
 GATE_NAME = "pullfrog-review-gate"
 GATE_APP = "github-actions"
+NATIVE_EVIDENCE_PROFILE = "native"
+REVIEW_ONLY_EVIDENCE_PROFILE = "review-only"
+EVIDENCE_PROFILES = frozenset(
+    {NATIVE_EVIDENCE_PROFILE, REVIEW_ONLY_EVIDENCE_PROFILE}
+)
+CLEAN_REVIEW_RE = re.compile(
+    r"^\s*(?:>\s*)?(?:✅\s*)?no new issues found\.?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 MAX_PAGES = 5
 MAX_ITEMS = 500
@@ -245,25 +256,74 @@ def select_check(
     }
 
 
-def gate_external_id(identity: Any) -> str:
+def gate_external_id(
+    identity: Any,
+    evidence_profile: str,
+    evidence_digest: str,
+) -> str:
     item = normalize_identity(identity)
+    if (
+        not _valid_identity(item)
+        or evidence_profile not in EVIDENCE_PROFILES
+        or not re.fullmatch(r"[0-9a-f]{64}", evidence_digest)
+    ):
+        raise ReviewContractError("invalid_review_gate_identity")
     return (
-        f"pullfrog-review-gate:v2:{item['repository_slug']}:{item['pr_number']}:"
-        f"{item['base_sha']}:{item['head_sha']}"
+        f"pullfrog-review-gate:v3:{item['repository_slug']}:{item['pr_number']}:"
+        f"{item['base_sha']}:{item['head_sha']}:{evidence_profile}:{evidence_digest}"
     )
 
 
-def select_gate(check_runs: list[Any], identity: Any) -> dict[str, Any]:
+def gate_identity_prefix(identity: Any) -> str:
+    item = normalize_identity(identity)
+    if not _valid_identity(item):
+        raise ReviewContractError("invalid_review_gate_identity")
+    return (
+        f"pullfrog-review-gate:v3:{item['repository_slug']}:{item['pr_number']}:"
+        f"{item['base_sha']}:{item['head_sha']}:"
+    )
+
+
+def select_gate(
+    check_runs: list[Any],
+    identity: Any,
+    contracts: list[Any],
+) -> dict[str, Any]:
     item = normalize_identity(identity)
     selected = select_check(check_runs, item["head_sha"], GATE_NAME, GATE_APP)
-    expected_external_id = gate_external_id(item)
-    if selected["check_run_id"] and selected["external_id"] != expected_external_id:
+    candidates: dict[str, dict[str, str]] = {}
+    for raw in contracts:
+        contract = _mapping(raw)
+        contract_status = _text(contract.get("status"))
+        profile = _text(contract.get("evidence_profile"))
+        digest = _text(contract.get("evidence_digest"))
+        if (
+            contract.get("schema") != CONTRACT_SCHEMA
+            or contract_status not in {"clean", "findings"}
+            or contract.get("blockers") != []
+            or normalize_identity(contract.get("identity")) != item
+            or profile not in EVIDENCE_PROFILES
+            or not re.fullmatch(r"[0-9a-f]{64}", digest)
+        ):
+            continue
+        external_id = gate_external_id(item, profile, digest)
+        candidates[external_id] = {
+            "contract_status": contract_status,
+            "evidence_profile": profile,
+            "evidence_digest": digest,
+        }
+    selected_external_id = _text(selected.get("external_id"))
+    if selected["check_run_id"] and selected_external_id not in candidates:
         selected = dict(selected)
         selected["status"] = "missing"
         selected["external_id_mismatch"] = True
     else:
         selected["external_id_mismatch"] = False
-    selected["expected_external_id"] = expected_external_id
+    matched = candidates.get(selected_external_id, {})
+    selected["contract_status"] = matched.get("contract_status", "")
+    selected["evidence_profile"] = matched.get("evidence_profile", "")
+    selected["evidence_digest"] = matched.get("evidence_digest", "")
+    selected["expected_external_ids"] = sorted(candidates)
     return selected
 
 
@@ -295,7 +355,11 @@ def select_complete_review(reviews: list[Any], head_sha: str) -> dict[str, Any]:
 
 
 def _review_findings(
-    review: dict[str, Any], comments: list[Any], approval_status: str, head_sha: str
+    review: dict[str, Any],
+    comments: list[Any],
+    approval_status: str,
+    head_sha: str,
+    evidence_profile: str,
 ) -> tuple[list[dict[str, Any]], str, int, list[str]]:
     review_id = _integer(review.get("id"))
     review_body = " ".join(_text(review.get("body")).split()).casefold()
@@ -335,7 +399,19 @@ def _review_findings(
         )
     records.sort(key=lambda item: (item["path"], item["line"], item["id"]))
     findings: list[dict[str, Any]] = []
-    if approval_status == "failure":
+    if evidence_profile == REVIEW_ONLY_EVIDENCE_PROFILE:
+        findings = records
+        if not findings and review and not CLEAN_REVIEW_RE.search(_text(review.get("body"))):
+            findings = [
+                {
+                    "id": "review-summary-" + body_digest,
+                    "severity": "high",
+                    "path": "PULL_REQUEST.md",
+                    "line": 1,
+                    "summary": "pullfrog-review-" + body_digest,
+                }
+            ]
+    elif approval_status == "failure":
         findings = records
         if not findings and review:
             findings = [
@@ -393,8 +469,13 @@ def unresolved_pullfrog_threads(threads: list[Any]) -> list[dict[str, Any]]:
     return unresolved
 
 
-def evaluate_contract(snapshot: dict[str, Any]) -> dict[str, Any]:
+def evaluate_contract(
+    snapshot: dict[str, Any],
+    evidence_profile: str = NATIVE_EVIDENCE_PROFILE,
+) -> dict[str, Any]:
     blockers: list[str] = []
+    if evidence_profile not in EVIDENCE_PROFILES:
+        blockers.append("invalid_review_evidence_profile")
     if snapshot.get("schema") != SNAPSHOT_SCHEMA:
         blockers.append("invalid_review_contract_snapshot")
     expected = normalize_identity(snapshot.get("expected_identity"))
@@ -415,16 +496,17 @@ def evaluate_contract(snapshot: dict[str, Any]) -> dict[str, Any]:
             blockers.append(f"{name}_check_spoofed")
         if check["stale_count"]:
             blockers.append(f"{name}_check_stale")
-    if pullfrog["status"] != "success":
-        blockers.append(f"pullfrog_check_{pullfrog['status']}")
-    if approval["status"] not in {"success", "failure"}:
-        blockers.append(f"pullfrog_approval_check_{approval['status']}")
-    if (
-        pullfrog["check_suite_id"] is None
-        or approval["check_suite_id"] is None
-        or pullfrog["check_suite_id"] != approval["check_suite_id"]
-    ):
-        blockers.append("pullfrog_check_suite_mismatch")
+    if evidence_profile == NATIVE_EVIDENCE_PROFILE:
+        if pullfrog["status"] != "success":
+            blockers.append(f"pullfrog_check_{pullfrog['status']}")
+        if approval["status"] not in {"success", "failure"}:
+            blockers.append(f"pullfrog_approval_check_{approval['status']}")
+        if (
+            pullfrog["check_suite_id"] is None
+            or approval["check_suite_id"] is None
+            or pullfrog["check_suite_id"] != approval["check_suite_id"]
+        ):
+            blockers.append("pullfrog_check_suite_mismatch")
 
     reviews = _list(snapshot.get("reviews"))
     complete_review = select_complete_review(reviews, head_sha)
@@ -443,6 +525,7 @@ def evaluate_contract(snapshot: dict[str, Any]) -> dict[str, Any]:
         _list(snapshot.get("review_comments")),
         approval["status"],
         head_sha,
+        evidence_profile,
     )
     blockers.extend(comment_blockers)
     unresolved = unresolved_pullfrog_threads(_list(snapshot.get("review_threads")))
@@ -459,8 +542,42 @@ def evaluate_contract(snapshot: dict[str, Any]) -> dict[str, Any]:
         status = "clean"
 
     review_id = _integer(complete_review.get("id")) or 0
+    evidence_digest = _digest(
+        {
+            "evidence_profile": evidence_profile,
+            "identity": observed,
+            "review_id": review_id,
+            "review_output_digest": output_digest,
+            "finding_ids": [item["id"] for item in findings],
+            "unresolved_threads": unresolved,
+            "pullfrog_check": {
+                key: pullfrog.get(key)
+                for key in (
+                    "status",
+                    "check_run_id",
+                    "check_suite_id",
+                    "external_id",
+                )
+            },
+            "approval_check": {
+                key: approval.get(key)
+                for key in (
+                    "status",
+                    "check_run_id",
+                    "check_suite_id",
+                    "external_id",
+                )
+            },
+        }
+    )
+    gate_id = (
+        gate_external_id(observed, evidence_profile, evidence_digest)
+        if _valid_identity(observed)
+        else ""
+    )
     return {
         "schema": CONTRACT_SCHEMA,
+        "evidence_profile": evidence_profile,
         "status": status,
         "blockers": sorted(set(structural_blockers)),
         "identity": observed,
@@ -484,19 +601,10 @@ def evaluate_contract(snapshot: dict[str, Any]) -> dict[str, Any]:
         "gate": {
             "name": GATE_NAME,
             "app_slug": GATE_APP,
-            "external_id": gate_external_id(observed),
+            "external_id": gate_id,
             "conclusion": "success" if status == "clean" else "failure",
         },
-        "evidence_digest": _digest(
-            {
-                "identity": observed,
-                "review_id": review_id,
-                "finding_ids": [item["id"] for item in findings],
-                "unresolved_threads": unresolved,
-                "pullfrog_check_id": pullfrog["check_run_id"],
-                "approval_check_id": approval["check_run_id"],
-            }
-        ),
+        "evidence_digest": evidence_digest,
         "raw_text_included": False,
     }
 
