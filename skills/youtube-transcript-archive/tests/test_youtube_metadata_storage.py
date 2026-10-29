@@ -1,0 +1,275 @@
+import importlib.util
+import json
+import os
+import tempfile
+import unittest
+from pathlib import Path
+
+MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "youtube_metadata_storage.py"
+SPEC = importlib.util.spec_from_file_location("youtube_metadata_storage", MODULE_PATH)
+assert SPEC and SPEC.loader
+storage = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(storage)
+
+
+class MetadataStorageTests(unittest.TestCase):
+    def make_video(self, raw: bytes = b'{"id":"abcdefghijk","title":"caf\u00e9"}\n'):
+        temp = tempfile.TemporaryDirectory()
+        video = Path(temp.name) / "abcdefghijk"
+        video.mkdir()
+        (video / "metadata.json").write_bytes(raw)
+        manifest = {
+            "video_id": "abcdefghijk",
+            "files": ["manifest.json", "metadata.json", "subtitles-list.txt", "report.md"],
+        }
+        (video / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+        (video / "subtitles-list.txt").write_text("en\n", encoding="utf-8")
+        (video / "report.md").write_text("# report\n", encoding="utf-8")
+        return temp, video, manifest, raw
+
+    def write_generation(self, video: Path, raw: bytes, *, state: str = "dual"):
+        filename, compressed, descriptor = storage.build_gzip_generation(raw, state=state)
+        (video / filename).write_bytes(compressed)
+        return filename, compressed, descriptor
+
+    def test_deterministic_gzip_round_trip_and_mtime_zero(self):
+        raw = '{"message":"h\u00e9llo \ud55c\uad6d"}\n'.encode()
+        first = storage.deterministic_gzip(raw)
+        second = storage.deterministic_gzip(raw)
+        self.assertEqual(first, second)
+        self.assertEqual(b"\x00\x00\x00\x00", first[4:8])
+        self.assertEqual(raw, storage._bounded_gunzip(first, expected_bytes=len(raw), max_raw_bytes=len(raw)))
+
+    def test_empty_json_object_is_valid(self):
+        raw = b"{}\n"
+        temp, video, manifest, _ = self.make_video(raw)
+        self.addCleanup(temp.cleanup)
+        updated = storage.write_dual_from_plaintext(video, manifest)
+        self.assertEqual({}, storage.read_metadata_json(video, updated))
+
+    def test_maximum_sized_valid_input_is_bounded(self):
+        raw = json.dumps({"id": "abcdefghijk", "data": "x" * 4000}, separators=(",", ":")).encode()
+        temp, video, manifest, _ = self.make_video(raw)
+        self.addCleanup(temp.cleanup)
+        updated = storage.write_dual_from_plaintext(video, manifest, max_raw_bytes=len(raw))
+        self.assertEqual(raw, storage.read_metadata_bytes(video, updated, max_raw_bytes=len(raw)))
+        with self.assertRaises(storage.MetadataLimitError):
+            storage.read_metadata_bytes(video, updated, max_raw_bytes=len(raw) - 1)
+
+    def test_legacy_plaintext_reader(self):
+        temp, video, manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        self.assertEqual(raw, storage.read_metadata_bytes(video, manifest))
+        self.assertEqual("abcdefghijk", storage.read_metadata_json(video, manifest)["id"])
+
+    def test_short_writes_are_completed(self):
+        sink = bytearray()
+
+        def short_write(_fd, value):
+            part = bytes(value[:3])
+            sink.extend(part)
+            return len(part)
+
+        storage._write_all(123, b"0123456789", write_fn=short_write)
+        self.assertEqual(b"0123456789", bytes(sink))
+
+    def test_no_progress_write_fails(self):
+        with self.assertRaises(OSError):
+            storage._write_all(123, b"x", write_fn=lambda _fd, _value: 0)
+
+    def test_unreferenced_interrupted_temp_is_ignored(self):
+        temp, video, manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        (video / ".metadata.json.tmp-interrupted").write_bytes(b"partial")
+        self.assertEqual(raw, storage.read_metadata_bytes(video, manifest))
+
+    def test_symlink_is_rejected(self):
+        temp, video, manifest, _ = self.make_video()
+        self.addCleanup(temp.cleanup)
+        real = video / "metadata.json"
+        outside = Path(temp.name) / "outside.json"
+        real.replace(outside)
+        real.symlink_to(outside)
+        with self.assertRaises(storage.MetadataPathError):
+            storage.read_metadata_bytes(video, manifest)
+
+    def test_symlinked_video_directory_is_rejected(self):
+        temp, video, manifest, _ = self.make_video()
+        self.addCleanup(temp.cleanup)
+        linked = Path(temp.name) / "linked-video"
+        linked.symlink_to(video, target_is_directory=True)
+        with self.assertRaises(storage.MetadataPathError):
+            storage.read_metadata_bytes(linked, manifest)
+
+    def test_hard_link_is_rejected(self):
+        temp, video, manifest, _ = self.make_video()
+        self.addCleanup(temp.cleanup)
+        os.link(video / "metadata.json", Path(temp.name) / "metadata-hardlink.json")
+        with self.assertRaises(storage.MetadataPathError):
+            storage.read_metadata_bytes(video, manifest)
+
+    def test_root_escape_filename_is_rejected(self):
+        descriptor = storage.descriptor_for_plaintext(b"{}\n")
+        descriptor["canonical_filename"] = "../metadata.json"
+        with self.assertRaises(storage.MetadataPathError):
+            storage.validate_descriptor(descriptor)
+
+    def test_unsupported_codec_is_rejected(self):
+        descriptor = storage.descriptor_for_plaintext(b"{}\n")
+        descriptor["codec"] = "xz"
+        with self.assertRaises(storage.MetadataCodecError):
+            storage.validate_descriptor(descriptor)
+
+    def test_unsupported_gzip_version_is_rejected(self):
+        _, _, descriptor = storage.build_gzip_generation(b"{}\n")
+        descriptor["codec_version"] = "gzip-9"
+        with self.assertRaises(storage.MetadataCodecError):
+            storage.validate_descriptor(descriptor)
+
+    def test_truncated_gzip_is_rejected_after_matching_stored_hash(self):
+        temp, video, manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        filename, compressed, descriptor = self.write_generation(video, raw)
+        truncated = compressed[:-5]
+        (video / filename).write_bytes(truncated)
+        descriptor["stored_bytes"] = len(truncated)
+        descriptor["stored_sha256"] = storage.sha256_bytes(truncated)
+        updated = storage.prepare_manifest_with_storage(manifest, descriptor)
+        with self.assertRaises(storage.MetadataIntegrityError):
+            storage.read_metadata_bytes(video, updated)
+
+    def test_stored_checksum_mismatch_is_rejected(self):
+        temp, video, manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        filename, compressed, descriptor = self.write_generation(video, raw)
+        mutated = bytearray(compressed)
+        mutated[-1] ^= 1
+        (video / filename).write_bytes(mutated)
+        updated = storage.prepare_manifest_with_storage(manifest, descriptor)
+        with self.assertRaises(storage.MetadataIntegrityError):
+            storage.read_metadata_bytes(video, updated)
+
+    def test_nondeterministic_gzip_is_rejected_even_when_descriptor_matches(self):
+        temp, video, manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        filename, _compressed, descriptor = self.write_generation(video, raw)
+        import gzip
+
+        nondeterministic = gzip.compress(raw, compresslevel=6, mtime=123)
+        (video / filename).write_bytes(nondeterministic)
+        descriptor["stored_bytes"] = len(nondeterministic)
+        descriptor["stored_sha256"] = storage.sha256_bytes(nondeterministic)
+        updated = storage.prepare_manifest_with_storage(manifest, descriptor)
+        with self.assertRaisesRegex(storage.MetadataIntegrityError, "deterministic gzip"):
+            storage.read_metadata_bytes(video, updated)
+
+    def test_filename_raw_hash_mismatch_is_rejected(self):
+        _, _, descriptor = storage.build_gzip_generation(b"{}\n")
+        descriptor["raw_sha256"] = "0" * 64
+        with self.assertRaises(storage.MetadataIntegrityError):
+            storage.validate_descriptor(descriptor)
+
+    def test_gzip_bomb_declared_size_is_rejected_before_read(self):
+        temp, video, manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        _filename, _compressed, descriptor = self.write_generation(video, raw)
+        descriptor["raw_bytes"] = 2 * 1024 * 1024
+        updated = storage.prepare_manifest_with_storage(manifest, descriptor)
+        with self.assertRaises(storage.MetadataLimitError):
+            storage.read_metadata_bytes(video, updated, max_raw_bytes=1024)
+
+    def test_dual_state_plaintext_divergence_is_rejected(self):
+        temp, video, manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        _filename, _compressed, descriptor = self.write_generation(video, raw)
+        updated = storage.prepare_manifest_with_storage(manifest, descriptor)
+        (video / "metadata.json").write_bytes(b'{"id":"abcdefghijk","different":true}\n')
+        with self.assertRaises(storage.MetadataIntegrityError):
+            storage.read_metadata_bytes(video, updated)
+
+    def test_missing_declared_compressed_file_never_falls_back(self):
+        temp, video, manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        _filename, _compressed, descriptor = storage.build_gzip_generation(raw)
+        updated = storage.prepare_manifest_with_storage(manifest, descriptor)
+        self.assertTrue((video / "metadata.json").is_file())
+        with self.assertRaises(storage.MetadataIntegrityError):
+            storage.read_metadata_bytes(video, updated)
+
+    def test_invalid_utf8_and_json_are_rejected(self):
+        with self.assertRaises(storage.MetadataIntegrityError):
+            storage.parse_metadata_json(b"\xff")
+        with self.assertRaises(storage.MetadataIntegrityError):
+            storage.parse_metadata_json(b"{")
+        with self.assertRaises(storage.MetadataIntegrityError):
+            storage.parse_metadata_json(b"[]")
+
+    def test_immutable_generation_reuses_exact_bytes_and_rejects_conflict(self):
+        temp, video, _manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        filename, compressed, _descriptor = storage.build_gzip_generation(raw)
+        self.assertEqual("created", storage.write_immutable_generation(video, filename, compressed))
+        self.assertEqual("reused", storage.write_immutable_generation(video, filename, compressed))
+        with self.assertRaises(storage.MetadataIntegrityError):
+            storage.write_immutable_generation(video, filename, compressed + b"x")
+
+    def test_atomic_write_refuses_target_that_appears_mid_write(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        target = Path(temp.name) / "target.bin"
+        original = storage._write_all
+
+        def race(fd, data, **kwargs):
+            original(fd, data, **kwargs)
+            target.write_bytes(b"concurrent")
+
+        storage._write_all = race
+        self.addCleanup(setattr, storage, "_write_all", original)
+        with self.assertRaisesRegex(storage.MetadataIntegrityError, "appeared"):
+            storage.durable_atomic_write(target, b"ours")
+        self.assertEqual(b"concurrent", target.read_bytes())
+        self.assertEqual([], list(Path(temp.name).glob(".target.bin.tmp-*")))
+
+    def test_manifest_shape_must_be_non_empty_string_list(self):
+        descriptor = storage.descriptor_for_plaintext(b"{}\n")
+        for files in (None, {}, [], [1]):
+            with self.subTest(files=files):
+                with self.assertRaises(storage.MetadataManifestError):
+                    storage.prepare_manifest_with_storage({"files": files}, descriptor)
+
+    def test_manifest_commit_is_last_and_interruption_preserves_old_manifest(self):
+        temp, video, manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        original_manifest = (video / "manifest.json").read_bytes()
+        events = []
+
+        def interrupt(step):
+            events.append(step)
+            if step == "generation_verified":
+                raise RuntimeError("forced interruption")
+
+        with self.assertRaisesRegex(RuntimeError, "forced interruption"):
+            storage.write_dual_from_plaintext(video, manifest, on_step=interrupt)
+        self.assertEqual(["generation_committed", "generation_verified"], events)
+        self.assertEqual(original_manifest, (video / "manifest.json").read_bytes())
+        self.assertEqual(raw, storage.read_metadata_bytes(video, manifest))
+        self.assertEqual(1, len(list(video.glob("metadata.*.json.gz"))))
+
+    def test_successful_commit_order_and_exact_readback(self):
+        temp, video, manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        events = []
+        committed = storage.write_dual_from_plaintext(video, manifest, on_step=events.append)
+        self.assertEqual(
+            ["generation_committed", "generation_verified", "manifest_committed", "manifest_verified"],
+            events,
+        )
+        self.assertEqual(raw, storage.read_metadata_bytes(video, committed))
+        disk_manifest = storage.read_manifest(video)
+        self.assertEqual(committed, disk_manifest)
+        selected = committed["metadata_storage"]["canonical_filename"]
+        self.assertIn(selected, committed["files"])
+
+
+if __name__ == "__main__":
+    unittest.main()
