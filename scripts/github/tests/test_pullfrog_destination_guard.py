@@ -176,8 +176,10 @@ class PullfrogDestinationGuardTests(unittest.TestCase):
         self.assertTrue(
             {
                 "scripts/github/pullfrog_review_fallback.py",
+                "scripts/github/pullfrog_review_contract.py",
                 "scripts/github/tests/test_pullfrog_review_fallback.py",
                 "scripts/github/tests/test_pullfrog_review_fallback_workflow_policy.py",
+                "scripts/github/tests/test_pullfrog_review_contract.py",
             }.issubset(MODULE.PROTECTED_AUTOMATION_AUTHORITY_PATHS)
         )
         self.assertTrue(

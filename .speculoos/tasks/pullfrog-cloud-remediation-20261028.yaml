@@ -28,6 +28,7 @@ write_paths:
   - scripts/github/pullfrog_destination_guard.py
   - scripts/github/pullfrog_dev_auto_merge.py
   - scripts/github/pullfrog_review_fallback.py
+  - scripts/github/pullfrog_review_contract.py
   - scripts/github/speculoos_pr_contract.py
   - scripts/github/tests/test_pullfrog_cloud_coordinator.py
   - scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py
@@ -37,6 +38,7 @@ write_paths:
   - scripts/github/tests/test_pullfrog_dev_auto_merge.py
   - scripts/github/tests/test_pullfrog_review_fallback.py
   - scripts/github/tests/test_pullfrog_review_fallback_workflow_policy.py
+  - scripts/github/tests/test_pullfrog_review_contract.py
   - scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py
   - scripts/github/tests/test_pullfrog_workflow_policy.py
   - scripts/github/tests/test_speculoos_pr_contract.py
@@ -59,6 +61,7 @@ scope:
   - preserve human-only approval and `main`/`master` merge authority while allowing a repository-owned exact-head automatic merge gate for eligible same-repository feature PRs targeting any other valid base
   - recognize only the two exact apostrophe variants of the recorded OpenAI cybersecurity-policy refusal and authorize at most one unchanged-head Pullfrog Astra review fallback
   - publish a composite exact-head review gate without giving the provider job content-write, check-write, publication, approval, dispatch, or merge authority
+  - require one canonical complete-review contract across coordinator, fallback, post-fix re-review, and merge eligibility
 non_goals:
   - publishing this commit, activating the workflow on a serving ref, or running a hosted write pilot
   - force-push, force-with-lease, approval, Pullfrog-native auto-merge, merges to main or master, release, deployment, settings changes, branch deletion, billing changes, or persistent credential creation/configuration
@@ -89,6 +92,9 @@ acceptance:
   - the fallback's sealed controller mints one short-lived Pullfrog App token scoped exactly to contents:read and pull_requests:write, forces the action's external GH_TOKEN route, records only a sanitized lease receipt, and requires successful revocation before the composite gate can succeed; no content-write, issue-write, check-write, or action-dispatch token reaches the provider
   - fallback eligibility requires exactly one failed Run review-only agent step, no other failed step, and exactly one failure annotation whose text literally equals one approved refusal variant
   - fallback results are size-bounded and schema-exact; review identity, model footer, finding count, comment actor, comment head, token lease scope, and token revocation are freshly validated before the composite gate can succeed
+  - every verified remediation publish gets at most one first-attempt Sol/xhigh exact-head re-review with a short-lived contents-read and pull-requests-write Pullfrog App lease and explicit revocation; its bounded structured result plus sanitized lease/revocation evidence is persisted once, and later workflow-run attempts may only rerun the fresh trusted validator and downstream finalizers before a separately published repository/PR/base/head-bound gate
+  - after a finding-free re-review, a separate provider-free job may resolve only a bounded set of prior unresolved pullfrog[bot] threads; current-review threads, human threads, identity drift, evidence drift, and every non-thread blocker fail closed, and the complete contract is re-read as clean before gate publication
+  - merge eligibility requires the fresh exact-identity `pullfrog-review-gate`; passing raw checks, empty or markerless reviews, stale or spoofed evidence, and unresolved Pullfrog threads cannot authorize merge
   - ordinary failures, partial or malformed reviews, extra annotations or failed steps, whitespace-altered refusals, duplicate attempts, recursion, forks, identity drift, token-scope drift, revocation failure, and Astra refusal all fail closed
   - the hosted Speculoos check uses only repository-reviewed source, fetches no private cross-repository package, receives no extra credential, runs candidate-facing Python entrypoints in isolated mode so repository files cannot shadow standard-library imports, and persists exact-head contract evidence even when validation fails
   - focused tests, workflow validation, full repository tests, whitespace checks, public-safety scans, and local official Speculoos validation pass
@@ -103,7 +109,7 @@ validation:
   - "python3 -m unittest scripts/github/tests/test_pullfrog_cloud_remediation.py -v"
   - "python3 -m unittest scripts/github/tests/test_pullfrog_dev_auto_merge.py -v"
   - "python3 -m unittest scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py -v"
-  - "python3 -m py_compile scripts/github/pullfrog_cloud_remediation.py scripts/github/pullfrog_cloud_coordinator.py scripts/github/pullfrog_cycle_contract.py scripts/github/pullfrog_destination_guard.py scripts/github/pullfrog_dev_auto_merge.py scripts/github/pullfrog_review_fallback.py"
+  - "python3 -m py_compile scripts/github/pullfrog_cloud_remediation.py scripts/github/pullfrog_cloud_coordinator.py scripts/github/pullfrog_cycle_contract.py scripts/github/pullfrog_destination_guard.py scripts/github/pullfrog_dev_auto_merge.py scripts/github/pullfrog_review_fallback.py scripts/github/pullfrog_review_contract.py"
   - "python3 -I scripts/github/tests/test_pullfrog_review_fallback.py -v"
   - "python3 -I scripts/github/tests/test_pullfrog_review_fallback_workflow_policy.py -v"
   - "scripts/github/validate_pullfrog_workflow.sh"

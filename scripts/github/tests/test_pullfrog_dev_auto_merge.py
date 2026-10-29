@@ -24,8 +24,16 @@ HEAD_SHA = "2" * 40
 MERGE_SHA = "3" * 40
 
 
-def check_run(check_id, name, app_slug, *, status="success", suite_id=900):
-    return {
+def check_run(
+    check_id,
+    name,
+    app_slug,
+    *,
+    status="success",
+    suite_id=900,
+    external_id="",
+):
+    item = {
         "id": check_id,
         "name": name,
         "head_sha": HEAD_SHA,
@@ -34,6 +42,9 @@ def check_run(check_id, name, app_slug, *, status="success", suite_id=900):
         "app": {"slug": app_slug},
         "check_suite": {"id": suite_id},
     }
+    if external_id:
+        item["external_id"] = external_id
+    return item
 
 
 def clean_receipt():
@@ -124,6 +135,27 @@ def clean_receipt():
             "changed_paths_digest": MODULE._digest(changed_paths),
         },
         "checks": check_details,
+        "review_contract": {
+            "schema": MODULE.review_contract.CONTRACT_SCHEMA,
+            "status": "clean",
+            "blockers": [],
+            "identity": {
+                "repository_slug": repository["slug"],
+                "pr_number": repository["pr_number"],
+                "base_ref": repository["base_ref"],
+                "base_sha": repository["base_sha"],
+                "head_ref": repository["head_ref"],
+                "head_sha": repository["head_sha"],
+                "head_repository_slug": repository["head_repository_slug"],
+                "base_repository_slug": repository["slug"],
+            },
+            "review": {
+                "review_id": 700,
+                "head_sha": HEAD_SHA,
+                "finding_count": 0,
+            },
+            "threads": {"unresolved_pullfrog_count": 0},
+        },
         "destination_guard": {
             "status": "allowed",
             "blockers": [],
@@ -167,6 +199,7 @@ def receipt_for_paths(paths):
 
 def retarget_base(receipt, client, base_ref):
     receipt["identity"]["base_ref"] = base_ref
+    receipt["review_contract"]["identity"]["base_ref"] = base_ref
     receipt["cycle_decision"]["repository"]["base_ref"] = base_ref
     client.pr["base"]["ref"] = base_ref
     client.refs[base_ref] = BASE_SHA
@@ -203,8 +236,20 @@ class FakeClient:
         self.comments = []
         self.files = [{"filename": "scripts/example.py"}]
         self.check_runs = [
-            check_run(101, "pullfrog", "pullfrog", suite_id=900),
-            check_run(102, "pullfrog-approval", "pullfrog", suite_id=900),
+            check_run(
+                101,
+                MODULE.review_contract.GATE_NAME,
+                MODULE.review_contract.GATE_APP,
+                suite_id=900,
+                external_id=MODULE.review_contract.gate_external_id(
+                    {
+                        "repository_slug": "fr-meyer/agent-toolkit",
+                        "pr_number": 95,
+                        "base_sha": BASE_SHA,
+                        "head_sha": HEAD_SHA,
+                    }
+                ),
+            ),
             check_run(
                 103,
                 "dogfood / Provider-free PR automation contract",
@@ -285,8 +330,16 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
                 if path != expected:
                     raise AssertionError(path)
                 return {
-                    "total_count": len(snapshot["check_runs"]),
-                    "check_runs": copy.deepcopy(snapshot["check_runs"]),
+                    "total_count": len(snapshot["check_runs"]) + 1,
+                    "check_runs": copy.deepcopy(snapshot["check_runs"])
+                    + [
+                        check_run(
+                            999,
+                            MODULE.review_contract.GATE_NAME,
+                            MODULE.review_contract.GATE_APP,
+                            external_id=MODULE.review_contract.gate_external_id(identity),
+                        )
+                    ],
                 }
 
         changed_paths = sorted(item["filename"] for item in snapshot["files"])
@@ -295,12 +348,10 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
             receipt,
             identity,
             repository=snapshot["repository"],
-            reviews=snapshot["reviews"],
-            comments=snapshot["review_comments"],
             changed_paths=changed_paths,
         )
-        self.assertEqual(fresh["review_id"], 601)
-        self.assertEqual(fresh["check_run_ids"]["pullfrog"], [100])
+        self.assertEqual(fresh["pullfrog_review_gate_id"], 999)
+        self.assertEqual(fresh["check_run_ids"]["ci"], [102])
 
     def test_clean_exact_head_dev_pr_merges_once(self):
         client = FakeClient()
@@ -366,6 +417,30 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
         receipt = clean_receipt()
         receipt["cycle_decision"]["evidence"]["required_checks"].remove("speculoos")
         self.assert_code("invalid_clean_decision", MODULE.validate_clean_receipt, receipt)
+
+    def test_receipt_requires_clean_exact_identity_review_contract(self):
+        variants = (
+            ("status", "findings"),
+            ("review_id", 701),
+            ("unresolved_threads", 1),
+            ("base_sha", "4" * 40),
+        )
+        for field, value in variants:
+            with self.subTest(field=field):
+                receipt = clean_receipt()
+                if field == "status":
+                    receipt["review_contract"]["status"] = value
+                elif field == "review_id":
+                    receipt["review_contract"]["review"]["review_id"] = value
+                elif field == "unresolved_threads":
+                    receipt["review_contract"]["threads"][
+                        "unresolved_pullfrog_count"
+                    ] = value
+                else:
+                    receipt["review_contract"]["identity"][field] = value
+                self.assert_code(
+                    "invalid_review_contract", MODULE.validate_clean_receipt, receipt
+                )
 
     def test_live_head_base_and_repository_drift_fail_closed(self):
         variants = (
@@ -481,6 +556,59 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
                 )
                 self.assert_code(
                     "fresh_required_evidence_not_successful",
+                    MODULE.merge_clean_pr,
+                    client,
+                    clean_receipt(),
+                    expected_head_sha=HEAD_SHA,
+                )
+                self.assertEqual(client.push_calls, [])
+
+    def test_review_gate_missing_or_failed_fails_closed(self):
+        client = FakeClient()
+        client.check_runs = [
+            item
+            for item in client.check_runs
+            if item["name"] != MODULE.review_contract.GATE_NAME
+        ]
+        self.assert_code(
+            "fresh_pullfrog_review_gate_not_successful",
+            MODULE.merge_clean_pr,
+            client,
+            clean_receipt(),
+            expected_head_sha=HEAD_SHA,
+        )
+
+        client = FakeClient()
+        client.check_runs[0]["conclusion"] = "failure"
+        self.assert_code(
+            "fresh_pullfrog_review_gate_not_successful",
+            MODULE.merge_clean_pr,
+            client,
+            clean_receipt(),
+            expected_head_sha=HEAD_SHA,
+        )
+
+    def test_review_gate_stale_spoofed_or_identity_unbound_fails_closed(self):
+        variants = ("stale", "spoofed", "external_id")
+        for variant in variants:
+            with self.subTest(variant=variant):
+                client = FakeClient()
+                gate = client.check_runs[0]
+                if variant == "stale":
+                    gate["head_sha"] = "4" * 40
+                elif variant == "spoofed":
+                    gate["app"] = {"slug": "untrusted-app"}
+                else:
+                    gate["external_id"] = MODULE.review_contract.gate_external_id(
+                        {
+                            "repository_slug": "fr-meyer/agent-toolkit",
+                            "pr_number": 95,
+                            "base_sha": "5" * 40,
+                            "head_sha": HEAD_SHA,
+                        }
+                    )
+                self.assert_code(
+                    "fresh_pullfrog_review_gate_ambiguous",
                     MODULE.merge_clean_pr,
                     client,
                     clean_receipt(),

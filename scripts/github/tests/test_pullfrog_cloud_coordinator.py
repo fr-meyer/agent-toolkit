@@ -47,7 +47,9 @@ def check(name, conclusion="success", app="pullfrog", check_id=100, suite_id=50,
 
 def base_snapshot(with_findings=False):
     approval = "failure" if with_findings else "success"
-    review_body = "One exact-head issue" if with_findings else "No new issues found"
+    review_body = (
+        "One exact-head issue" if with_findings else "No new issues found"
+    ) + "\n<!-- PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ -->"
     comments = []
     if with_findings:
         comments = [
@@ -83,6 +85,23 @@ def base_snapshot(with_findings=False):
             }
         ],
         "review_comments": comments,
+        "review_threads": [
+            {
+                "isResolved": not with_findings,
+                "isOutdated": False,
+                "path": "scripts/example.py",
+                "line": 12,
+                "comments": {
+                    "nodes": [
+                        {
+                            "databaseId": 701,
+                            "author": {"login": "pullfrog[bot]"},
+                            "pullRequestReview": {"databaseId": 601},
+                        }
+                    ]
+                },
+            }
+        ],
         "files": [
             {"filename": "scripts/example.py"},
             {"filename": "docs/example.md"},
@@ -143,6 +162,20 @@ class PullfrogCloudCoordinatorTests(unittest.TestCase):
                 if suffix not in mapping:
                     raise AssertionError(path)
                 return copy.deepcopy(mapping[suffix])
+
+            def graphql(self, query, variables):
+                return {
+                    "data": {
+                        "repository": {
+                            "pullRequest": {
+                                "reviewThreads": {
+                                    "nodes": copy.deepcopy(fixture["review_threads"]),
+                                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                                }
+                            }
+                        }
+                    }
+                }
 
         with mock.patch.object(MODULE, "GitHubReadClient", return_value=StubClient()):
             snapshot = MODULE.collect_github_snapshot(
@@ -359,7 +392,7 @@ class PullfrogCloudCoordinatorTests(unittest.TestCase):
                 "id": 602,
                 "commit_id": NEXT_SHA,
                 "submitted_at": "2026-10-27T11:00:00Z",
-                "body": "  ONE exact-head issue  ",
+                "body": "  ONE exact-head issue  \n<!-- PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ -->",
             }
         )
         snapshot["review_comments"][0].update(

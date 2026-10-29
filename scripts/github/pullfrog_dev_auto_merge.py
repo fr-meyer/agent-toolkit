@@ -33,15 +33,20 @@ if str(SCRIPT_DIR) not in sys.path:
 import pullfrog_cloud_coordinator as coordinator  # noqa: E402
 import pullfrog_cycle_contract as cycle_contract  # noqa: E402
 import pullfrog_destination_guard as destination_guard  # noqa: E402
+import pullfrog_review_contract as review_contract  # noqa: E402
 
 RECEIPT_SCHEMA = "pullfrog-auto-merge-receipt.v1"
 COORDINATOR_SCHEMA = "pullfrog-cloud-coordinator-receipt.v1"
 FORBIDDEN_BASE_REFS = frozenset({"main", "master"})
 DEV_AUTOMATION_REF = "dev"
 ALLOWED_HEAD_PREFIXES = ("feat/", "fix/", "docs/", "test/", "chore/")
-REQUIRED_CHECKS = frozenset(
-    {"pullfrog", "pullfrog-approval", "ci", "speculoos", "destination-guard"}
+COORDINATOR_REQUIRED_CHECKS = cycle_contract.REQUIRED_CHECKS
+MERGE_REQUIRED_CHECKS = frozenset(
+    {review_contract.GATE_NAME, "ci", "speculoos", "destination-guard"}
 )
+# Backward-compatible alias for tests and receipt fixtures describing the
+# coordinator cycle contract rather than the fresh merge boundary.
+REQUIRED_CHECKS = COORDINATOR_REQUIRED_CHECKS
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_GIT_PROTOCOL_BYTES = 8 * 1024 * 1024
@@ -153,7 +158,7 @@ def _validated_receipt_check_rules(
     receipt: dict[str, Any], identity: dict[str, Any]
 ) -> dict[str, list[tuple[str, str]]]:
     details = _mapping(receipt.get("checks"))
-    if set(details) != {"pullfrog", "pullfrog_approval", "ci", "speculoos"}:
+    if not {"pullfrog", "pullfrog_approval", "ci", "speculoos"}.issubset(details):
         raise AutoMergeError("invalid_receipt_check_details")
     rules: dict[str, list[tuple[str, str]]] = {}
     for group in ("pullfrog", "pullfrog_approval", "ci", "speculoos"):
@@ -228,15 +233,32 @@ def validate_clean_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
         or event.get("head_sha") != identity["head_sha"]
         or review.get("head_sha") != identity["head_sha"]
         or _integer(review.get("finding_count")) != 0
-        or required_checks != sorted(REQUIRED_CHECKS)
-        or set(observed_checks) != REQUIRED_CHECKS
+        or required_checks != sorted(COORDINATOR_REQUIRED_CHECKS)
+        or set(observed_checks) != COORDINATOR_REQUIRED_CHECKS
         or evidence.get("missing_checks") != []
     ):
         raise AutoMergeError("invalid_clean_decision")
-    for name in REQUIRED_CHECKS:
+    for name in COORDINATOR_REQUIRED_CHECKS:
         check = _mapping(observed_checks.get(name))
         if check.get("status") != "success" or check.get("head_sha") != identity["head_sha"]:
             raise AutoMergeError("required_evidence_not_successful")
+
+    contract = _mapping(receipt.get("review_contract"))
+    contract_identity = review_contract.normalize_identity(contract.get("identity"))
+    expected_contract_identity = review_contract.normalize_identity(identity)
+    contract_review = _mapping(contract.get("review"))
+    contract_threads = _mapping(contract.get("threads"))
+    if (
+        contract.get("schema") != review_contract.CONTRACT_SCHEMA
+        or contract.get("status") != "clean"
+        or contract.get("blockers") != []
+        or contract_identity != expected_contract_identity
+        or str(_integer(contract_review.get("review_id")) or 0)
+        != _text(review.get("review_id"))
+        or _integer(contract_review.get("finding_count")) != 0
+        or _integer(contract_threads.get("unresolved_pullfrog_count")) != 0
+    ):
+        raise AutoMergeError("invalid_review_contract")
 
     destination = _mapping(receipt.get("destination_guard"))
     if (
@@ -298,8 +320,6 @@ def _refresh_exact_head_evidence(
     identity: dict[str, Any],
     *,
     repository: dict[str, Any],
-    reviews: list[Any],
-    comments: list[Any],
     changed_paths: list[str],
 ) -> dict[str, Any]:
     rules = _validated_receipt_check_rules(receipt, identity)
@@ -312,30 +332,25 @@ def _refresh_exact_head_evidence(
         raise AutoMergeError("fresh_check_collection_truncated")
 
     selected: dict[str, list[dict[str, Any]]] = {}
-    for group, group_rules in rules.items():
+    for group in ("ci", "speculoos"):
         selected[group] = [
             coordinator._select_check(check_runs, identity["head_sha"], name, app_slug)
-            for name, app_slug in group_rules
+            for name, app_slug in rules[group]
         ]
         if any(item.get("status") != "success" for item in selected[group]):
             raise AutoMergeError("fresh_required_evidence_not_successful")
         if any(item.get("spoofed_count") or item.get("stale_count") for item in selected[group]):
             raise AutoMergeError("fresh_required_evidence_ambiguous")
 
-    pullfrog = selected["pullfrog"][0]
-    approval = selected["pullfrog_approval"][0]
+    gate = review_contract.select_gate(check_runs, identity)
     if (
-        pullfrog.get("check_suite_id") is None
-        or pullfrog.get("check_suite_id") != approval.get("check_suite_id")
+        gate.get("spoofed_count")
+        or gate.get("stale_count")
+        or gate.get("external_id_mismatch")
     ):
-        raise AutoMergeError("fresh_pullfrog_suite_mismatch")
-
-    review = coordinator._select_review(reviews, identity["head_sha"])
-    findings, _, review_comment_count, blockers = coordinator._review_findings(
-        review, comments, _text(approval.get("status")), identity["head_sha"]
-    )
-    if not review or findings or review_comment_count != 0 or blockers:
-        raise AutoMergeError("fresh_pullfrog_review_not_clean")
+        raise AutoMergeError("fresh_pullfrog_review_gate_ambiguous")
+    if gate.get("status") != "success":
+        raise AutoMergeError("fresh_pullfrog_review_gate_not_successful")
 
     collection = _mapping(receipt.get("collection"))
     if (
@@ -388,7 +403,8 @@ def _refresh_exact_head_evidence(
         raise AutoMergeError("fresh_destination_not_allowed")
 
     return {
-        "review_id": _integer(review.get("id")),
+        "pullfrog_review_gate_id": gate.get("check_run_id"),
+        "pullfrog_review_gate_external_id": gate.get("external_id"),
         "check_run_ids": {
             group: [item.get("check_run_id") for item in values]
             for group, values in selected.items()
@@ -878,7 +894,6 @@ def merge_clean_pr(
     reviews = client.paginated(f"{prefix}/pulls/{identity['pr_number']}/reviews")
     if "CHANGES_REQUESTED" in _latest_human_verdicts(reviews).values():
         raise AutoMergeError("human_changes_requested")
-    comments = client.paginated(f"{prefix}/pulls/{identity['pr_number']}/comments")
     files = client.paginated(f"{prefix}/pulls/{identity['pr_number']}/files")
     changed_paths = sorted(
         {
@@ -894,8 +909,6 @@ def merge_clean_pr(
         receipt,
         identity,
         repository=repository,
-        reviews=reviews,
-        comments=comments,
         changed_paths=changed_paths,
     )
     _assert_live_pull_request(

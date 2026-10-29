@@ -39,12 +39,17 @@ The repository now also contains the separately gated implementation of the unat
 
 This source is implemented and locally validated, but publication, default-branch activation, and the first hosted write pilot remain separately authorization-gated. Merely preparing or committing this branch does not authorize a hosted run.
 
-The workflow has four permission-separated jobs:
+The workflow has eight permission-separated review/remediation jobs before the
+separate merge job:
 
 1. **Evaluate and claim** uses read-only GitHub permissions. It reloads bounded, workflow-bound artifact history, emits the validated nested history record separately from the full ledger, evaluates fresh exact-head Pullfrog/CI/Speculoos evidence, uploads a durable idempotent claim before provider invocation, and uploads the sealed native dispatch as a separate transient artifact. Keeping `claim.json` as the durable claim artifact's only file preserves deterministic ledger reconstruction.
 2. **Remediate locally** has `id-token: write` for provider routing but only the job-scoped read token for GitHub. The workflow maps that built-in token as `GH_TOKEN`, forcing Pullfrog to reuse it instead of minting its normal write-capable MCP installation token. It sends Pullfrog `v0.1.102` the native `fix_review` dispatch envelope (`issue_number`, exact `review_id`, `approved_only: false`, and `authorPermission: none`) through the exact `prompt` input. Pullfrog has `push: disabled`, `shell: restricted`, progress comments disabled, no gh CLI token or cross-run learning writes, and no content, pull-request, check, action-dispatch, or publication write authority. This job exports only untrusted action output and an untrusted raw patch.
 3. **Validate and seal** starts in a separate read-only job with a fresh trusted default-branch controller checkout and a fresh exact-source checkout. It re-reads the live PR identity, parses the bounded structured result, applies the raw provider patch to the fresh source, rejects forbidden paths and gitlinks, and emits a canonical digest-bound patch plus candidate record. Provider processes and modified provider-job files cannot cross this job boundary.
 4. **Publish** has no provider identity token. It alone receives the separately provisioned `PULLFROG_REMEDIATION_PUBLISH_TOKEN`, reloads the claim and sealed candidate, re-reads the PR identity, reapplies and re-guards the patch, creates one commit, re-reads the exact head immediately before a normal fast-forward push, and verifies the resulting PR head before recording a terminal receipt. Unlike a built-in-token push, this narrowly scoped publication credential emits the normal PR synchronize event so Pullfrog, CI, and Speculoos schedule fresh exact-head evidence without human workflow approval. The publish plan and terminal are mutually bound to the exact claim, candidate digest, patch digest, changed-path digest, source head, and resulting head.
+5. **Re-review** runs once on `github.run_attempt == 1` after a verified publish. It re-reads the exact repository/PR/base/new-head identity, checks out that head read-only, mints one short-lived Pullfrog App token scoped exactly to `contents: read` plus `pull_requests: write`, runs one Sol/xhigh review-only attempt, revokes the token, and persists only the bounded structured result plus sanitized lease/revocation evidence. No content, check, action-dispatch, approval, merge, or publication authority reaches the provider.
+6. **Validate re-review** has read-only GitHub authority and no provider identity. It downloads the fixed first-attempt artifact, re-reads the complete exact-head canonical contract, and emits an attempt-scoped sanitized receipt. Later workflow-run attempts may repeat only this validator and the downstream finalizers; they cannot mint another token or invoke Sol again.
+7. **Reconcile Pullfrog threads** has pull-request write authority but no provider identity, content-write, check-write, or publication credential. Only after a valid finding-free exact-head re-review, it re-reads the complete contract, resolves a bounded set of prior unresolved `pullfrog[bot]` threads (never a current-review or human thread), then re-reads the identity, reviews, checks, and threads and requires the contract to be clean.
+8. **Publish re-review gate** has check-write authority but no provider identity or repository-write credential. It consumes only the attempt-scoped sanitized clean reconciliation receipt and creates or updates `pullfrog-review-gate` bound to repository, PR, base SHA, and new head SHA. A failed, empty, markerless, stale, spoofed, unresolved-thread, or structurally incomplete re-review publishes a failed gate rather than becoming merge evidence.
 
 Provider execution, trusted validation, and publication credentials therefore never coexist. Even if the native AddressReviews path attempts a reply, resolution, status, dispatch, approval, or push, the provider phase's job token cannot authorize it. The workflow cannot approve, merge, release, deploy, change settings, delete a branch, force-push, or use `force-with-lease`.
 
@@ -125,12 +130,14 @@ Dry-run publication and the local write-capable implementation do not authorize 
 3. pre-remediation and post-patch destination-guard enforcement;
 4. separate approval and provisioning of `PULLFROG_REMEDIATION_PUBLISH_TOKEN` with only the same-repository feature-branch publication authority needed to emit normal revalidation events;
 5. one bounded Pullfrog remediation pilot on an explicitly authorized same-repository feature head;
-6. fresh Pullfrog review and independent checks after the produced commit;
+6. one scoped exact-head Sol re-review, successful token revocation, canonical
+   review-contract validation, bounded prior-Pullfrog-thread reconciliation,
+   and independent checks after the produced commit;
 7. stop behavior for no progress, repeated findings, failed/cancelled/timed-out evidence, head/base drift, forbidden paths, and cycle exhaustion.
 
 Pullfrog approval and native repository-wide auto-merge remain disabled. The remediation job forces Pullfrog to reuse a built-in token with read-only content and pull-request permissions and no checks or actions write permission, while `authorPermission: none` withholds the gh CLI token, forces push off, and locks cross-run learnings. Its best-effort post-fix approval, thread, comment, status, and redispatch paths therefore cannot mutate repository-hosted state.
 
-A separate repository-owned `auto_merge_eligible` job owns automatic merge. It runs only after the coordinator reports a clean exact-head result, then independently revalidates the sanitized receipt, same-repository identity, approved feature-head prefix, a valid base other than `main` or `master`, live base/head SHAs, all five trusted evidence checks, the latest exact-head Pullfrog review, the destination guard, and the absence of an unresolved human changes-requested review. Immediately before mutation it refreshes the app-bound Pullfrog, approval, CI, and Speculoos check runs so a newer same-head pending or failed result supersedes the earlier receipt.
+A separate repository-owned `auto_merge_eligible` job owns automatic merge. It runs only after the coordinator reports a clean exact-head result, then independently revalidates the sanitized canonical review-contract receipt, same-repository identity, approved feature-head prefix, a valid base other than `main` or `master`, live base/head SHAs, destination guard, CI, Speculoos, and the absence of an unresolved human changes-requested review. Immediately before mutation it requires the exact repository/PR/base/head-bound `pullfrog-review-gate` plus fresh app-bound CI and Speculoos checks. Raw passing Pullfrog checks or an empty/markerless review can no longer bypass the complete-verdict contract.
 
 The independent `Speculoos` workflow provides the required exact-head `speculoos` check. It checks out the literal PR head read-only, verifies that `.speculoos/manifest.yaml` selects task metadata bound to the same head and base refs, runs Speculoos validation plus the publication-contract check, and uploads sanitized reports. It excludes PRs targeting `main` or `master`, uses no write credential, and is also a workflow-run trigger for the coordinator so the final evidence arrival is re-evaluated automatically.
 
@@ -159,6 +166,7 @@ python3 -m py_compile \
   scripts/github/pullfrog_dev_auto_merge.py \
   scripts/github/pullfrog_cycle_contract.py \
   scripts/github/pullfrog_destination_guard.py \
-  scripts/github/pullfrog_review_fallback.py
+  scripts/github/pullfrog_review_fallback.py \
+  scripts/github/pullfrog_review_contract.py
 scripts/github/validate_pullfrog_workflow.sh
 ```

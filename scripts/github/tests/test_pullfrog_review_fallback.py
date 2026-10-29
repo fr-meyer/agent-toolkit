@@ -44,6 +44,7 @@ def check_run(conclusion="failure"):
         "head_sha": HEAD_SHA,
         "details_url": "https://github.com/fr-meyer/agent-toolkit/actions/runs/40658694176",
         "app": {"slug": "pullfrog"},
+        "check_suite": {"id": 500},
         "pull_requests": [
             {
                 "number": 95,
@@ -51,6 +52,18 @@ def check_run(conclusion="failure"):
                 "head": {"ref": "feat/pullfrog-write-capable-loop", "sha": HEAD_SHA},
             }
         ],
+    }
+
+
+def evidence_check(name, conclusion="success", check_id=800):
+    return {
+        "id": check_id,
+        "name": name,
+        "status": "completed",
+        "conclusion": conclusion,
+        "head_sha": HEAD_SHA,
+        "app": {"slug": "pullfrog"},
+        "check_suite": {"id": 500},
     }
 
 
@@ -119,11 +132,17 @@ def snapshot(conclusion="failure"):
                 "id": 4398558244,
                 "pull_request_review_id": 601,
                 "commit_id": HEAD_SHA,
+                "path": "scripts/example.py",
+                "line": 12,
                 "body": "partial finding",
                 "user": {"login": "pullfrog[bot]"},
             }
         ],
-        "check_runs": [],
+        "review_threads": [],
+        "check_runs": [
+            evidence_check("pullfrog", conclusion, 800),
+            evidence_check("pullfrog-approval", "success", 801),
+        ],
     }
 
 
@@ -150,6 +169,7 @@ class PullfrogReviewFallbackDecisionTests(unittest.TestCase):
         fixture["primary_jobs"] = []
         fixture["primary_annotations"] = []
         fixture["reviews"] = [review(body=complete_body())]
+        fixture["review_comments"] = []
         receipt = MODULE.evaluate_snapshot(fixture)
         self.assertEqual(receipt["status"], "primary_valid")
         self.assertFalse(receipt["authorized_fallback"])
@@ -214,7 +234,7 @@ class PullfrogReviewFallbackDecisionTests(unittest.TestCase):
 
     def test_prior_exact_head_gate_blocks_duplicate_fallback(self):
         fixture = snapshot()
-        external_id = MODULE._gate_external_id(REPOSITORY, 95, HEAD_SHA)
+        external_id = MODULE._gate_external_id(REPOSITORY, 95, HEAD_SHA, BASE_SHA)
         fixture["check_runs"] = [
             {
                 "id": 800,
@@ -258,16 +278,23 @@ class PullfrogReviewFallbackDecisionTests(unittest.TestCase):
 class FakeClient:
     repository_slug = REPOSITORY
 
-    def __init__(self, *, body=None, comments=None, checks=None):
-        self.body = body or complete_body(MODULE.FALLBACK_RESOLVED_MODEL)
-        self.comments = comments or []
-        self.checks = checks or []
+    def __init__(self, *, body=None, comments=None, checks=None, threads=None, pull=None):
+        self.body = (
+            complete_body(MODULE.FALLBACK_RESOLVED_MODEL) if body is None else body
+        )
+        self.comments = [] if comments is None else comments
+        self.checks = [
+            evidence_check("pullfrog", "success", 810),
+            evidence_check("pullfrog-approval", "success", 811),
+        ] if checks is None else checks
+        self.threads = [] if threads is None else threads
+        self.pull = pr() if pull is None else pull
         self.posts = []
         self.patches = []
 
     def get(self, path):
         if path == f"/repos/{REPOSITORY}/pulls/95":
-            return pr()
+            return copy.deepcopy(self.pull)
         if path == f"/repos/{REPOSITORY}/pulls/95/reviews/700":
             return review(700, self.body)
         if path == f"/repos/{REPOSITORY}/commits/{HEAD_SHA}/check-runs?per_page=100":
@@ -275,9 +302,40 @@ class FakeClient:
         raise AssertionError(path)
 
     def paginated(self, path):
+        if path == f"/repos/{REPOSITORY}/pulls/95/reviews":
+            return [review(700, self.body)]
         if path == f"/repos/{REPOSITORY}/pulls/95/comments":
             return copy.deepcopy(self.comments)
         raise AssertionError(path)
+
+    def graphql(self, query, variables):
+        if "resolveReviewThread" in query:
+            for item in self.threads:
+                if item.get("id") == variables.get("threadId"):
+                    item["isResolved"] = True
+                    return {
+                        "data": {
+                            "resolveReviewThread": {
+                                "thread": {
+                                    "id": item["id"],
+                                    "isResolved": True,
+                                }
+                            }
+                        }
+                    }
+            raise AssertionError(variables)
+        return {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviewThreads": {
+                            "nodes": copy.deepcopy(self.threads),
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        }
+                    }
+                }
+            }
+        }
 
     def post(self, path, payload):
         self.posts.append((path, payload))
@@ -450,6 +508,196 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
         self.assertEqual(updated["operation"], "updated")
         self.assertEqual(updated["conclusion"], "success")
         self.assertEqual(client.patches[0][0], f"/repos/{REPOSITORY}/check-runs/900")
+
+
+class PullfrogExactHeadRereviewTests(unittest.TestCase):
+    def result(self):
+        return {
+            "schema": MODULE.REREVIEW_RESULT_SCHEMA,
+            "status": "review_submitted",
+            "repository": REPOSITORY,
+            "pr_number": 95,
+            "base_sha": BASE_SHA,
+            "head_sha": HEAD_SHA,
+            "model": MODULE.PRIMARY_MODEL,
+            "effort": MODULE.EFFORT,
+            "review_id": 700,
+            "verdict": "clean",
+            "finding_count": 0,
+        }
+
+    def token_lease(self):
+        return {
+            "schema": MODULE.TOKEN_LEASE_SCHEMA,
+            "status": "active",
+            "repository": REPOSITORY,
+            "permissions": MODULE.REVIEW_TOKEN_PERMISSIONS,
+            "expires_at": "2026-10-29T06:00:00Z",
+            "actor": "pullfrog[bot]",
+            "raw_token_included": False,
+        }
+
+    def token_revocation(self):
+        return {
+            "schema": MODULE.TOKEN_REVOCATION_SCHEMA,
+            "status": "revoked",
+            "repository": REPOSITORY,
+            "raw_token_included": False,
+        }
+
+    def verify(self, client):
+        return MODULE.verify_exact_head_rereview_result(
+            client,
+            95,
+            HEAD_SHA,
+            BASE_SHA,
+            "success",
+            self.result(),
+            self.token_lease(),
+            self.token_revocation(),
+            "success",
+        )
+
+    def test_clean_sol_rereview_and_exact_head_contract_are_valid(self):
+        client = FakeClient(body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL))
+        receipt = self.verify(client)
+        self.assertEqual(receipt["status"], "valid")
+        self.assertEqual(receipt["review_contract_status"], "clean")
+        self.assertEqual(receipt["blockers"], [])
+
+        publication = MODULE.publish_rereview_gate(
+            client,
+            MODULE.reconcile_rereview_threads(client, receipt),
+            "https://example.test/run",
+        )
+        self.assertEqual(publication["conclusion"], "success")
+        self.assertEqual(
+            publication["external_id"],
+            MODULE.review_contract.gate_external_id(
+                {
+                    "repository_slug": REPOSITORY,
+                    "pr_number": 95,
+                    "base_sha": BASE_SHA,
+                    "head_sha": HEAD_SHA,
+                }
+            ),
+        )
+
+    def test_empty_or_markerless_rereview_fails_closed(self):
+        for body in ("", "> ✅ No new issues found.\n<sup>Using `gpt-6.1-sol`</sup>"):
+            with self.subTest(body=body):
+                receipt = self.verify(FakeClient(body=body))
+                self.assertEqual(receipt["status"], "invalid")
+                self.assertIn("invalid_exact_head_rereview", receipt["blockers"])
+
+    def test_missing_checks_and_identity_drift_fail_closed(self):
+        variants = (
+            FakeClient(
+                body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL), checks=[]
+            ),
+            FakeClient(
+                body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL),
+                pull=pr(head_sha="3" * 40),
+            ),
+        )
+        for client in variants:
+            with self.subTest(client=client):
+                receipt = self.verify(client)
+                self.assertEqual(receipt["status"], "invalid")
+
+    def test_old_pullfrog_threads_are_reconciled_by_isolated_clean_step(self):
+        unresolved = {
+            "id": "PRRT_old_pullfrog_thread",
+            "isResolved": False,
+            "path": "scripts/example.py",
+            "line": 12,
+            "comments": {
+                "nodes": [
+                    {
+                        "author": {"login": "pullfrog[bot]"},
+                        "pullRequestReview": {"databaseId": 601},
+                    }
+                ]
+            },
+        }
+        client = FakeClient(
+            body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL),
+            threads=[unresolved],
+        )
+        receipt = self.verify(client)
+        self.assertEqual(receipt["status"], "valid")
+        self.assertEqual(receipt["review_contract_status"], "reconciliation_required")
+
+        reconciliation = MODULE.reconcile_rereview_threads(client, receipt)
+        self.assertEqual(reconciliation["status"], "clean")
+        self.assertEqual(reconciliation["resolved_thread_count"], 1)
+        self.assertEqual(reconciliation["after_contract_status"], "clean")
+        self.assertTrue(client.threads[0]["isResolved"])
+
+    def test_gate_never_succeeds_from_incomplete_reconciliation_evidence(self):
+        client = FakeClient(body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL))
+        receipt = self.verify(client)
+        reconciliation = MODULE.reconcile_rereview_threads(client, receipt)
+        for field, value in (
+            ("after_contract_status", "reconciliation_required"),
+            ("after_contract_digest", ""),
+            ("raw_text_included", True),
+        ):
+            with self.subTest(field=field):
+                changed = copy.deepcopy(reconciliation)
+                changed[field] = value
+                if field == "raw_text_included":
+                    with self.assertRaises(MODULE.FallbackError):
+                        MODULE.publish_rereview_gate(
+                            client, changed, "https://example.test/run"
+                        )
+                else:
+                    publication = MODULE.publish_rereview_gate(
+                        client, changed, "https://example.test/run"
+                    )
+                    self.assertEqual(publication["conclusion"], "failure")
+
+    def test_reconciliation_rejects_current_review_or_non_pullfrog_thread(self):
+        current = {
+            "id": "PRRT_current_rereview_thread",
+            "isResolved": False,
+            "path": "scripts/example.py",
+            "line": 12,
+            "comments": {
+                "nodes": [
+                    {
+                        "author": {"login": "pullfrog[bot]"},
+                        "pullRequestReview": {"databaseId": 700},
+                    }
+                ]
+            },
+        }
+        client = FakeClient(
+            body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL),
+            threads=[current],
+        )
+        receipt = self.verify(client)
+        self.assertEqual(receipt["status"], "valid")
+        reconciliation = MODULE.reconcile_rereview_threads(client, receipt)
+        self.assertEqual(reconciliation["status"], "invalid")
+        self.assertIn(
+            "current_rereview_thread_not_reconcilable",
+            reconciliation["blockers"],
+        )
+        self.assertFalse(client.threads[0]["isResolved"])
+
+        human = copy.deepcopy(current)
+        human["id"] = "PRRT_human_thread"
+        human["comments"]["nodes"][0]["author"]["login"] = "human-reviewer"
+        client = FakeClient(
+            body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL),
+            threads=[human],
+        )
+        receipt = self.verify(client)
+        reconciliation = MODULE.reconcile_rereview_threads(client, receipt)
+        self.assertEqual(reconciliation["status"], "clean")
+        self.assertEqual(reconciliation["resolved_thread_count"], 0)
+        self.assertFalse(client.threads[0]["isResolved"])
 
 
 class FakeHttpResponse:

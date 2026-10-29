@@ -59,7 +59,10 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         self.assertEqual(keys, ["check_run", "workflow_dispatch"])
         self.assertIn("      authorize_fallback:\n", trigger)
         self.assertIn("        default: false\n", trigger)
-        self.assertIn("vars.PULLFROG_REVIEW_FALLBACK_ENABLED == 'true'", self.template)
+        evaluate = self.template.split("  evaluate:\n", 1)[1].split("  gate_initial:\n", 1)[0]
+        fallback = self.template.split("  fallback:\n", 1)[1].split("  finalize:\n", 1)[0]
+        self.assertNotIn("PULLFROG_REVIEW_FALLBACK_ENABLED", evaluate)
+        self.assertIn("vars.PULLFROG_REVIEW_FALLBACK_ENABLED == 'true'", fallback)
         self.assertIn("github.event.check_run.app.slug == 'pullfrog'", self.template)
         self.assertIn("github.event.check_run.name == 'pullfrog'", self.template)
         self.assertNotIn("pull_request_target", trigger)
@@ -97,6 +100,7 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("pullfrog-review-fallback-result.v1", self.template)
         self.assertIn("          cwd: source\n", self.template)
         self.assertIn("Seal trusted preflight outside candidate workspace", self.template)
+        self.assertIn('"$RUNNER_TEMP/pullfrog_review_contract.py"', self.template)
         self.assertIn('python "$RUNNER_TEMP/pullfrog_review_fallback.py" verify-identity', self.template)
         self.assertIn("\"additionalProperties\":false", self.template)
         self.assertIn("needs.evaluate.outputs.status == 'fallback_ready'", self.template)

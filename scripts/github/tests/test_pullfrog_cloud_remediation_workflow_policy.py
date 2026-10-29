@@ -80,10 +80,14 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
 
     def test_provider_publish_and_auto_merge_permissions_are_separated(self):
         self.assertEqual(top_level_section(self.template, "permissions"), "  contents: read\n")
-        self.assertEqual(self.template.count("      id-token: write\n"), 1)
+        self.assertEqual(self.template.count("      id-token: write\n"), 2)
         remediate = self.template.split("  remediate:\n", 1)[1].split("  validate:\n", 1)[0]
         validate = self.template.split("  validate:\n", 1)[1].split("  publish:\n", 1)[0]
-        publish = self.template.split("  publish:\n", 1)[1].split("  auto_merge_eligible:\n", 1)[0]
+        publish = self.template.split("  publish:\n", 1)[1].split("  rereview:\n", 1)[0]
+        rereview = self.template.split("  rereview:\n", 1)[1].split("  validate_rereview:\n", 1)[0]
+        validate_rereview = self.template.split("  validate_rereview:\n", 1)[1].split("  reconcile_threads:\n", 1)[0]
+        reconcile = self.template.split("  reconcile_threads:\n", 1)[1].split("  rereview_gate:\n", 1)[0]
+        rereview_gate = self.template.split("  rereview_gate:\n", 1)[1].split("  auto_merge_eligible:\n", 1)[0]
         auto_merge = self.template.split("  auto_merge_eligible:\n", 1)[1]
         self.assertIn("      id-token: write\n", remediate)
         self.assertIn("      contents: read\n", remediate)
@@ -94,6 +98,23 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertNotIn("contents: write", validate)
         self.assertIn("      contents: read\n", publish)
         self.assertNotIn("id-token: write", publish)
+        self.assertIn("      id-token: write\n", rereview)
+        self.assertIn("      checks: read\n", rereview)
+        self.assertNotIn("contents: write", rereview)
+        self.assertNotIn("checks: write", rereview)
+        self.assertIn("      checks: read\n", validate_rereview)
+        self.assertIn("      pull-requests: read\n", validate_rereview)
+        self.assertNotIn("id-token: write", validate_rereview)
+        self.assertNotIn("contents: write", validate_rereview)
+        self.assertNotIn("checks: write", validate_rereview)
+        self.assertIn("      pull-requests: write\n", reconcile)
+        self.assertIn("      checks: read\n", reconcile)
+        self.assertNotIn("id-token: write", reconcile)
+        self.assertNotIn("contents: write", reconcile)
+        self.assertNotIn("checks: write", reconcile)
+        self.assertIn("      checks: write\n", rereview_gate)
+        self.assertNotIn("id-token: write", rereview_gate)
+        self.assertNotIn("contents: write", rereview_gate)
         self.assertIn(
             "token: ${{ secrets.PULLFROG_REMEDIATION_PUBLISH_TOKEN }}", publish
         )
@@ -110,7 +131,13 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
             "uses: pullfrog/pullfrog@25a837a2b078177c3acdce790506d1fd1acedd82 # v0.1.102",
             self.template,
         )
-        self.assertEqual(self.template.count("pullfrog/pullfrog@"), 1)
+        remediate = self.template.split("  remediate:\n", 1)[1].split("  validate:\n", 1)[0]
+        rereview = self.template.split("  rereview:\n", 1)[1].split("  validate_rereview:\n", 1)[0]
+        reconcile = self.template.split("  reconcile_threads:\n", 1)[1].split("  rereview_gate:\n", 1)[0]
+        self.assertEqual(remediate.count("pullfrog/pullfrog@"), 1)
+        self.assertEqual(rereview.count("pullfrog/pullfrog@"), 1)
+        self.assertNotIn("pullfrog/pullfrog@", reconcile)
+        self.assertEqual(self.template.count("pullfrog/pullfrog@"), 2)
         self.assertIn("          push: disabled\n", self.template)
         self.assertIn("          shell: restricted\n", self.template)
         self.assertIn("          progress_comments: disabled\n", self.template)
@@ -140,6 +167,58 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertNotIn("checks: write", remediate)
         self.assertNotIn("pull-requests: write", remediate)
         self.assertNotIn("contents: write", remediate)
+
+    def test_published_fix_gets_one_scoped_exact_head_sol_rereview_and_gate(self):
+        publish = self.template.split("  publish:\n", 1)[1].split("  rereview:\n", 1)[0]
+        rereview = self.template.split("  rereview:\n", 1)[1].split(
+            "  validate_rereview:\n", 1
+        )[0]
+        validate_rereview = self.template.split("  validate_rereview:\n", 1)[1].split(
+            "  reconcile_threads:\n", 1
+        )[0]
+        reconcile = self.template.split("  reconcile_threads:\n", 1)[1].split(
+            "  rereview_gate:\n", 1
+        )[0]
+        gate = self.template.split("  rereview_gate:\n", 1)[1].split(
+            "  auto_merge_eligible:\n", 1
+        )[0]
+        self.assertIn("result_head_sha: ${{ steps.terminal.outputs.result_head_sha }}", publish)
+        self.assertIn("github.run_attempt == 1", rereview)
+        self.assertIn("needs.publish.outputs.result_head_sha", rereview)
+        self.assertIn("needs.evaluate.outputs.base_sha", rereview)
+        self.assertIn("Mint least-privilege Pullfrog re-review token", rereview)
+        self.assertIn("mint-review-token", rereview)
+        self.assertIn("Revoke least-privilege Pullfrog re-review token", rereview)
+        self.assertIn("revoke-review-token", rereview)
+        self.assertNotIn("verify-rereview-result", rereview)
+        self.assertIn("          model: openai/gpt-sol\n", rereview)
+        self.assertIn("          effort: xhigh\n", rereview)
+        self.assertIn("          push: disabled\n", rereview)
+        self.assertIn("          shell: restricted\n", rereview)
+        self.assertIn("pullfrog-exact-head-rereview-result.v1", rereview)
+        self.assertIn("pullfrog-exact-head-rereview-raw-${{ github.run_id }}", rereview)
+        self.assertNotIn("openai/gpt-astra", rereview)
+        self.assertIn("verify-rereview-result", validate_rereview)
+        self.assertIn("github.run_attempt > 1", validate_rereview)
+        self.assertIn(
+            "pullfrog-exact-head-rereview-${{ github.run_id }}-a${{ github.run_attempt }}",
+            validate_rereview,
+        )
+        self.assertNotIn("pullfrog/pullfrog@", validate_rereview)
+        self.assertNotIn("id-token: write", validate_rereview)
+        self.assertIn("reconcile-rereview-threads", reconcile)
+        self.assertIn(
+            "pullfrog-rereview-thread-reconciliation-${{ github.run_id }}-a${{ github.run_attempt }}",
+            reconcile,
+        )
+        self.assertIn("      pull-requests: write\n", reconcile)
+        self.assertNotIn("pullfrog/pullfrog@", reconcile)
+        self.assertNotIn("id-token: write", reconcile)
+        self.assertIn("publish-rereview-gate", gate)
+        self.assertIn("reconciliation.json", gate)
+        self.assertIn("      checks: write\n", gate)
+        self.assertNotIn("pullfrog/pullfrog@", gate)
+        self.assertNotIn("id-token: write", gate)
 
     def test_provider_output_is_untrusted_until_a_fresh_validation_job_seals_it(self):
         remediate = self.template.split("  remediate:\n", 1)[1].split("  validate:\n", 1)[0]

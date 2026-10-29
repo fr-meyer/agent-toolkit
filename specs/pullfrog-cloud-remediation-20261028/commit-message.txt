@@ -1,11 +1,12 @@
-fix(github): harden Pullfrog fallback boundary
+fix(github): enforce complete Pullfrog review contract
 
-Mint one short-lived Pullfrog App review token with only contents:read and
-pull_requests:write, force the action's external GH_TOKEN route, revoke the
-lease after result capture, and require scope/revocation evidence before gate
-success.
+Share one exact repository/PR/base/head review contract across the coordinator,
+fallback, post-remediation re-review, and merge boundary. Reject empty,
+markerless, stale, spoofed, unresolved, or structurally incomplete evidence.
 
-Block Astra whenever github.run_attempt is not 1 while allowing later attempts
-to recover trusted finalization from the bounded first-attempt artifact.
+After a verified remediation publish, run at most one Sol/xhigh re-review with
+a short-lived review-only Pullfrog App lease, revoke it, reconcile only bounded
+prior Pullfrog threads in an isolated provider-free job, and publish the exact
+identity gate only after the complete contract re-reads clean.
 
 Feature PRs target `dev`. Release/promotion PRs target `main`.

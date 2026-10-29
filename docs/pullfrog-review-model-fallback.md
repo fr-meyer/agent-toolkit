@@ -66,6 +66,7 @@ refuses or fails, the gate stops. There is no third model.
 The implementation is prepared but not activated:
 
 - controller: `scripts/github/pullfrog_review_fallback.py`;
+- canonical contract: `scripts/github/pullfrog_review_contract.py`;
 - canonical workflow: `templates/starter-workflows/pullfrog-review-fallback.yml`;
 - materialized workflow: `.github/workflows/pullfrog-review-fallback.yml`;
 - tests: `scripts/github/tests/test_pullfrog_review_fallback.py` and
@@ -100,13 +101,25 @@ The fallback controller:
 12. authorizes one `openai/gpt-astra` / `xhigh` run and no recursive model chain.
 
 A complete verdict requires an exact-head Pullfrog review with a nonempty body
-and Pullfrog's completion marker. Inline comments attached to an empty-body,
+and Pullfrog's completion marker, trusted exact-head `pullfrog` and
+`pullfrog-approval` checks from the Pullfrog App in one check suite, and no
+unresolved Pullfrog review thread. Inline comments attached to an empty-body,
 failed review remain evidence to reconcile, but do not manufacture a complete
 verdict.
 
+After a remediation commit, a finding-free Sol re-review may enter the explicit
+`reconciliation_required` state when only prior `pullfrog[bot]` threads remain
+open. A separate trusted job with no provider identity can resolve only those
+bounded prior threads. It rejects current-review threads, human threads,
+identity or evidence drift, and any non-thread blocker, then re-reads the full
+contract and requires `clean` before the check-write-only publisher can emit a
+successful gate.
+
 ## Workflow and credential separation
 
-The workflow is inert unless either:
+Gate evaluation runs for every completed primary Pullfrog check so complete Sol
+reviews can produce the repository-owned gate even while Astra is disabled.
+Provider fallback execution remains inert unless either:
 
 - repository variable `PULLFROG_REVIEW_FALLBACK_ENABLED` equals `true`; or
 - a manual dispatch explicitly sets `authorize_fallback: true` and supplies the
@@ -147,7 +160,8 @@ artifact, a later attempt may rerun only the fresh validator and gate finalizer.
 ## Composite required check
 
 The repository-owned check is `pullfrog-review-gate`. It uses a deterministic
-external ID containing repository, PR number, and exact head SHA. Once the activation flag is enabled, the check is:
+external ID containing repository, PR number, exact base SHA, and exact head
+SHA. The check is:
 
 - successful for a valid complete Sol verdict;
 - in progress while the one authorized Astra fallback runs;
@@ -156,15 +170,16 @@ external ID containing repository, PR number, and exact head SHA. Once the activ
   review/model mismatch, drift, ordinary findings from an incomplete primary
   run, API failure, or duplicate attempt.
 
-While activation is disabled, automatic evaluation is inert and emits no gate.
-The controller retains an `action_required` publication mode for an explicitly
-staged disabled decision, but the installed workflow does not invoke that mode.
+While Astra activation is disabled, a recognized refusal publishes
+`action_required` and cannot invoke the fallback provider. Complete primary Sol
+reviews are still evaluated and can publish a success gate.
 
 Branch protection should eventually require `pullfrog-review-gate`, not the raw
 `pullfrog` run-status check: the original Sol check remains failed after an
-authorized successful Astra fallback. This does not remove the separate
-requirements for `pullfrog-approval`, `destination-guard`, CI, Speculoos,
-review-thread reconciliation, and Mergeguez/governance evidence.
+authorized successful Astra fallback. The gate itself requires trusted
+`pullfrog` plus `pullfrog-approval` evidence and Pullfrog-thread reconciliation.
+It does not remove the separate destination guard, CI, Speculoos, human-review,
+and Mergeguez/governance evidence.
 
 ## Remaining activation gates
 

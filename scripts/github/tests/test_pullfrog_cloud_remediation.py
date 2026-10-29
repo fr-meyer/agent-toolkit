@@ -76,7 +76,11 @@ def remediation_receipt(head_sha=HEAD_SHA, base_ref="dev"):
                 "commit_id": head_sha,
                 "submitted_at": "2026-10-27T10:00:00Z",
                 "state": "COMMENTED",
-                "body": "PRIVATE REVIEW TEXT",
+                "body": (
+                    "PRIVATE REVIEW TEXT\n"
+                    "<!-- PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ -->\n"
+                    "<sup>Using `gpt-6.1-sol`</sup>"
+                ),
                 "user": {"login": "pullfrog[bot]"},
             }
         ],
@@ -342,6 +346,7 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
             self.assertEqual(outputs["status"], "no_action")
             self.assertEqual(outputs["reason"], "clean")
             self.assertEqual(outputs["pr_number"], "94")
+            self.assertEqual(outputs["base_sha"], BASE_SHA)
             self.assertEqual(outputs["source_head_sha"], HEAD_SHA)
             self.assertFalse(claim_path.exists())
 

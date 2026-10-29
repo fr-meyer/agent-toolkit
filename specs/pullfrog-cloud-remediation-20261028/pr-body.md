@@ -4,7 +4,10 @@
 - add an activation-gated Pullfrog Sol-to-Astra review fallback for only the exact recorded cybersecurity-policy refusal, with one attempt per unchanged head
 - force the fallback through one short-lived Pullfrog App token scoped to `contents: read` plus `pull_requests: write`, revoke it after result capture, and reject any token-scope or revocation drift
 - prevent failed-job and individual-job reruns from invoking Astra again while preserving finalizer-only recovery from the bounded first-attempt artifact
-- add the exact-head `pullfrog-review-gate` composite while keeping publication, approval, merge, settings, and required-check changes separately gated
+- add one canonical review contract shared by coordinator, fallback, post-remediation re-review, and merge eligibility; empty, markerless, stale, spoofed, malformed, or identity-drifted evidence fails closed
+- add one bounded Sol/xhigh exact-head re-review after a verified remediation publish, with a short-lived review-only Pullfrog App lease, explicit revocation, and retry-safe trusted validation from the fixed first-attempt artifact
+- reconcile only bounded prior `pullfrog[bot]` threads in a separate provider-free job after a finding-free re-review, then re-read the complete contract as clean
+- add the repository/PR/base/head-bound `pullfrog-review-gate` composite while keeping publication, approval, merge, settings, and required-check changes separately gated
 - invoke Pullfrog `v0.1.102` through its native `fix_review` contract while keeping provider push disabled
 - persist single-record identity-bound claim, candidate, and terminal artifacts, with the sealed dispatch kept separate, at most three cycles, and three per-head attempts
 - rebuild untrusted provider patches in a fresh read-only validation job, then publish only the canonical sealed patch through a separate trusted exact-head fast-forward job
@@ -48,6 +51,7 @@
 - `scripts/github/pullfrog_destination_guard.py`
 - `scripts/github/pullfrog_dev_auto_merge.py`
 - `scripts/github/pullfrog_review_fallback.py`
+- `scripts/github/pullfrog_review_contract.py`
 - `scripts/github/speculoos_pr_contract.py`
 - `scripts/github/tests/test_pullfrog_cloud_coordinator.py`
 - `scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py`
@@ -58,6 +62,7 @@
 - `scripts/github/tests/test_pullfrog_dev_auto_merge.py`
 - `scripts/github/tests/test_pullfrog_review_fallback.py`
 - `scripts/github/tests/test_pullfrog_review_fallback_workflow_policy.py`
+- `scripts/github/tests/test_pullfrog_review_contract.py`
 - `scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py`
 - `scripts/github/tests/test_pullfrog_workflow_policy.py`
 - `scripts/github/tests/test_speculoos_pr_contract.py`
@@ -97,7 +102,7 @@ The operator-facing workflow and safety contract were updated in `README.md`, `d
 - The review fallback matches only the two literal apostrophe variants of the recorded OpenAI cybersecurity refusal, requires exactly one failed review step and one matching failure annotation, rejects whitespace or wording variation, and permits one Astra attempt for the unchanged exact PR/head/base identity.
 - The fallback provider job receives OIDC plus read-only job permissions. Its sealed controller mints one short-lived Pullfrog App installation token scoped exactly to `contents: read` plus `pull_requests: write`, forces the action's external `GH_TOKEN` route so the review remains Pullfrog-authored, and revokes the lease after result capture. No content-write, issue-write, check-write, action-dispatch, publication, approval, or merge credential reaches the provider.
 - Provider execution is restricted to `github.run_attempt == 1`, and the trusted preflight repeats that invariant. Later failed-job reruns can reuse only the first attempt's bounded artifacts for fresh trusted finalization.
-- A fresh trusted finalizer validates the schema, exact-head Pullfrog review, Astra footer, finding count, comment actor, comment head, exact token scope, and successful revocation before updating the composite gate.
+- A fresh trusted finalizer validates the schema, exact-head Pullfrog review, model footer, finding count, comment actor, comment head, exact token scope, and successful revocation. After remediation, a separate provider-free job may resolve only prior Pullfrog-owned threads, never current-review or human threads, and must re-read the complete contract as clean before the check-write-only job can update the composite gate.
 - Astra and Sol are both OpenAI models. A second refusal or any malformed, stale, duplicate, recursive, forked, token-drift, revocation-failure, or ordinary-failure path stops without a third model.
 
 - The hosted Speculoos check executes only repository-reviewed source, fetches no private cross-repository package, receives no additional credential, runs candidate-facing Python entrypoints in isolated mode, and validates exact head/base identity, the complete publication packet inventory including deletions, workflow materialization, merge actor policy, whitespace, and red-list token patterns.
@@ -110,7 +115,7 @@ The operator-facing workflow and safety contract were updated in `README.md`, `d
 - Pushed terminal evidence is accepted only when the exact claim, candidate, publish plan, patch digest, changed-path digest, source head, and resulting head all bind to one another.
 - The trusted controller re-reads exact PR identity before provider execution, candidate validation/application, and publication; it rejects forks, protected/default/base refs, stale/reused heads, workflow/governance paths, malformed history, unchanged output, repeated findings, and no-progress cycles.
 - The remediation publisher's only mutation is one normal fast-forward push to the exact same-repository PR branch after the sealed patch digest and post-patch destination guard pass.
-- A separate least-privilege job may merge only a clean exact-head same-repository feature PR whose base is valid and is neither `main` nor `master`; it re-reads live identity, refreshes all app-bound trusted checks and Pullfrog review evidence, rejects unresolved human changes requests, and preserves the repository's merge-commit convention.
+- A separate least-privilege job may merge only a clean exact-head same-repository feature PR whose base is valid and is neither `main` nor `master`; it re-reads live identity, requires the fresh exact-identity `pullfrog-review-gate`, refreshes CI and Speculoos evidence, rejects unresolved human changes requests, and preserves the repository's merge-commit convention.
 - The coordinator carries its exact default/protected-ref policy into the digest-bound remediation claim, and the validator and publisher reuse it, so a newly eligible non-`dev` base cannot become an impossible post-provider destination.
 - The mutation boundary builds a two-parent commit from the exact reviewed base and head, then submits one normal fast-forward Git receive-pack update to the literal reviewed base ref with the reviewed base SHA as the command's old OID. The server rejects any intervening base change in that same ref-update transaction, concurrent retargeting cannot redirect the push, and neither force nor force-with-lease is used. Receive-pack ref names stay byte-preserving so unrelated legal Unicode refs cannot block the selected destination.
 - Because built-in-token pushes suppress ordinary push-triggered Actions runs, path-matched bounded dispatches replay only the existing `dev` cross-repository updater and reusable-ref synchronization workflows; any post-merge dispatch failure is persisted and fails visibly.

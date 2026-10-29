@@ -43,7 +43,6 @@ jobs:
     name: Evaluate exact-head fallback policy
     if: >-
       (github.event_name == 'check_run' &&
-       vars.PULLFROG_REVIEW_FALLBACK_ENABLED == 'true' &&
        github.event.check_run.app.slug == 'pullfrog' &&
        github.event.check_run.name == 'pullfrog') ||
       (github.event_name == 'workflow_dispatch' && inputs.authorize_fallback)
@@ -178,7 +177,9 @@ jobs:
       needs.gate_initial.result == 'success' &&
       github.run_attempt == 1 &&
       needs.evaluate.outputs.status == 'fallback_ready' &&
-      needs.evaluate.outputs.authorized_fallback == 'true'
+      needs.evaluate.outputs.authorized_fallback == 'true' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.authorize_fallback) ||
+       vars.PULLFROG_REVIEW_FALLBACK_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -202,6 +203,9 @@ jobs:
           install -m 0555 \
             trusted-controller/scripts/github/pullfrog_review_fallback.py \
             "$RUNNER_TEMP/pullfrog_review_fallback.py"
+          install -m 0444 \
+            trusted-controller/scripts/github/pullfrog_review_contract.py \
+            "$RUNNER_TEMP/pullfrog_review_contract.py"
           rm -rf trusted-controller
 
       - name: Checkout exact untrusted pull-request head

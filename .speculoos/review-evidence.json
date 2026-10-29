@@ -26,30 +26,30 @@
     "local_validation": {
       "kind": "local_validation",
       "status": "passed",
-      "summary": "All available local gates pass for the exact-head review repair: 198 GitHub helper tests, 48 checksum-verified actionlint and workflow-policy tests, focused scoped-token mint/revoke and retained-output rerun regressions, Python compilation, deterministic workflow materialization, canonical/live byte identity, JSON parsing, exact-delta public-safety and private-data scans, whitespace checks, and official Speculoos validate plus publish-check.",
+      "summary": "The current local repair passes 216 GitHub automation tests, the focused 98-test canonical-contract/coordinator/fallback/remediation/merge matrix, checksum-verified workflow validation, Python compilation, deterministic materialization, canonical/live byte identity, JSON parsing, whitespace checks, and the repository-bound exact-delta safety gates. Official Speculoos validate and publish-check are rerun against the final packet before publication.",
       "evidence_ref": ".speculoos/tasks/pullfrog-cloud-remediation-20261028.yaml",
-      "updated_at": "pullfrog-cloud-remediation-20261029"
+      "updated_at": "pullfrog-complete-review-contract-20261029"
     },
     "github_checks": {
       "kind": "github_checks",
-      "status": "blocked-by-two-current-pullfrog-findings",
-      "summary": "PR #95 remains open at exact hosted head 5363904f2b0d1313084c2a76943ad24cf6f9eaa8. Pullfrog completed review 5692731389 with two findings, so pullfrog-approval failed; exact-head Speculoos and provider-free dogfood succeeded. Both findings are repaired locally and require guarded publication plus fresh exact-head hosted checks.",
-      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/95#pullrequestreview-5692731389",
-      "updated_at": "pullfrog-cloud-remediation-20261029"
+      "status": "raw-checks-pass-complete-verdict-missing",
+      "summary": "PR #95 remains open at exact hosted head b19c82bd0bce27896a9a99960cdb8b32d08713b5. Dogfood, Speculoos, pullfrog, and pullfrog-approval raw checks succeed. Coordinator dry-runs 40821041281 and 40821037887 intentionally stop at the manual-governance boundary because the PR changes protected workflow, template, and Speculoos surfaces; this is not a failed exact-head PR check. The canonical complete-verdict gate is not yet present.",
+      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/95",
+      "updated_at": "pullfrog-complete-review-contract-20261029"
     },
     "pullfrog_review": {
       "kind": "pullfrog_review",
-      "status": "two-findings-repaired-locally-pending-rereview",
-      "summary": "Exact-head Pullfrog review 5692731389 found that the Astra fallback could mint the action's broad normal MCP token and that failed-job reruns could invoke Astra more than once for one unchanged identity. The local repair mints one Pullfrog App lease scoped exactly to contents:read plus pull_requests:write, forces the external GH_TOKEN route, requires successful revocation, and prevents provider execution whenever github.run_attempt is not 1 while allowing finalizer-only recovery. Fresh hosted Pullfrog review and approval remain required.",
-      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/95#pullrequestreview-5692731389",
-      "updated_at": "pullfrog-cloud-remediation-20261029"
+      "status": "missing-complete-exact-head-verdict",
+      "summary": "The two original findings from review 5692731389 are repaired at hosted head b19c82bd0bce27896a9a99960cdb8b32d08713b5, but exact-head Pullfrog reviews 5693046860 and 5693047157 have empty bodies. Passing raw checks and inline comments cannot manufacture the required nonempty marker-bearing complete verdict. The local canonical contract and bounded re-review/thread-reconciliation repair still require guarded publication and fresh hosted validation.",
+      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/95",
+      "updated_at": "pullfrog-complete-review-contract-20261029"
     },
     "speculoos_evidence": {
       "kind": "speculoos_evidence",
-      "status": "passed-current-head-pending-repair-publication",
-      "summary": "Independent hosted Speculoos evidence passed on 5363904f2b0d1313084c2a76943ad24cf6f9eaa8. Publishing the credential and rerun repairs will create a new exact head, so fresh hosted Speculoos evidence will again be required and cannot be replaced by Pullfrog output.",
-      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/actions/runs/40815023612/job/123253960385",
-      "updated_at": "pullfrog-cloud-remediation-20261029"
+      "status": "passed-current-head-pending-contract-publication",
+      "summary": "Independent hosted Speculoos evidence succeeds on exact hosted head b19c82bd0bce27896a9a99960cdb8b32d08713b5. Publishing the canonical review-contract repair will create a new exact head, so fresh hosted Speculoos evidence will again be required and cannot be replaced by Pullfrog output.",
+      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/95",
+      "updated_at": "pullfrog-complete-review-contract-20261029"
     },
     "self_managed": {
       "kind": "self_managed",
