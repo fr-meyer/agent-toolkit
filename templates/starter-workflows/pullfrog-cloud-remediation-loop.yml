@@ -46,11 +46,9 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'workflow_run' ||
       (github.event_name == 'check_run' &&
-       ((github.event.check_run.app.slug == 'pullfrog' &&
-         (github.event.check_run.name == 'pullfrog' ||
-          github.event.check_run.name == 'pullfrog-approval')) ||
-        (github.event.check_run.app.slug == 'github-actions' &&
-         github.event.check_run.name == 'pullfrog-review-gate')))
+       github.event.check_run.app.slug == 'pullfrog' &&
+       (github.event.check_run.name == 'pullfrog' ||
+        github.event.check_run.name == 'pullfrog-approval'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -963,7 +961,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      actions: read
+      actions: write
       checks: write
       contents: read
       pull-requests: read
@@ -992,11 +990,23 @@ jobs:
           --details-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           --out artifacts/pullfrog-rereview/gate.json
 
+      - name: Hand off deliverable gate to a new exact-head evaluation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py handoff-controller
+          --repository "$GITHUB_REPOSITORY"
+          --source-receipt artifacts/pullfrog-rereview/reconciliation.json
+          --gate-receipt artifacts/pullfrog-rereview/gate.json
+          --out artifacts/pullfrog-rereview/handoff.json
+
       - name: Persist sanitized re-review gate receipt
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pullfrog-exact-head-rereview-gate-${{ github.run_id }}-a${{ github.run_attempt }}
-          path: artifacts/pullfrog-rereview/gate.json
+          path: |
+            artifacts/pullfrog-rereview/gate.json
+            artifacts/pullfrog-rereview/handoff.json
           if-no-files-found: error
           retention-days: 90
 

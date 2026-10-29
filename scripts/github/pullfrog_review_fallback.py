@@ -34,6 +34,7 @@ RESULT_RECEIPT_SCHEMA = "pullfrog-review-fallback-result-receipt.v1"
 REREVIEW_RESULT_SCHEMA = "pullfrog-exact-head-rereview-result.v1"
 REREVIEW_RECEIPT_SCHEMA = "pullfrog-exact-head-rereview-receipt.v1"
 REREVIEW_RECONCILIATION_SCHEMA = "pullfrog-rereview-thread-reconciliation.v1"
+CONTROLLER_HANDOFF_SCHEMA = "pullfrog-controller-handoff.v1"
 TOKEN_LEASE_SCHEMA = "pullfrog-review-fallback-token-lease.v1"
 TOKEN_REVOCATION_SCHEMA = "pullfrog-review-fallback-token-revocation.v1"
 PRIMARY_MODEL = "openai/gpt-sol"
@@ -46,6 +47,7 @@ PULLFROG_LOGIN = review_contract.PULLFROG_LOGIN
 PRIMARY_CHECK_NAME = review_contract.PULLFROG_CHECK
 PRIMARY_WORKFLOW_PATH = ".github/workflows/pullfrog.yml"
 FALLBACK_WORKFLOW_PATH = ".github/workflows/pullfrog-review-fallback.yml"
+CONTROLLER_WORKFLOW_FILE = "pullfrog-cloud-remediation-loop.yml"
 GATE_CHECK_NAME = review_contract.GATE_NAME
 GATE_APP = review_contract.GATE_APP
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
@@ -1655,17 +1657,28 @@ def publish_gate(
         if result_receipt.get("schema") != RESULT_RECEIPT_SCHEMA:
             raise FallbackError("invalid_gate_result_receipt")
         evidence_profile = review_contract.REVIEW_ONLY_EVIDENCE_PROFILE
-        evidence_digest = _text(result_receipt.get("review_contract_digest"))
         authoritative_review_id = _integer(result_receipt.get("review_id"))
+        valid_result = result_receipt.get("status") == "valid"
+        if valid_result:
+            evidence_digest = _text(result_receipt.get("review_contract_digest"))
+        else:
+            evidence_digest = _digest(
+                {
+                    "invalid_result_receipt": result_receipt,
+                    "coordinator_evidence_digest": _text(
+                        coordinator.get("evidence_digest")
+                    ),
+                }
+            )
         if (
-            result_receipt.get("status") == "valid"
+            valid_result
             and result_receipt.get("review_contract_status") == "clean"
             and _integer(result_receipt.get("finding_count")) == 0
         ):
             title = "Pullfrog Astra fallback produced a clean valid verdict"
             summary = "One clean structured exact-head Astra fallback verdict was validated."
             require_live_clean = True
-        elif result_receipt.get("status") == "valid":
+        elif valid_result:
             title = "Pullfrog Astra fallback produced findings"
             summary = "The exact-head fallback verdict is complete but contains findings."
         else:
@@ -1736,6 +1749,146 @@ def publish_gate(
         check_status=check_status,
         conclusion=conclusion,
     )
+
+
+def dispatch_controller_after_gate(
+    client: GitHubClient,
+    source_receipt: dict[str, Any],
+    gate_receipt: dict[str, Any],
+) -> dict[str, Any]:
+    """Dispatch one exact-head evaluation after a deliverable review gate.
+
+    GitHub suppresses ``check_run`` events for checks created by GitHub Actions.
+    The trusted gate publisher therefore performs an explicit
+    ``workflow_dispatch`` handoff, but only after reconstructing the live
+    contract addressed by the completed gate. Invalid or in-progress gates are
+    terminal and do not create a no-op controller run.
+    """
+
+    if source_receipt.get("schema") not in {
+        RECEIPT_SCHEMA,
+        REREVIEW_RECONCILIATION_SCHEMA,
+    }:
+        raise FallbackError("invalid_controller_handoff_source")
+    if gate_receipt.get("schema") != review_contract.GATE_SCHEMA:
+        raise FallbackError("invalid_controller_handoff_gate")
+
+    repository_slug = _text(source_receipt.get("repository"))
+    pr_number = _integer(source_receipt.get("pr_number"))
+    base_sha = _text(source_receipt.get("base_sha"))
+    head_sha = _text(source_receipt.get("head_sha"))
+    check_run_id = _integer(gate_receipt.get("check_run_id"))
+    external_id = _text(gate_receipt.get("external_id"))
+    if (
+        repository_slug != client.repository_slug
+        or pr_number is None
+        or pr_number < 1
+        or not SHA_RE.fullmatch(base_sha)
+        or not SHA_RE.fullmatch(head_sha)
+        or gate_receipt.get("head_sha") != head_sha
+        or check_run_id is None
+        or check_run_id < 1
+    ):
+        raise FallbackError("invalid_controller_handoff_identity")
+
+    prefix = f"/repos/{repository_slug}"
+    live_pr = _mapping(client.get(f"{prefix}/pulls/{pr_number}"))
+    identity = _identity(repository_slug, live_pr)
+    if (
+        identity.get("repository_slug") != repository_slug
+        or identity.get("pr_number") != pr_number
+        or identity.get("state") != "open"
+        or identity.get("base_sha") != base_sha
+        or identity.get("head_sha") != head_sha
+        or identity.get("base_repository_slug") != repository_slug
+        or identity.get("head_repository_slug") != repository_slug
+    ):
+        raise FallbackError("controller_handoff_identity_drift")
+
+    live_gate = _mapping(client.get(f"{prefix}/check-runs/{check_run_id}"))
+    if (
+        _integer(live_gate.get("id")) != check_run_id
+        or live_gate.get("name") != GATE_CHECK_NAME
+        or _text(_mapping(live_gate.get("app")).get("slug")) != GATE_APP
+        or live_gate.get("head_sha") != head_sha
+        or live_gate.get("external_id") != external_id
+        or _text(live_gate.get("status")) != _text(gate_receipt.get("status"))
+        or _text(live_gate.get("conclusion"))
+        != _text(gate_receipt.get("conclusion"))
+    ):
+        raise FallbackError("controller_handoff_gate_drift")
+
+    identity_prefix = review_contract.gate_identity_prefix(identity)
+    suffix = external_id.removeprefix(identity_prefix)
+    parts = suffix.split(":") if external_id.startswith(identity_prefix) else []
+    evidence_profile = parts[0] if len(parts) == 2 else ""
+    evidence_digest = parts[1] if len(parts) == 2 else ""
+    deliverable = bool(
+        gate_receipt.get("status") == "completed"
+        and gate_receipt.get("conclusion") in {"success", "failure"}
+        and evidence_profile in review_contract.EVIDENCE_PROFILES
+        and re.fullmatch(r"[0-9a-f]{64}", evidence_digest)
+    )
+    live_contract: dict[str, Any] = {}
+    if deliverable:
+        try:
+            live_contract = _collect_live_contract(
+                client,
+                pr_number=pr_number,
+                base_sha=base_sha,
+                head_sha=head_sha,
+                evidence_profile=evidence_profile,
+            )
+        except FallbackError:
+            deliverable = False
+    contract_status = _text(live_contract.get("status"))
+    expected_conclusion = (
+        "success"
+        if contract_status == "clean"
+        else "failure"
+        if contract_status == "findings"
+        else ""
+    )
+    if (
+        contract_status not in {"clean", "findings"}
+        or live_contract.get("blockers") != []
+        or live_contract.get("evidence_digest") != evidence_digest
+        or gate_receipt.get("conclusion") != expected_conclusion
+    ):
+        deliverable = False
+
+    repository = _mapping(client.get(prefix))
+    default_branch = _text(repository.get("default_branch"))
+    if not review_contract.valid_branch(default_branch):
+        raise FallbackError("invalid_controller_handoff_default_branch")
+
+    status = "not_deliverable"
+    if deliverable:
+        client.post(
+            f"{prefix}/actions/workflows/{CONTROLLER_WORKFLOW_FILE}/dispatches",
+            {
+                "ref": default_branch,
+                "inputs": {
+                    "pr_number": str(pr_number),
+                    "expected_head_sha": head_sha,
+                },
+            },
+        )
+        status = "dispatched"
+    return {
+        "schema": CONTROLLER_HANDOFF_SCHEMA,
+        "status": status,
+        "repository": repository_slug,
+        "pr_number": pr_number,
+        "base_sha": base_sha,
+        "head_sha": head_sha,
+        "gate_check_run_id": check_run_id,
+        "gate_external_id": external_id,
+        "contract_status": contract_status,
+        "controller_workflow": CONTROLLER_WORKFLOW_FILE,
+        "controller_ref": default_branch,
+        "raw_text_included": False,
+    }
 
 
 def _summary(path: Path, value: dict[str, Any]) -> None:
@@ -1850,6 +2003,16 @@ def main() -> int:
     publish_rereview.add_argument("--receipt", required=True)
     publish_rereview.add_argument("--details-url", required=True)
     publish_rereview.add_argument("--out", required=True)
+
+    handoff = sub.add_parser("handoff-controller")
+    handoff.add_argument(
+        "--api-url", default=os.environ.get("GITHUB_API_URL", "https://api.github.com")
+    )
+    handoff.add_argument("--token", default=os.environ.get("GITHUB_TOKEN", ""))
+    handoff.add_argument("--repository", required=True)
+    handoff.add_argument("--source-receipt", required=True)
+    handoff.add_argument("--gate-receipt", required=True)
+    handoff.add_argument("--out", required=True)
 
     summarize = sub.add_parser("summarize")
     summarize.add_argument("--receipt", required=True)
@@ -1973,6 +2136,17 @@ def main() -> int:
             client = GitHubClient(args.api_url, args.token, args.repository)
             publication = publish_rereview_gate(client, receipt, args.details_url)
             _write_object(Path(args.out), publication)
+            return 0
+        if args.command == "handoff-controller":
+            source_receipt = _load_object(Path(args.source_receipt))
+            gate_receipt = _load_object(Path(args.gate_receipt))
+            client = GitHubClient(args.api_url, args.token, args.repository)
+            handoff_receipt = dispatch_controller_after_gate(
+                client,
+                source_receipt,
+                gate_receipt,
+            )
+            _write_object(Path(args.out), handoff_receipt)
             return 0
         if args.command == "summarize":
             _summary(Path(args.github_step_summary), _load_object(Path(args.receipt)))

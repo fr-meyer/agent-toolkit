@@ -157,9 +157,14 @@ Its jobs separate authority:
 Only bounded action outcome/result files and sanitized lease/revocation receipts
 cross from the provider job to the trusted finalizer. No token value, patch,
 provider credential, prompt, raw log, or content/check/action-dispatch write
-token crosses the boundary. Failed-job reruns skip the entire provider job via
-`github.run_attempt == 1`; when the first attempt already persisted its bounded
-artifact, a later attempt may rerun only the fresh validator and gate finalizer.
+token crosses the provider boundary. Failed-job reruns skip the entire provider
+job via `github.run_attempt == 1`; when the first attempt already persisted its
+bounded artifact, a later attempt may rerun only the fresh validator and gate
+finalizer. The trusted default-branch finalizer alone has check-write plus
+workflow-dispatch authority. After publishing, it re-reads the live open PR,
+gate, contract status, evidence profile/digest, and expected conclusion before
+one exact-PR/head controller handoff; in-progress, invalid, stale, drifted, or
+digest-mismatched gates do not dispatch.
 
 ## Composite required check
 
@@ -172,8 +177,10 @@ evidence profile, and evidence digest. The check is:
 - successful for a valid clean structured exact-head Astra verdict;
 - failed with the matching review-only digest for valid findings that may enter
   bounded remediation but can never authorize merge;
-- failed for every invalid state, including Astra refusal, malformed output,
-  review/model mismatch, drift, API failure, or duplicate attempt.
+- failed with a distinct non-canonical digest for every invalid state, including
+  Astra refusal, malformed output, token-scope or revocation failure,
+  review/model mismatch, drift, API failure, or duplicate attempt. That digest
+  cannot match current canonical findings evidence or authorize remediation.
 
 While Astra activation is disabled, a recognized refusal publishes
 `action_required` and cannot invoke the fallback provider. Complete primary Sol
@@ -202,7 +209,8 @@ or merge. Activation requires separate approval for each of these stages:
    publication/merge credential;
 4. manually pilot one exact PR/head/base with `authorize_fallback: true`;
 5. prove Astra behavior, exact-head structured output, partial-comment
-   reconciliation, one-attempt idempotency, and fail-closed second refusal;
+   reconciliation, one-attempt idempotency, fail-closed second refusal, and the
+   live-revalidated explicit gate-to-controller handoff;
 6. review and then enable `PULLFROG_REVIEW_FALLBACK_ENABLED`;
 7. change branch protection to require `pullfrog-review-gate` and remove the raw
    primary `pullfrog` check only after hosted evidence proves the composite;

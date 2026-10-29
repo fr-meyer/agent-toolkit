@@ -12,6 +12,14 @@ MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
+COORDINATOR_SCRIPT = Path(__file__).resolve().parents[1] / "pullfrog_cloud_coordinator.py"
+COORDINATOR_SPEC = importlib.util.spec_from_file_location(
+    "pullfrog_cloud_coordinator_for_fallback_tests", COORDINATOR_SCRIPT
+)
+COORDINATOR = importlib.util.module_from_spec(COORDINATOR_SPEC)
+assert COORDINATOR_SPEC.loader is not None
+COORDINATOR_SPEC.loader.exec_module(COORDINATOR)
+
 BASE_SHA = "1" * 40
 HEAD_SHA = "2" * 40
 REPOSITORY = "fr-meyer/agent-toolkit"
@@ -143,6 +151,85 @@ def snapshot(conclusion="failure"):
             evidence_check("pullfrog", conclusion, 800),
             evidence_check("pullfrog-approval", "success", 801),
         ],
+    }
+
+
+def fallback_finding_comment():
+    return {
+        "id": 801,
+        "pull_request_review_id": 700,
+        "commit_id": HEAD_SHA,
+        "path": "scripts/example.py",
+        "line": 12,
+        "body": "A current exact-head finding.",
+        "user": {"login": "pullfrog[bot]"},
+    }
+
+
+def coordinator_snapshot(client, gate_publication):
+    live = pr()
+    gate = {
+        "id": gate_publication["check_run_id"],
+        "name": MODULE.GATE_CHECK_NAME,
+        "status": gate_publication["status"],
+        "conclusion": gate_publication["conclusion"],
+        "head_sha": HEAD_SHA,
+        "external_id": gate_publication["external_id"],
+        "app": {"slug": MODULE.GATE_APP},
+        "check_suite": {"id": 900},
+    }
+    return {
+        "schema": COORDINATOR.SNAPSHOT_SCHEMA,
+        "repository_slug": REPOSITORY,
+        "repository": {"default_branch": "main"},
+        "event": {
+            "kind": "workflow_dispatch",
+            "delivery_id": f"gate:{gate_publication['check_run_id']}",
+            "head_sha": HEAD_SHA,
+        },
+        "expected_pull_request": live,
+        "observed_pull_request": live,
+        "reviews": [review(700, client.body)],
+        "review_comments": copy.deepcopy(client.comments),
+        "review_threads": [],
+        "files": [{"filename": "scripts/example.py"}],
+        "check_runs": [
+            evidence_check("pullfrog", "failure", 810),
+            evidence_check("pullfrog-approval", "failure", 811),
+            {
+                "id": 812,
+                "name": "dogfood / Provider-free PR automation contract",
+                "status": "completed",
+                "conclusion": "success",
+                "head_sha": HEAD_SHA,
+                "app": {"slug": "github-actions"},
+                "check_suite": {"id": 501},
+            },
+            {
+                "id": 813,
+                "name": "speculoos",
+                "status": "completed",
+                "conclusion": "success",
+                "head_sha": HEAD_SHA,
+                "app": {"slug": "github-actions"},
+                "check_suite": {"id": 502},
+            },
+            gate,
+        ],
+        "history": COORDINATOR._empty_history(),
+        "policy": {
+            "max_cycles": 3,
+            "protected_refs": ["dev", "main", "master"],
+            "ci_checks": [
+                {
+                    "name": "dogfood / Provider-free PR automation contract",
+                    "app_slug": "github-actions",
+                }
+            ],
+            "speculoos_checks": [
+                {"name": "speculoos", "app_slug": "github-actions"}
+            ],
+        },
     }
 
 
@@ -300,12 +387,22 @@ class FakeClient:
         self.patches = []
 
     def get(self, path):
+        if path == f"/repos/{REPOSITORY}":
+            return {"default_branch": "main"}
         if path == f"/repos/{REPOSITORY}/pulls/95":
             return copy.deepcopy(self.pull)
         if path == f"/repos/{REPOSITORY}/pulls/95/reviews/700":
             return review(700, self.body)
         if path == f"/repos/{REPOSITORY}/commits/{HEAD_SHA}/check-runs?per_page=100":
             return {"total_count": len(self.checks), "check_runs": copy.deepcopy(self.checks)}
+        if path == f"/repos/{REPOSITORY}/check-runs/900":
+            for posted_path, payload in reversed(self.posts):
+                if posted_path == f"/repos/{REPOSITORY}/check-runs":
+                    return {
+                        **copy.deepcopy(payload),
+                        "id": 900,
+                        "app": {"slug": MODULE.GATE_APP},
+                    }
         raise AssertionError(path)
 
     def paginated(self, path):
@@ -346,6 +443,8 @@ class FakeClient:
 
     def post(self, path, payload):
         self.posts.append((path, payload))
+        if path.endswith(f"/actions/workflows/{MODULE.CONTROLLER_WORKFLOW_FILE}/dispatches"):
+            return {}
         return {"id": 900}
 
     def patch(self, path, payload):
@@ -481,6 +580,198 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
         self.assertIn("invalid_review_token_lease_permissions", receipt["blockers"])
         self.assertIn("review_token_revocation_failed", receipt["blockers"])
 
+    def test_invalid_fallback_findings_cannot_authorize_remediation_or_handoff(self):
+        client = FakeClient(
+            body=complete_body(MODULE.FALLBACK_RESOLVED_MODEL, clean=False),
+            comments=[fallback_finding_comment()],
+            checks=[
+                evidence_check("pullfrog", "failure", 810),
+                evidence_check("pullfrog-approval", "failure", 811),
+            ],
+        )
+        receipt = self.verify(
+            client,
+            "success",
+            self.result("findings", 1),
+            revocation_outcome="failure",
+        )
+        self.assertEqual(receipt["status"], "invalid")
+        self.assertIn("review_token_revocation_failed", receipt["blockers"])
+        live_digest = receipt["review_contract_digest"]
+
+        coordinator = self.coordinator()
+        publication = MODULE.publish_gate(
+            client,
+            coordinator,
+            "https://example.test/run",
+            True,
+            receipt,
+        )
+        self.assertEqual(publication["conclusion"], "failure")
+        self.assertFalse(publication["external_id"].endswith(live_digest))
+
+        decision = COORDINATOR.evaluate_snapshot(
+            coordinator_snapshot(client, publication)
+        )
+        self.assertFalse(decision["policy_decision"]["remediation_allowed"])
+        self.assertNotEqual(decision["would_action"], "start_remediation")
+
+        handoff = MODULE.dispatch_controller_after_gate(
+            client,
+            coordinator,
+            publication,
+        )
+        self.assertEqual(handoff["status"], "not_deliverable")
+        self.assertFalse(
+            any(path.endswith("/dispatches") for path, _ in client.posts)
+        )
+
+    def test_valid_fallback_findings_authorize_one_exact_head_handoff(self):
+        client = FakeClient(
+            body=complete_body(MODULE.FALLBACK_RESOLVED_MODEL, clean=False),
+            comments=[fallback_finding_comment()],
+            checks=[
+                evidence_check("pullfrog", "failure", 810),
+                evidence_check("pullfrog-approval", "failure", 811),
+            ],
+        )
+        receipt = self.verify(
+            client,
+            "success",
+            self.result("findings", 1),
+        )
+        self.assertEqual(receipt["status"], "valid")
+
+        coordinator = self.coordinator()
+        publication = MODULE.publish_gate(
+            client,
+            coordinator,
+            "https://example.test/run",
+            True,
+            receipt,
+        )
+        decision = COORDINATOR.evaluate_snapshot(
+            coordinator_snapshot(client, publication)
+        )
+        self.assertEqual(decision["status"], "remediation_ready")
+        self.assertEqual(decision["would_action"], "start_remediation")
+        self.assertTrue(decision["policy_decision"]["remediation_allowed"])
+
+        handoff = MODULE.dispatch_controller_after_gate(
+            client,
+            coordinator,
+            publication,
+        )
+        self.assertEqual(handoff["status"], "dispatched")
+        dispatch_path, dispatch_payload = client.posts[-1]
+        self.assertEqual(
+            dispatch_path,
+            f"/repos/{REPOSITORY}/actions/workflows/"
+            f"{MODULE.CONTROLLER_WORKFLOW_FILE}/dispatches",
+        )
+        self.assertEqual(dispatch_payload["ref"], "main")
+        self.assertEqual(
+            dispatch_payload["inputs"],
+            {"pr_number": "95", "expected_head_sha": HEAD_SHA},
+        )
+
+    def test_valid_clean_fallback_hands_off_the_exact_head(self):
+        client = FakeClient()
+        receipt = self.verify(client, "success", self.result("clean", 0))
+        self.assertEqual(receipt["status"], "valid")
+        self.assertEqual(receipt["review_contract_status"], "clean")
+
+        coordinator = self.coordinator()
+        publication = MODULE.publish_gate(
+            client,
+            coordinator,
+            "https://example.test/run",
+            True,
+            receipt,
+        )
+        self.assertEqual(publication["conclusion"], "success")
+        handoff = MODULE.dispatch_controller_after_gate(
+            client,
+            coordinator,
+            publication,
+        )
+        self.assertEqual(handoff["status"], "dispatched")
+        self.assertEqual(handoff["contract_status"], "clean")
+        self.assertEqual(
+            client.posts[-1][1]["inputs"],
+            {"pr_number": "95", "expected_head_sha": HEAD_SHA},
+        )
+
+    def test_controller_handoff_does_not_dispatch_in_progress_gate(self):
+        client = FakeClient()
+        coordinator = self.coordinator()
+        publication = MODULE.publish_gate(
+            client,
+            coordinator,
+            "https://example.test/run",
+            True,
+            None,
+        )
+        self.assertEqual(publication["status"], "in_progress")
+        self.assertEqual(publication["conclusion"], "")
+
+        handoff = MODULE.dispatch_controller_after_gate(
+            client,
+            coordinator,
+            publication,
+        )
+        self.assertEqual(handoff["status"], "not_deliverable")
+        self.assertFalse(
+            any(path.endswith("/dispatches") for path, _ in client.posts)
+        )
+
+    def test_controller_handoff_does_not_dispatch_digest_mismatched_gate(self):
+        client = FakeClient()
+        receipt = self.verify(client, "success", self.result("clean", 0))
+        coordinator = self.coordinator()
+        publication = MODULE.publish_gate(
+            client,
+            coordinator,
+            "https://example.test/run",
+            True,
+            receipt,
+        )
+        prefix, profile, _digest = publication["external_id"].rsplit(":", 2)
+        mismatched_external_id = f"{prefix}:{profile}:{'f' * 64}"
+        publication["external_id"] = mismatched_external_id
+        client.posts[-1][1]["external_id"] = mismatched_external_id
+
+        handoff = MODULE.dispatch_controller_after_gate(
+            client,
+            coordinator,
+            publication,
+        )
+        self.assertEqual(handoff["status"], "not_deliverable")
+        self.assertFalse(
+            any(path.endswith("/dispatches") for path, _ in client.posts)
+        )
+
+    def test_controller_handoff_rejects_live_gate_drift(self):
+        client = FakeClient()
+        receipt = self.verify(client, "success", self.result("clean", 0))
+        coordinator = self.coordinator()
+        publication = MODULE.publish_gate(
+            client,
+            coordinator,
+            "https://example.test/run",
+            True,
+            receipt,
+        )
+        client.posts[-1][1]["conclusion"] = "failure"
+        with self.assertRaisesRegex(
+            MODULE.FallbackError, "controller_handoff_gate_drift"
+        ):
+            MODULE.dispatch_controller_after_gate(
+                client,
+                coordinator,
+                publication,
+            )
+
     def test_new_review_evidence_gets_an_immutable_gate_identity(self):
         coordinator = self.coordinator()
         client = FakeClient()
@@ -518,6 +809,27 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
         self.assertEqual(updated["conclusion"], "success")
         self.assertNotEqual(updated["external_id"], external_id)
         self.assertEqual(client.patches, [])
+
+    def test_controller_handoff_rejects_live_pr_identity_drift(self):
+        coordinator = self.coordinator()
+        client = FakeClient()
+        result_receipt = self.verify(client, "success", self.result())
+        publication = MODULE.publish_gate(
+            client,
+            coordinator,
+            "https://example.test/run",
+            True,
+            result_receipt,
+        )
+        client.pull = pr(head_sha="3" * 40)
+        with self.assertRaisesRegex(
+            MODULE.FallbackError, "controller_handoff_identity_drift"
+        ):
+            MODULE.dispatch_controller_after_gate(
+                client,
+                coordinator,
+                publication,
+            )
 
 
 class PullfrogExactHeadRereviewTests(unittest.TestCase):

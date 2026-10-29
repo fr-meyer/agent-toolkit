@@ -127,6 +127,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      actions: write
       checks: write
       contents: read
       pull-requests: read
@@ -160,11 +161,21 @@ jobs:
             --enabled "$FALLBACK_ENABLED" \
             --out artifacts/pullfrog-review-fallback/gate/initial.json
 
+      - name: Hand off deliverable gate to exact-head controller
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py handoff-controller
+          --repository "$GITHUB_REPOSITORY"
+          --source-receipt artifacts/pullfrog-review-fallback/evaluate/coordinator.json
+          --gate-receipt artifacts/pullfrog-review-fallback/gate/initial.json
+          --out artifacts/pullfrog-review-fallback/gate/handoff.json
+
       - name: Upload sanitized initial gate receipt
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pullfrog-review-gate-initial-${{ github.run_id }}
-          path: artifacts/pullfrog-review-fallback/gate/initial.json
+          path: artifacts/pullfrog-review-fallback/gate/
           if-no-files-found: error
           retention-days: 30
 
@@ -361,7 +372,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      actions: read
+      actions: write
       checks: write
       contents: read
       pull-requests: read
@@ -420,6 +431,16 @@ jobs:
             --details-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             --enabled true \
             --out artifacts/pullfrog-review-fallback/final/gate.json
+
+      - name: Hand off deliverable gate to exact-head controller
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py handoff-controller
+          --repository "$GITHUB_REPOSITORY"
+          --source-receipt artifacts/pullfrog-review-fallback/evaluate/coordinator.json
+          --gate-receipt artifacts/pullfrog-review-fallback/final/gate.json
+          --out artifacts/pullfrog-review-fallback/final/handoff.json
 
       - name: Upload sanitized final fallback receipts
         if: always()

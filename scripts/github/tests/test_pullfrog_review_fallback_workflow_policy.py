@@ -76,7 +76,7 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         )
         self.assertRegex(
             self.template,
-            r"(?s)  gate_initial:.*?    permissions:\n      checks: write\n      contents: read\n      pull-requests: read\n",
+            r"(?s)  gate_initial:.*?    permissions:\n      actions: write\n      checks: write\n      contents: read\n      pull-requests: read\n",
         )
         self.assertRegex(
             self.template,
@@ -90,6 +90,11 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         self.assertNotIn("PULLFROG_REMEDIATION_PUBLISH_TOKEN", self.template)
         self.assertIn("          GH_TOKEN: ${{ steps.review_token.outputs.credential }}\n", fallback_section)
         self.assertNotIn("          GH_TOKEN: ${{ github.token }}\n", fallback_section)
+        finalize_section = self.template.split("  finalize:\n", 1)[1]
+        self.assertIn("      actions: write\n", finalize_section)
+        self.assertIn("      checks: write\n", finalize_section)
+        self.assertNotIn("contents: write", finalize_section)
+        self.assertNotIn("id-token: write", finalize_section)
 
     def test_single_fallback_is_astra_xhigh_with_structured_output(self):
         self.assertEqual(self.template.count("uses: pullfrog/pullfrog@"), 1)
@@ -142,6 +147,23 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         self.assertNotIn("gh pr merge", self.template)
         self.assertNotIn("git push", self.template)
         self.assertNotIn("force-with-lease", self.template)
+        self.assertEqual(self.template.count("handoff-controller"), 2)
+        self.assertEqual(
+            self.template.count("Hand off deliverable gate to exact-head controller"),
+            2,
+        )
+        self.assertIn(
+            "--source-receipt artifacts/pullfrog-review-fallback/evaluate/coordinator.json",
+            self.template,
+        )
+        self.assertIn(
+            "--gate-receipt artifacts/pullfrog-review-fallback/gate/initial.json",
+            self.template,
+        )
+        self.assertIn(
+            "--gate-receipt artifacts/pullfrog-review-fallback/final/gate.json",
+            self.template,
+        )
 
     def test_every_third_party_action_is_immutably_pinned(self):
         uses = re.findall(r"^\s+uses:\s+([^\s#]+)", self.template, flags=re.MULTILINE)
