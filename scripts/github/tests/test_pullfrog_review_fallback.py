@@ -484,7 +484,7 @@ class PullfrogReviewFallbackCredentialTests(unittest.TestCase):
         with mock.patch.object(MODULE.urllib.request, "urlopen", side_effect=responses) as opened:
             token, receipt = MODULE.mint_review_token(
                 "https://oidc.actions.githubusercontent.com/token?api-version=2.0",
-                "runner-request-token",
+                "runner",
                 REPOSITORY,
             )
 
@@ -496,7 +496,7 @@ class PullfrogReviewFallbackCredentialTests(unittest.TestCase):
 
         oidc_request = opened.call_args_list[0].args[0]
         self.assertIn("audience=pullfrog-api", oidc_request.full_url)
-        self.assertEqual(oidc_request.get_header("Authorization"), "Bearer runner-request-token")
+        self.assertEqual(oidc_request.get_header("Authorization"), "Bearer runner")
 
         token_request = opened.call_args_list[1].args[0]
         self.assertEqual(token_request.get_method(), "POST")
