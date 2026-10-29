@@ -1,5 +1,9 @@
-fix(github): isolate hosted validation imports
+feat(github): add bounded Pullfrog review fallback
 
-Complete task `pullfrog-cloud-remediation-20261028` by running candidate-facing Speculoos Python entrypoints in isolated mode. Repository files can no longer shadow standard-library imports used by the contract validator or workflow-policy discovery, while canonical and live workflow copies remain identical.
+Prepare one exact-head openai/gpt-astra fallback after only the recorded
+openai/gpt-sol cybersecurity-policy refusal. Keep the workflow inert by
+default, bind one attempt to the unchanged PR head/base, isolate provider and
+check-write authority, validate structured review evidence, and fail closed on
+all other outcomes.
 
 Feature PRs target `dev`. Release/promotion PRs target `main`.

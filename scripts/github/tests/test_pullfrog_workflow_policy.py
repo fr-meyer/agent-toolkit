@@ -1,4 +1,7 @@
 import re
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -77,7 +80,50 @@ class PullfrogWorkflowPolicyTests(unittest.TestCase):
             validator,
         )
         self.assertIn("sha256sum --check --status", validator)
-        self.assertIn("python3 -I -m unittest discover", validator)
+        self.assertNotIn("python3 -I -m unittest discover", validator)
+        expected_policy_tests = [
+            "test_pullfrog_cloud_coordinator_workflow_policy.py",
+            "test_pullfrog_cloud_remediation_workflow_policy.py",
+            "test_pullfrog_review_fallback_workflow_policy.py",
+            "test_pullfrog_speculoos_workflow_policy.py",
+            "test_pullfrog_workflow_policy.py",
+        ]
+        for test_name in expected_policy_tests:
+            self.assertEqual(validator.count(test_name), 1)
+        self.assertIn('python3 -I "$policy_test" -v', validator)
+
+    def test_policy_test_execution_cannot_import_adjacent_stdlib_namesake(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            test_file = root / "test_policy.py"
+            test_file.write_text(
+                "import json\n"
+                "import unittest\n"
+                "\n"
+                "class PolicyTest(unittest.TestCase):\n"
+                "    def test_json_is_stdlib(self):\n"
+                "        self.assertNotEqual(\n"
+                "            json.__file__,\n"
+                "            str(__file__).replace('test_policy.py', 'json.py'),\n"
+                "        )\n"
+                "\n"
+                "if __name__ == '__main__':\n"
+                "    unittest.main()\n",
+                encoding="utf-8",
+            )
+            (root / "json.py").write_text(
+                "raise SystemExit('candidate import shadow executed')\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [sys.executable, "-I", str(test_file), "-v"],
+                cwd=root,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_pullfrog_inputs_are_review_only(self):
         pullfrog_inputs = re.search(
@@ -94,6 +140,8 @@ class PullfrogWorkflowPolicyTests(unittest.TestCase):
             [
                 ("prompt", "${{ inputs.prompt }}"),
                 ("timeout", "15m"),
+                ("model", "openai/gpt-sol"),
+                ("effort", "xhigh"),
                 ("push", "disabled"),
                 ("shell", "restricted"),
                 ("progress_comments", "disabled"),

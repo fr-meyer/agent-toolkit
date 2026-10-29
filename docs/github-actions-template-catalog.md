@@ -532,6 +532,7 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 - top-level `contents: read`
 - job-level `id-token: write` and `contents: read`
 - checkout credentials are not persisted
+- Pullfrog `model: openai/gpt-sol` and `effort: xhigh`
 - Pullfrog `push: disabled`
 - Pullfrog `shell: restricted`
 - no provider-key or other secret environment mapping
@@ -574,7 +575,35 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 
 ---
 
-## 15. Pullfrog cloud remediation loop
+## 15. Pullfrog review-model fallback
+
+- **Type:** starter workflow
+- **Canonical source:** `templates/starter-workflows/pullfrog-review-fallback.yml`
+- **Live/runtime copy in this repo:** `.github/workflows/pullfrog-review-fallback.yml`
+- **Governed by:**
+  - source in `templates/repo-workflow-materialization-manifest.json`
+- **Purpose:**
+  - recognize only the two literal apostrophe variants of the recorded Sol cybersecurity-policy refusal
+  - authorize at most one `openai/gpt-astra` / `xhigh` Pullfrog review for an unchanged exact PR head and base
+  - emit the composite exact-head `pullfrog-review-gate` without treating a failed raw primary check as clean
+  - keep review evidence separate from remediation, publication, approval, merge, settings, and required-check authority
+
+### Security boundary
+- inert unless `PULLFROG_REVIEW_FALLBACK_ENABLED` is exactly `true` or a manual dispatch authorizes one exact check/PR/head/base identity
+- evaluator has read-only Actions, checks, contents, and PR access
+- provider job has Pullfrog OIDC plus read-only contents/PR access, `push: disabled`, restricted shell, one immutable action pin, and no check-write or publication credential
+- fresh finalizer has read access plus check-write but no provider identity, content-write, approval, dispatch, publication, or merge credential
+- exactly one failed `Run review-only agent` step and exactly one literal matching failure annotation are required; extra failed steps, annotations, or wording variation fail closed
+- structured result files are size-bounded, and the exact-head review, Astra footer, finding count, comment actor, and comment head are revalidated before gate success
+
+### Notes
+- Sol and Astra are both OpenAI models, so this is not independent cross-provider evidence. A second refusal or any other failure stops without a third model.
+- Source availability is not activation authority. Default-branch placement, credential-route audit, one hosted pilot, composite-gate consumer integration, required-check migration, and rollout remain separate gates.
+- See `docs/pullfrog-review-model-fallback.md` for the incident evidence, controller contract, and rollout sequence.
+
+---
+
+## 16. Pullfrog cloud remediation loop
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/pullfrog-cloud-remediation-loop.yml`
@@ -606,7 +635,7 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 
 ---
 
-## 16. Speculoos PR gate
+## 17. Speculoos PR gate
 
 - **Type:** starter workflow
 - **Canonical source:** `templates/starter-workflows/speculoos.yml`
@@ -648,6 +677,7 @@ These files exist under `.github/workflows/` and should not be treated as the pr
 - `.github/workflows/pr-automation-dogfood-pr-trigger.yml`
 - `.github/workflows/pullfrog.yml`
 - `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml`
+- `.github/workflows/pullfrog-review-fallback.yml`
 - `.github/workflows/pullfrog-cloud-remediation-loop.yml`
 - `.github/workflows/speculoos.yml`
 
@@ -664,6 +694,7 @@ Their canonical sources are:
 - `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml`
 - `templates/starter-workflows/pullfrog.yml`
 - `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml`
+- `templates/starter-workflows/pullfrog-review-fallback.yml`
 - `templates/starter-workflows/pullfrog-cloud-remediation-loop.yml`
 - `templates/starter-workflows/speculoos.yml`
 

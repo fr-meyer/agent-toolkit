@@ -13,6 +13,8 @@ Pullfrog review
 
 Pullfrog remains the sole AI reviewer and intended fixer. The coordinator is repository-owned orchestration only. It does not replace Pullfrog with another reviewer, provider, service, or fork.
 
+The separately activation-gated Sol-to-Astra review fallback and its composite `pullfrog-review-gate` are audited in [`pullfrog-review-model-fallback.md`](pullfrog-review-model-fallback.md). A fallback verdict is review evidence only; it never authorizes remediation, publication, approval, or merge.
+
 ## Current dry-run boundary
 
 The current implementation is deliberately non-mutating:
@@ -147,11 +149,16 @@ python3 -m unittest scripts/github/tests/test_pullfrog_cloud_remediation.py -v
 python3 -m unittest scripts/github/tests/test_pullfrog_dev_auto_merge.py -v
 python3 -m unittest scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py -v
 python3 -m unittest scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py -v
+python3 -I -m unittest discover \
+  -s scripts/github/tests \
+  -p 'test_pullfrog_review_fallback*.py' \
+  -v
 python3 -m py_compile \
   scripts/github/pullfrog_cloud_coordinator.py \
   scripts/github/pullfrog_cloud_remediation.py \
   scripts/github/pullfrog_dev_auto_merge.py \
   scripts/github/pullfrog_cycle_contract.py \
-  scripts/github/pullfrog_destination_guard.py
+  scripts/github/pullfrog_destination_guard.py \
+  scripts/github/pullfrog_review_fallback.py
 scripts/github/validate_pullfrog_workflow.sh
 ```

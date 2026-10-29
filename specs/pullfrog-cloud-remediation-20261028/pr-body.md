@@ -1,6 +1,8 @@
 ## Summary
 
 - add the guarded unattended Pullfrog review → remediation → exact-head re-review workflow
+- add an activation-gated Pullfrog Sol-to-Astra review fallback for only the exact recorded cybersecurity-policy refusal, with one attempt per unchanged head
+- add the exact-head `pullfrog-review-gate` composite while keeping publication, approval, merge, settings, and required-check changes separately gated
 - invoke Pullfrog `v0.1.102` through its native `fix_review` contract while keeping provider push disabled
 - persist single-record identity-bound claim, candidate, and terminal artifacts, with the sealed dispatch kept separate, at most three cycles, and three per-head attempts
 - rebuild untrusted provider patches in a fresh read-only validation job, then publish only the canonical sealed patch through a separate trusted exact-head fast-forward job
@@ -17,6 +19,8 @@
 - `.github/workflows/pr-automation-dogfood-reusable.yml`
 - `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml`
 - `.github/workflows/pullfrog-cloud-remediation-loop.yml`
+- `.github/workflows/pullfrog-review-fallback.yml`
+- `.github/workflows/pullfrog.yml`
 - `.github/workflows/speculoos.yml`
 - `.speculoos/actors.json`
 - `.speculoos/goal.md`
@@ -33,6 +37,7 @@
 - `docs/pullfrog-cloud-coordinator.md`
 - `docs/pullfrog-cycle-contract.md`
 - `docs/pullfrog-destination-guard.md`
+- `docs/pullfrog-review-model-fallback.md`
 - `docs/pullfrog-review-only-pilot.md`
 - `docs/workflow-asset-library-layout.md`
 - `scripts/github/pullfrog_cloud_coordinator.py`
@@ -40,6 +45,7 @@
 - `scripts/github/pullfrog_cycle_contract.py`
 - `scripts/github/pullfrog_destination_guard.py`
 - `scripts/github/pullfrog_dev_auto_merge.py`
+- `scripts/github/pullfrog_review_fallback.py`
 - `scripts/github/speculoos_pr_contract.py`
 - `scripts/github/tests/test_pullfrog_cloud_coordinator.py`
 - `scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py`
@@ -48,6 +54,8 @@
 - `scripts/github/tests/test_pullfrog_cycle_contract.py`
 - `scripts/github/tests/test_pullfrog_destination_guard.py`
 - `scripts/github/tests/test_pullfrog_dev_auto_merge.py`
+- `scripts/github/tests/test_pullfrog_review_fallback.py`
+- `scripts/github/tests/test_pullfrog_review_fallback_workflow_policy.py`
 - `scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py`
 - `scripts/github/tests/test_pullfrog_workflow_policy.py`
 - `scripts/github/tests/test_speculoos_pr_contract.py`
@@ -65,10 +73,12 @@
 - `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml`
 - `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml`
 - `templates/starter-workflows/pullfrog-cloud-remediation-loop.yml`
+- `templates/starter-workflows/pullfrog-review-fallback.yml`
+- `templates/starter-workflows/pullfrog.yml`
 - `templates/starter-workflows/speculoos.yml`
 ## Documentation Impact
 
-The operator-facing workflow and safety contract were updated in `README.md`, `docs/github-actions-template-catalog.md`, `docs/pr-automation-dogfood.md`, `docs/pullfrog-cloud-coordinator.md`, `docs/pullfrog-cycle-contract.md`, `docs/pullfrog-destination-guard.md`, `docs/pullfrog-review-only-pilot.md`, and `docs/workflow-asset-library-layout.md`. These files document the hosted Speculoos check, exact-head controller, repository-owned non-stable merge actor, stable promotion boundary, and credential split.
+The operator-facing workflow and safety contract were updated in `README.md`, `docs/github-actions-template-catalog.md`, `docs/pr-automation-dogfood.md`, `docs/pullfrog-cloud-coordinator.md`, `docs/pullfrog-cycle-contract.md`, `docs/pullfrog-destination-guard.md`, `docs/pullfrog-review-model-fallback.md`, `docs/pullfrog-review-only-pilot.md`, and `docs/workflow-asset-library-layout.md`. These files document the hosted Speculoos check, exact-head controller, repository-owned non-stable merge actor, stable promotion boundary, credential split, and activation-gated review-model fallback.
 
 ## Validation
 
@@ -77,9 +87,14 @@ The operator-facing workflow and safety contract were updated in `README.md`, `d
 - full repository unit-test discovery
 - Python compile, JSON parsing, actionlint-backed workflow YAML validation, canonical/materialized byte identity, and `git diff --check`
 - public-safety/private-data scan
+- exact-signature, extra-failed-step, bounded-result, comment-identity, one-attempt, recursion, and identity-drift fallback regression tests
 - Speculoos `validate` and `publish-check` when the local binary is available
 
 ## Security Contract
+
+- The review fallback matches only the two literal apostrophe variants of the recorded OpenAI cybersecurity refusal, requires exactly one failed review step and one matching failure annotation, rejects whitespace or wording variation, and permits one Astra attempt for the unchanged exact PR/head/base identity.
+- The provider job receives OIDC plus read-only repository/PR access but no check-write, content-write, publication, approval, dispatch, or merge credential. A fresh trusted finalizer validates the schema, exact-head Pullfrog review, Astra footer, finding count, comment actor, and comment head before updating the composite gate.
+- Astra and Sol are both OpenAI models. A second refusal or any malformed, stale, duplicate, recursive, forked, or ordinary-failure path stops without a third model.
 
 - The hosted Speculoos check executes only repository-reviewed source, fetches no private cross-repository package, receives no additional credential, runs candidate-facing Python entrypoints in isolated mode, and validates exact head/base identity, the complete publication packet inventory including deletions, workflow materialization, merge actor policy, whitespace, and red-list token patterns.
 - The destination guard blocks provider remediation from modifying the repository-owned controller, destination, remediation, auto-merge, Speculoos contract, shell validator, or executable workflow-policy test authority; candidate sealing and publication both re-run this policy before any push.
@@ -99,4 +114,4 @@ The operator-facing workflow and safety contract were updated in `README.md`, `d
 
 ## Publication Boundary
 
-This commit is a locally validated source implementation. Publishing the exact commit, activating the workflow on a serving ref, and running the first hosted remediation write pilot each require separate explicit authorization. The repository-owned exact-head gate is authorized to auto-merge eligible PRs into any valid base except `main` and `master`; merges to those stable bases remain human-authorized.
+This commit is a locally validated source implementation. Publishing the exact commit, placing the fallback controller on the serving default branch, activating the fallback variable, running either hosted pilot, integrating composite-gate consumers, and changing required checks each require separate explicit authorization. The repository-owned exact-head gate is authorized to auto-merge eligible PRs into any valid base except `main` and `master`; merges to those stable bases remain human-authorized.

@@ -173,6 +173,19 @@ class PullfrogDestinationGuardTests(unittest.TestCase):
         self.assertIn("destination_sha_mismatch", receipt["blockers"])
 
     def test_governance_workflow_and_validation_authority_paths_are_forbidden(self):
+        self.assertTrue(
+            {
+                "scripts/github/pullfrog_review_fallback.py",
+                "scripts/github/tests/test_pullfrog_review_fallback.py",
+                "scripts/github/tests/test_pullfrog_review_fallback_workflow_policy.py",
+            }.issubset(MODULE.PROTECTED_AUTOMATION_AUTHORITY_PATHS)
+        )
+        self.assertTrue(
+            any(
+                ".github/workflows/pullfrog-review-fallback.yml".startswith(prefix)
+                for prefix in MODULE.FORBIDDEN_PATH_PREFIXES
+            )
+        )
         for path in [
             ".github/workflows/pullfrog.yml",
             ".github/actions/unsafe/action.yml",

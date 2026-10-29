@@ -29,12 +29,24 @@ tar -xzf "$tmp_dir/$archive_name" -C "$tmp_dir" actionlint
   "$repo_root/.github/workflows/pullfrog.yml" \
   "$repo_root/templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml" \
   "$repo_root/.github/workflows/pullfrog-cloud-coordinator-dry-run.yml" \
+  "$repo_root/templates/starter-workflows/pullfrog-review-fallback.yml" \
+  "$repo_root/.github/workflows/pullfrog-review-fallback.yml" \
   "$repo_root/templates/starter-workflows/pullfrog-cloud-remediation-loop.yml" \
   "$repo_root/.github/workflows/pullfrog-cloud-remediation-loop.yml" \
   "$repo_root/templates/starter-workflows/speculoos.yml" \
   "$repo_root/.github/workflows/speculoos.yml"
 
-python3 -I -m unittest discover \
-  -s "$repo_root/scripts/github/tests" \
-  -p 'test_pullfrog_*workflow_policy.py' \
-  -v
+policy_tests=(
+  "$repo_root/scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py"
+  "$repo_root/scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py"
+  "$repo_root/scripts/github/tests/test_pullfrog_review_fallback_workflow_policy.py"
+  "$repo_root/scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py"
+  "$repo_root/scripts/github/tests/test_pullfrog_workflow_policy.py"
+)
+
+# Execute the protected test files directly in isolated mode. unittest discovery
+# prepends its candidate-controlled start directory to sys.path, which would let
+# an adjacent namesake such as json.py replace a standard-library import.
+for policy_test in "${policy_tests[@]}"; do
+  python3 -I "$policy_test" -v
+done

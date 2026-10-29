@@ -9,7 +9,8 @@ repository:
 status:
   phase: implementation
   blocker_summary:
-    - PR #95 is open at hosted head 80c7b328d6ce0ddad26df2db2358a7cda53b79ba with two exact-head Pullfrog P2 findings. Their byte-preserving receive-pack discovery and coordinator-to-remediation destination-policy repairs are validated locally but not yet published or re-reviewed.
+    - PR #95 remains open and fail-closed at hosted head 56d4dde95e457c51cbcab3f9efee7f105f905552 against base dev at 75418a1557b501b82c1ec0f7ee901a8dccaaacb7. Pullfrog check 122715968993 ended with the exact OpenAI cybersecurity-policy refusal, review 5679976549 has no complete verdict body, and inline finding 4398558244 remains actionable.
+    - A bounded Sol-to-Astra Pullfrog review fallback and composite pullfrog-review-gate are prepared locally but not published or activated. The exact-refusal policy, one-attempt limit, credential split, hosted pilot, consumer integration, and required-check migration remain separate gates.
     - Serving-ref activation, publisher-token provisioning, independent hosted Speculoos evidence, and the first hosted write pilot remain separately gated.
     - Pullfrog provider push, approval, native repository-wide auto-merge, CI autofix, release, deployment, branch deletion, credentials, billing, and hosted settings remain disabled or separately gated. A repository-owned exact-head gate may auto-merge eligible feature PRs into any valid base except `main` or `master`.
 publication_policy:
@@ -38,6 +39,7 @@ review_policy:
       shell: restricted
       approval: disabled
       remediation: native_fix_review_local_candidate_only
+      review_model_fallback: sol_to_astra_source_prepared_not_published_or_activated
       ci_autofix: disabled
       auto_merge: pullfrog-native-disabled; repository-owned-non-main-master
   speculoos_evidence:
@@ -53,7 +55,7 @@ review_policy:
     policy: required
     primary:
       - pullfrog_review
-    fallback_summary: No self-managed, Mergeguez, or CodeRabbit review may replace an exact-head Pullfrog review.
+    fallback_summary: Only the activation-gated Pullfrog Astra run may replace the exact recorded Sol cybersecurity-policy refusal; self-managed, Mergeguez, and CodeRabbit review remain ineligible.
 actor_policy:
   commit_actor: human_approved_agent_assisted
   push_actor: franck_user_pr_author
@@ -71,13 +73,13 @@ surfaces:
     authority: canonical
   github_pull_request:
     enabled: true
-    status: open-pullfrog-findings-repaired-locally
+    status: open-primary-refusal-fallback-prepared-locally
     number: 95
     base_branch: dev
     default_branch: main
     head_branch: feat/pullfrog-write-capable-loop
-    head_sha: 80c7b328d6ce0ddad26df2db2358a7cda53b79ba
-    head_sha_source: Live GitHub readback at Pullfrog review 5678460231; the local repair is not yet published, so re-read GitHub after guarded publication
+    head_sha: 56d4dde95e457c51cbcab3f9efee7f105f905552
+    head_sha_source: Exact hosted PR #95 identity used for local fallback audit; re-read GitHub before publication, pilot, required-check changes, or merge
     merge_commit: null
 gates:
   before_publish:
@@ -91,5 +93,8 @@ gates:
     - exact-head-pullfrog-review-requested
     - exact-head-pullfrog-ci-speculoos-evidence
     - hosted-write-pilot-separate-approval
+    - hosted-review-fallback-pilot-separate-approval
+    - composite-review-gate-consumers-validated
+    - required-check-migration-separate-approval
 current_task: pullfrog-cloud-remediation-20261028
 current_task_metadata: .speculoos/tasks/pullfrog-cloud-remediation-20261028.yaml
