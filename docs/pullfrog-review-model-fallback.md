@@ -183,8 +183,17 @@ evidence profile, and evidence digest. The check is:
   cannot match current canonical findings evidence or authorize remediation.
 
 While Astra activation is disabled, a recognized refusal publishes
-`action_required` and cannot invoke the fallback provider. Complete primary Sol
-reviews are still evaluated and can publish a success gate.
+`action_required` and cannot invoke the fallback provider. That disabled
+evaluation does not consume the one provider attempt; any non-`action_required`
+gate for the same exact identity still blocks a duplicate attempt. Complete
+primary Sol reviews are still evaluated and can publish a success gate.
+
+The evaluator runs after completion of either native `pullfrog` check. When the
+`pullfrog-approval` companion completes, the controller resolves the primary
+`pullfrog` check from the same exact head and check suite, then reconstructs the
+contract so an earlier missing-approval failure can converge. Structured result
+finding counts are compared with the canonical contract count, including one
+summary finding when a complete non-clean review has no inline comments.
 
 Branch protection should eventually require `pullfrog-review-gate`, not the raw
 `pullfrog` run-status check: the original Sol check remains failed after an

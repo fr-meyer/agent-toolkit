@@ -65,6 +65,7 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("vars.PULLFROG_REVIEW_FALLBACK_ENABLED == 'true'", fallback)
         self.assertIn("github.event.check_run.app.slug == 'pullfrog'", self.template)
         self.assertIn("github.event.check_run.name == 'pullfrog'", self.template)
+        self.assertIn("github.event.check_run.name == 'pullfrog-approval'", self.template)
         self.assertNotIn("pull_request_target", trigger)
         self.assertNotRegex(trigger, r"(?m)^  push:")
 

@@ -342,6 +342,65 @@ class PullfrogReviewFallbackDecisionTests(unittest.TestCase):
         self.assertEqual(receipt["status"], "stopped")
         self.assertIn("fallback_already_attempted_for_head", receipt["blockers"])
 
+    def test_disabled_gate_does_not_consume_later_authorized_fallback(self):
+        fixture = snapshot()
+        initial = MODULE.evaluate_snapshot(fixture)
+        self.assertEqual(initial["status"], "fallback_ready")
+
+        client = FakeClient()
+        publication = MODULE.publish_gate(
+            client,
+            initial,
+            "https://example.test/run",
+            False,
+            None,
+        )
+        self.assertEqual(publication["conclusion"], "action_required")
+        _, payload = client.posts[-1]
+        fixture["check_runs"].append(
+            {
+                **payload,
+                "id": publication["check_run_id"],
+                "app": {"slug": MODULE.GATE_APP},
+                "check_suite": {"id": 900},
+            }
+        )
+
+        retry = MODULE.evaluate_snapshot(fixture)
+        self.assertEqual(retry["status"], "fallback_ready")
+        self.assertTrue(retry["authorized_fallback"])
+        self.assertNotIn("fallback_already_attempted_for_head", retry["blockers"])
+
+    def test_approval_completion_resolves_primary_and_repairs_native_gate(self):
+        fixture = snapshot(conclusion="success")
+        fixture["primary_jobs"] = []
+        fixture["primary_annotations"] = []
+        fixture["reviews"] = [review(body=complete_body())]
+        fixture["review_comments"] = []
+        fixture["check_runs"] = [evidence_check("pullfrog", "success", 800)]
+        before = MODULE.evaluate_snapshot(fixture)
+        self.assertEqual(before["status"], "stopped")
+        self.assertIn("pullfrog_approval_check_missing", before["blockers"])
+
+        approval = evidence_check("pullfrog-approval", "success", 801)
+        primary = check_run("success")
+        client = mock.Mock()
+        client.get.return_value = {
+            "total_count": 2,
+            "check_runs": [primary, approval],
+        }
+        resolved = MODULE._resolve_primary_check_for_event(
+            client,
+            f"/repos/{REPOSITORY}",
+            approval,
+        )
+        self.assertEqual(resolved["id"], primary["id"])
+
+        fixture["check_runs"].append(approval)
+        after = MODULE.evaluate_snapshot(fixture)
+        self.assertEqual(after["status"], "primary_valid")
+        self.assertEqual(after["blockers"], [])
+
     def test_head_base_fork_and_source_workflow_drift_fail_closed(self):
         variants = {
             "head": (lambda item: item["primary_check"].update(head_sha="3" * 40), "primary_check_head_mismatch"),
@@ -532,6 +591,21 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
         self.assertEqual(receipt["status"], "invalid")
         self.assertIn("fallback_finding_count_mismatch", receipt["blockers"])
 
+    def test_summary_only_fallback_finding_uses_canonical_count(self):
+        receipt = self.verify(
+            FakeClient(
+                body=complete_body(MODULE.FALLBACK_RESOLVED_MODEL, clean=False),
+                comments=[],
+            ),
+            "success",
+            self.result("findings", 1),
+        )
+        self.assertEqual(receipt["status"], "valid")
+        self.assertEqual(receipt["finding_count"], 1)
+        self.assertEqual(receipt["review_comment_count"], 0)
+        self.assertEqual(receipt["review_contract_status"], "findings")
+        self.assertEqual(receipt["blockers"], [])
+
     def test_clean_verdict_rejects_comments(self):
         comments = [
             {
@@ -543,7 +617,7 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
         ]
         receipt = self.verify(FakeClient(comments=comments), "success", self.result())
         self.assertEqual(receipt["status"], "invalid")
-        self.assertIn("fallback_finding_count_mismatch", receipt["blockers"])
+        self.assertIn("fallback_review_contract_mismatch", receipt["blockers"])
 
     def test_finding_comments_must_match_exact_head_and_actor(self):
         comments = [
@@ -899,6 +973,30 @@ class PullfrogExactHeadRereviewTests(unittest.TestCase):
                 "review-only:"
             )
         )
+
+    def test_summary_only_rereview_finding_uses_canonical_count(self):
+        result = self.result()
+        result["verdict"] = "findings"
+        result["finding_count"] = 1
+        receipt = MODULE.verify_exact_head_rereview_result(
+            FakeClient(
+                body=complete_body(MODULE.PRIMARY_RESOLVED_MODEL, clean=False),
+                comments=[],
+            ),
+            95,
+            HEAD_SHA,
+            BASE_SHA,
+            "success",
+            result,
+            self.token_lease(),
+            self.token_revocation(),
+            "success",
+        )
+        self.assertEqual(receipt["status"], "valid")
+        self.assertEqual(receipt["finding_count"], 1)
+        self.assertEqual(receipt["review_comment_count"], 0)
+        self.assertEqual(receipt["review_contract_status"], "findings")
+        self.assertEqual(receipt["blockers"], [])
 
     def test_empty_or_markerless_rereview_fails_closed(self):
         for body in ("", "> ✅ No new issues found.\n<sup>Using `gpt-6.1-sol`</sup>"):

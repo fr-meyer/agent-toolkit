@@ -44,7 +44,8 @@ jobs:
     if: >-
       (github.event_name == 'check_run' &&
        github.event.check_run.app.slug == 'pullfrog' &&
-       github.event.check_run.name == 'pullfrog') ||
+       (github.event.check_run.name == 'pullfrog' ||
+        github.event.check_run.name == 'pullfrog-approval')) ||
       (github.event_name == 'workflow_dispatch' && inputs.authorize_fallback)
     runs-on: ubuntu-latest
     timeout-minutes: 10

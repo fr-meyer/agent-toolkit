@@ -353,15 +353,15 @@ def _selected_gate(check_runs: list[Any], external_id: str, head_sha: str) -> di
     return max(eligible, key=lambda item: _integer(item.get("id")) or 0) if eligible else {}
 
 
-def _selected_identity_gate(
+def _identity_gates(
     check_runs: list[Any],
     identity: dict[str, Any],
-) -> dict[str, Any]:
+) -> list[dict[str, Any]]:
     try:
         prefix = review_contract.gate_identity_prefix(identity)
     except review_contract.ReviewContractError:
-        return {}
-    eligible = [
+        return []
+    return [
         item
         for item in (_mapping(raw) for raw in check_runs)
         if _text(item.get("name")) == GATE_CHECK_NAME
@@ -369,6 +369,20 @@ def _selected_identity_gate(
         and _text(item.get("head_sha")) == identity.get("head_sha")
         and _text(item.get("external_id")).startswith(prefix)
         and (_integer(item.get("id")) or 0) > 0
+    ]
+
+
+def _selected_fallback_attempt_gate(
+    check_runs: list[Any],
+    identity: dict[str, Any],
+) -> dict[str, Any]:
+    eligible = [
+        item
+        for item in _identity_gates(check_runs, identity)
+        if not (
+            _text(item.get("status")) == "completed"
+            and _text(item.get("conclusion")) == "action_required"
+        )
     ]
     return max(eligible, key=lambda item: _integer(item.get("id")) or 0) if eligible else {}
 
@@ -491,7 +505,7 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         _text(contract_receipt.get("evidence_profile")),
         _text(contract_receipt.get("evidence_digest")),
     )
-    prior_gate = _selected_identity_gate(
+    prior_gate = _selected_fallback_attempt_gate(
         _list(snapshot.get("check_runs")),
         observed,
     )
@@ -652,6 +666,46 @@ class GitHubClient:
         raise FallbackError("github_api_page_limit")
 
 
+def _resolve_primary_check_for_event(
+    client: GitHubClient,
+    prefix: str,
+    event_check: dict[str, Any],
+) -> dict[str, Any]:
+    if _text(event_check.get("name")) == PRIMARY_CHECK_NAME:
+        return event_check
+    if (
+        _text(event_check.get("name")) != review_contract.PULLFROG_APPROVAL_CHECK
+        or _text(_mapping(event_check.get("app")).get("slug")) != PULLFROG_APP
+        or _text(event_check.get("status")) != "completed"
+    ):
+        return event_check
+
+    head_sha = _text(event_check.get("head_sha"))
+    check_suite_id = _integer(_mapping(event_check.get("check_suite")).get("id"))
+    if not SHA_RE.fullmatch(head_sha) or not check_suite_id:
+        raise FallbackError("invalid_approval_check_identity")
+    checks_payload = _mapping(
+        client.get(f"{prefix}/commits/{head_sha}/check-runs?per_page=100")
+    )
+    check_runs = _list(checks_payload.get("check_runs"))
+    if (_integer(checks_payload.get("total_count")) or len(check_runs)) != len(
+        check_runs
+    ):
+        raise FallbackError("check_run_collection_truncated")
+    candidates = [
+        item
+        for item in (_mapping(raw) for raw in check_runs)
+        if _text(item.get("name")) == PRIMARY_CHECK_NAME
+        and _text(_mapping(item.get("app")).get("slug")) == PULLFROG_APP
+        and _text(item.get("head_sha")) == head_sha
+        and _integer(_mapping(item.get("check_suite")).get("id")) == check_suite_id
+        and (_integer(item.get("id")) or 0) > 0
+    ]
+    if len(candidates) != 1:
+        raise FallbackError("approval_primary_check_cardinality")
+    return candidates[0]
+
+
 def collect_snapshot(
     client: GitHubClient,
     check_run_id: int,
@@ -661,7 +715,8 @@ def collect_snapshot(
 ) -> dict[str, Any]:
     prefix = f"/repos/{client.repository_slug}"
     repository = _mapping(client.get(prefix))
-    check_run = _mapping(client.get(f"{prefix}/check-runs/{check_run_id}"))
+    event_check = _mapping(client.get(f"{prefix}/check-runs/{check_run_id}"))
+    check_run = _resolve_primary_check_for_event(client, prefix, event_check)
     event_pr = _event_pr(check_run)
     pr_number = _integer(event_pr.get("number"))
     if not pr_number:
@@ -708,6 +763,13 @@ def collect_snapshot(
     check_runs = _list(check_payload.get("check_runs"))
     if (_integer(check_payload.get("total_count")) or len(check_runs)) != len(check_runs):
         raise FallbackError("check_run_collection_truncated")
+    if _text(event_check.get("name")) == review_contract.PULLFROG_APPROVAL_CHECK:
+        event_check_id = _integer(event_check.get("id"))
+        check_runs = [
+            item
+            for item in check_runs
+            if _integer(_mapping(item).get("id")) != event_check_id
+        ] + [event_check]
     observed_after = _mapping(client.get(f"{prefix}/pulls/{pr_number}"))
     if _identity(client.repository_slug, observed_after) != expected_identity:
         raise FallbackError("pull_request_changed_during_collection")
@@ -874,8 +936,6 @@ def verify_fallback_result(
             blockers.append("fallback_review_model_unverified")
         if verdict == "clean" and "No new issues found" not in body:
             blockers.append("clean_fallback_verdict_unverified")
-        if len(comments) != finding_count:
-            blockers.append("fallback_finding_count_mismatch")
         if any(
             _text(item.get("commit_id")) != coordinator.get("head_sha")
             or _text(_mapping(item.get("user")).get("login")) != PULLFROG_LOGIN
@@ -911,7 +971,7 @@ def verify_fallback_result(
         if contract_receipt.get("status") not in expected_contract_statuses:
             blockers.append("fallback_review_contract_mismatch")
         if _integer(_mapping(contract_receipt.get("review")).get("finding_count")) != finding_count:
-            blockers.append("fallback_contract_finding_count_mismatch")
+            blockers.append("fallback_finding_count_mismatch")
 
     return {
         "schema": RESULT_RECEIPT_SCHEMA,
@@ -1071,8 +1131,6 @@ def verify_exact_head_rereview_result(
             blockers.append("rereview_model_unverified")
         if verdict == "clean" and "No new issues found" not in body:
             blockers.append("clean_rereview_verdict_unverified")
-        if len(comments) != finding_count:
-            blockers.append("rereview_finding_count_mismatch")
         if any(
             _text(item.get("commit_id")) != expected_head_sha
             or _text(_mapping(item.get("user")).get("login")) != PULLFROG_LOGIN
@@ -1121,7 +1179,7 @@ def verify_exact_head_rereview_result(
             _integer(_mapping(contract_receipt.get("review")).get("finding_count"))
             != finding_count
         ):
-            blockers.append("rereview_contract_finding_count_mismatch")
+            blockers.append("rereview_finding_count_mismatch")
 
     return {
         "schema": REREVIEW_RECEIPT_SCHEMA,
