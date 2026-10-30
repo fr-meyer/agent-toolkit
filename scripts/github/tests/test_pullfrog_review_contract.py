@@ -12,6 +12,8 @@ SPEC.loader.exec_module(MODULE)
 REPOSITORY = "fr-meyer/agent-toolkit"
 BASE_SHA = "1" * 40
 HEAD_SHA = "2" * 40
+POLICY = MODULE.trusted_author_policy.load_policy(REPOSITORY)
+POLICY_DIGEST = MODULE.trusted_author_policy.policy_digest(POLICY)
 MARKER_BODY = (
     "> ✅ No new issues found.\n"
     "<!-- PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ -->\n"
@@ -29,6 +31,11 @@ def identity():
         "head_sha": HEAD_SHA,
         "head_repository_slug": REPOSITORY,
         "base_repository_slug": REPOSITORY,
+        "author_login": "fr-meyer",
+        "author_account_id": 26621962,
+        "author_type": "User",
+        "trusted_author_policy_schema": POLICY["schema"],
+        "trusted_author_policy_digest": POLICY_DIGEST,
     }
 
 
@@ -239,10 +246,37 @@ class PullfrogReviewContractTests(unittest.TestCase):
         fixture["review_threads"] = [thread(resolved=False, author="human-reviewer")]
         self.assertEqual(MODULE.evaluate_contract(fixture)["status"], "clean")
 
+    def test_missing_complete_identity_fields_fail_closed(self):
+        for field in (
+            "base_repository_slug",
+            "author_login",
+            "author_account_id",
+            "author_type",
+            "trusted_author_policy_schema",
+            "trusted_author_policy_digest",
+        ):
+            with self.subTest(field=field):
+                fixture = snapshot()
+                fixture["expected_identity"].pop(field)
+                fixture["observed_identity"].pop(field)
+                receipt = MODULE.evaluate_contract(fixture)
+                self.assertEqual(receipt["status"], "incomplete")
+                self.assertIn("invalid_expected_review_identity", receipt["blockers"])
+                self.assertIn("invalid_observed_review_identity", receipt["blockers"])
+
     def test_identity_actor_check_app_suite_and_head_drift_fail_closed(self):
         mutations = []
         changed = snapshot()
         changed["observed_identity"]["base_sha"] = "3" * 40
+        mutations.append((changed, "review_identity_drift"))
+        changed = snapshot()
+        changed["observed_identity"]["author_login"] = "other-user"
+        mutations.append((changed, "review_identity_drift"))
+        changed = snapshot()
+        changed["observed_identity"]["author_account_id"] = 285669409
+        mutations.append((changed, "review_identity_drift"))
+        changed = snapshot()
+        changed["observed_identity"]["trusted_author_policy_digest"] = "9" * 64
         mutations.append((changed, "review_identity_drift"))
         changed = snapshot()
         changed["reviews"][0]["user"]["login"] = "attacker"
@@ -290,6 +324,17 @@ class PullfrogReviewContractTests(unittest.TestCase):
         selected = MODULE.select_gate(runs, drift, [contract])
         self.assertEqual(selected["status"], "missing")
         self.assertTrue(selected["external_id_mismatch"])
+        for field, value in (
+            ("author_account_id", 285669409),
+            ("author_login", "other-user"),
+            ("trusted_author_policy_digest", "9" * 64),
+        ):
+            with self.subTest(field=field):
+                drift = copy.deepcopy(expected)
+                drift[field] = value
+                selected = MODULE.select_gate(runs, drift, [contract])
+                self.assertEqual(selected["status"], "missing")
+                self.assertTrue(selected["external_id_mismatch"])
 
     def test_gate_is_invalidated_by_newer_same_head_check_evidence(self):
         contract = MODULE.evaluate_contract(snapshot())
