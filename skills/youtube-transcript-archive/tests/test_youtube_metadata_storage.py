@@ -213,6 +213,28 @@ class MetadataStorageTests(unittest.TestCase):
         with self.assertRaises(storage.MetadataIntegrityError):
             storage.write_immutable_generation(video, filename, compressed + b"x")
 
+    def test_plaintext_writer_preserves_or_replaces_exact_bytes_explicitly(self):
+        temp, video, _manifest, original = self.make_video()
+        self.addCleanup(temp.cleanup)
+        replacement = b'{"id":"abcdefghijk","title":"replacement"}\n'
+        self.assertEqual(
+            original,
+            storage.write_plaintext_metadata(video, replacement, replace=False),
+        )
+        self.assertEqual(original, (video / "metadata.json").read_bytes())
+        self.assertEqual(
+            replacement,
+            storage.write_plaintext_metadata(video, replacement, replace=True),
+        )
+        self.assertEqual(replacement, (video / "metadata.json").read_bytes())
+
+    def test_prepare_dual_generation_fully_validates_before_return(self):
+        temp, video, _manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        descriptor = storage.prepare_dual_generation(video, raw)
+        self.assertEqual("dual", descriptor["state"])
+        self.assertEqual(raw, storage.read_metadata_bytes(video, {"metadata_storage": descriptor}))
+
     def test_atomic_write_refuses_target_that_appears_mid_write(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
@@ -229,6 +251,25 @@ class MetadataStorageTests(unittest.TestCase):
             storage.durable_atomic_write(target, b"ours")
         self.assertEqual(b"concurrent", target.read_bytes())
         self.assertEqual([], list(Path(temp.name).glob(".target.bin.tmp-*")))
+
+    def test_manifest_file_validation_rejects_backslash_and_symlink_parent(self):
+        temp, video, manifest, _raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        (video / "report.md").write_text("ok\n", encoding="utf-8")
+        listed = dict(manifest)
+        listed["files"] = ["manifest.json", "metadata.json", "report.md"]
+        (video / "manifest.json").write_text("{}\n", encoding="utf-8")
+        self.assertEqual(listed["files"], storage.validate_manifest_files(video, listed))
+        listed["files"] = ["report\\evil.md"]
+        with self.assertRaises(storage.MetadataPathError):
+            storage.validate_manifest_files(video, listed)
+        outside = Path(temp.name) / "outside"
+        outside.mkdir()
+        (outside / "file.txt").write_text("outside\n", encoding="utf-8")
+        (video / "linked").symlink_to(outside, target_is_directory=True)
+        listed["files"] = ["linked/file.txt"]
+        with self.assertRaises(storage.MetadataPathError):
+            storage.validate_manifest_files(video, listed)
 
     def test_manifest_shape_must_be_non_empty_string_list(self):
         descriptor = storage.descriptor_for_plaintext(b"{}\n")

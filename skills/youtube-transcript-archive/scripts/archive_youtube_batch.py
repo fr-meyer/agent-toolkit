@@ -13,7 +13,12 @@ from pathlib import Path
 from typing import Any
 
 
-SCRIPT = Path(__file__).with_name("archive_youtube_transcript.py")
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+import youtube_metadata_storage as metadata_storage
+
+SCRIPT = SCRIPT_DIR / "archive_youtube_transcript.py"
 MEDIA_EXTENSIONS = {".mp4", ".m4a", ".webm", ".mp3", ".wav", ".mov", ".mkv", ".opus"}
 KST = dt.timezone(dt.timedelta(hours=9), "KST")
 SUMMARY_PLACEHOLDERS = (
@@ -54,6 +59,8 @@ def archive_command(args: argparse.Namespace, archive_root: Path, url: str) -> l
         args.yt_dlp_bin,
         "--max-caption-candidates",
         str(args.max_caption_candidates),
+        "--metadata-storage",
+        args.metadata_storage,
     ]
     if args.refresh:
         cmd.append("--refresh")
@@ -236,9 +243,11 @@ def validate_entry(archive_root: Path, entry: dict[str, Any], *, require_summari
     folder = archive_root / str(video_id)
     manifest = entry.get("manifest") or {}
     errors: list[str] = []
-    for rel in manifest.get("files") or []:
-        if not (folder / rel).exists():
-            errors.append(f"missing {rel}")
+    try:
+        metadata_storage.validate_manifest_files(folder, manifest)
+        metadata_storage.read_metadata_json(folder, manifest)
+    except metadata_storage.MetadataStorageError as exc:
+        errors.append(f"metadata integrity: {exc}")
     for path in folder.rglob("*"):
         if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS:
             errors.append(f"media file present: {path.relative_to(folder)}")
@@ -448,6 +457,12 @@ def main() -> int:
     parser.add_argument("--lang", default="best", help="Caption language preference passed to single-video helper")
     parser.add_argument("--refresh", action="store_true", help="Refresh existing archives in place")
     parser.add_argument("--yt-dlp-bin", default=os.environ.get("YT_DLP", "yt-dlp"), help="yt-dlp binary path")
+    parser.add_argument(
+        "--metadata-storage",
+        choices=["legacy", "dual"],
+        default="legacy",
+        help="Metadata storage mode passed to the single-video helper; default keeps legacy plaintext output.",
+    )
     parser.add_argument("--no-caption-fallback", action="store_true", help="Disable alternate caption retry in best mode")
     parser.add_argument(
         "--max-caption-candidates",

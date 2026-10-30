@@ -17,9 +17,28 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Iterable
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+import youtube_metadata_storage as metadata_storage
+
 TIMESTAMP_RE = re.compile(r"^(?P<start>\d{2}:\d{2}:\d{2}\.\d{3})\s+-->\s+(?P<end>\d{2}:\d{2}:\d{2}\.\d{3})")
 TAG_RE = re.compile(r"<[^>]+>")
 WS_RE = re.compile(r"\s+")
+VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+LANG_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def validate_video_id(video_id: Any) -> str:
+    if not isinstance(video_id, str) or not VIDEO_ID_RE.fullmatch(video_id):
+        raise metadata_storage.MetadataPathError(f"unsafe YouTube video ID: {video_id!r}")
+    return video_id
+
+
+def validate_language_token(lang: Any) -> str:
+    if not isinstance(lang, str) or not LANG_TOKEN_RE.fullmatch(lang):
+        raise metadata_storage.MetadataPathError(f"unsafe caption language key: {lang!r}")
+    return lang
 
 
 def run(cmd: list[str], *, capture: bool = True, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -34,8 +53,46 @@ def run(cmd: list[str], *, capture: bool = True, cwd: Path | None = None) -> sub
 
 
 def safe_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    metadata_storage.durable_atomic_write(path, text.encode("utf-8"))
+
+
+def ensure_real_subdirectories(root: Path, *parts: str) -> Path:
+    """Create trusted descendants without accepting a symlinked ancestor."""
+    unresolved_root = root.absolute()
+    try:
+        resolved_root = root.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise metadata_storage.MetadataPathError("archive root directory is missing") from exc
+    if unresolved_root != resolved_root or not resolved_root.is_dir():
+        raise metadata_storage.MetadataPathError("archive root is not a stable real directory")
+    current = resolved_root
+    for part in parts:
+        if (
+            not isinstance(part, str)
+            or part in {"", ".", ".."}
+            or "/" in part
+            or "\\" in part
+            or "\x00" in part
+        ):
+            raise metadata_storage.MetadataPathError(f"unsafe archive directory component: {part!r}")
+        candidate = current / part
+        try:
+            candidate.mkdir(mode=0o700)
+        except FileExistsError:
+            pass
+        try:
+            value = candidate.lstat()
+            resolved = candidate.resolve(strict=True)
+        except (FileNotFoundError, OSError) as exc:
+            raise metadata_storage.MetadataPathError(
+                f"archive directory component is unavailable: {part!r}"
+            ) from exc
+        if not candidate.is_dir() or candidate.is_symlink() or candidate.absolute() != resolved:
+            raise metadata_storage.MetadataPathError(
+                f"archive directory component is not a stable real directory: {part!r}"
+            )
+        current = candidate
+    return current
 
 
 def load_json_from_yt_dlp(yt_dlp: str, url: str) -> dict[str, Any]:
@@ -167,6 +224,8 @@ def caption_error_summary(exc: subprocess.CalledProcessError | RuntimeError) -> 
 
 
 def download_caption_vtt(yt_dlp: str, url: str, video_id: str, lang: str, source: str, video_dir: Path) -> Path:
+    video_id = validate_video_id(video_id)
+    lang = validate_language_token(lang)
     with tempfile.TemporaryDirectory(prefix="youtube-transcript-") as tmp_s:
         tmp = Path(tmp_s)
         cmd = [
@@ -185,9 +244,13 @@ def download_caption_vtt(yt_dlp: str, url: str, video_id: str, lang: str, source
         candidates = sorted(tmp.glob(f"{video_id}*.vtt")) or sorted(tmp.glob(f"{video_id}*"))
         if not candidates:
             raise RuntimeError(f"yt-dlp did not produce a subtitle file for language {lang}")
-        raw_vtt = video_dir / "raw" / lang / f"{video_id}.{lang}.vtt"
-        raw_vtt.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(candidates[0], raw_vtt)
+        raw_parent = ensure_real_subdirectories(video_dir, "raw", lang)
+        raw_vtt = raw_parent / f"{video_id}.{lang}.vtt"
+        caption_bytes = metadata_storage.read_regular_bytes(
+            candidates[0],
+            max_bytes=64 * 1024 * 1024,
+        )
+        metadata_storage.durable_atomic_write(raw_vtt, caption_bytes)
         return raw_vtt
 
 
@@ -221,6 +284,7 @@ def clean_text(text: str) -> str:
 
 
 def parse_vtt(vtt_path: Path) -> tuple[list[str], list[tuple[str, str]]]:
+    raw_vtt = metadata_storage.read_regular_bytes(vtt_path, max_bytes=64 * 1024 * 1024)
     blocks: list[tuple[str, list[str]]] = []
     current_start: str | None = None
     current_lines: list[str] = []
@@ -234,7 +298,7 @@ def parse_vtt(vtt_path: Path) -> tuple[list[str], list[tuple[str, str]]]:
         current_start = None
         current_lines = []
 
-    for raw in vtt_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+    for raw in raw_vtt.decode("utf-8", errors="ignore").splitlines():
         line = raw.strip()
         if not line:
             flush()
@@ -309,30 +373,67 @@ def duration_text(seconds: Any) -> str:
     return f"{m}:{s:02d}"
 
 
+def commit_archive_manifests(
+    video_dir: Path,
+    language_manifest: Path,
+    manifest: dict[str, Any],
+    metadata_descriptor: dict[str, Any] | None,
+) -> None:
+    """Publish an identical language alias before the canonical completion marker."""
+    serialized = metadata_storage.manifest_bytes(manifest)
+    metadata_storage.durable_atomic_write(language_manifest, serialized)
+    if metadata_descriptor is not None:
+        metadata_storage.commit_manifest(video_dir, manifest)
+    else:
+        metadata_storage.durable_atomic_write(video_dir / "manifest.json", serialized)
+
+
 def manifest_path_for(video_dir: Path, lang: str | None) -> Path:
     if lang and lang != "best":
-        return video_dir / "manifests" / f"{lang}.json"
+        return video_dir / "manifests" / f"{validate_language_token(lang)}.json"
     return video_dir / "manifest.json"
 
 
-def resolve_existing_archive(video_dir: Path, requested_lang: str) -> dict[str, Any] | None:
+def resolve_existing_archive(
+    video_dir: Path,
+    requested_lang: str,
+    *,
+    metadata_storage_mode: str = "legacy",
+) -> dict[str, Any] | None:
     manifest_path = manifest_path_for(video_dir, requested_lang)
+    canonical_path = video_dir / "manifest.json"
     if not manifest_path.exists():
         return None
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        raw_manifest = metadata_storage.read_regular_bytes(manifest_path, max_bytes=4 * 1024 * 1024)
+        if manifest_path != canonical_path:
+            if not canonical_path.exists():
+                return None
+            canonical_raw = metadata_storage.read_regular_bytes(canonical_path, max_bytes=4 * 1024 * 1024)
+            if canonical_raw != raw_manifest:
+                return None
+            raw_manifest = canonical_raw
+        manifest = json.loads(raw_manifest.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(manifest, dict):
         return None
 
     existing_lang = manifest.get("language")
     if requested_lang != "best" and existing_lang != requested_lang:
         return None
+    if metadata_storage_mode == "dual":
+        descriptor = manifest.get("metadata_storage")
+        if not isinstance(descriptor, dict) or descriptor.get("state") != "dual":
+            return None
 
-    rel_files = manifest.get("files") or []
-    if not rel_files:
-        return None
-    missing = [rel for rel in rel_files if not (video_dir / rel).exists()]
-    if missing:
+    declared_storage = manifest.get("metadata_storage") is not None
+    try:
+        metadata_storage.validate_manifest_files(video_dir, manifest)
+        metadata_storage.read_metadata_json(video_dir, manifest)
+    except metadata_storage.MetadataStorageError:
+        if declared_storage:
+            raise
         return None
     return manifest
 
@@ -411,10 +512,71 @@ No transcript available.
 """
 
 
-def write_base_artifacts(video_dir: Path, info: dict[str, Any], subtitles_list: str) -> None:
-    video_dir.mkdir(parents=True, exist_ok=True)
-    safe_write(video_dir / "metadata.json", json.dumps(info, indent=2, ensure_ascii=False, sort_keys=True))
-    safe_write(video_dir / "subtitles-list.txt", subtitles_list)
+def write_base_artifacts(
+    video_dir: Path,
+    info: dict[str, Any],
+    subtitles_list: str,
+    *,
+    refresh: bool,
+    metadata_storage_mode: str,
+) -> dict[str, Any] | None:
+    video_dir = ensure_real_subdirectories(video_dir.parent, video_dir.name)
+    subtitles_path = video_dir / "subtitles-list.txt"
+    requested_raw = json.dumps(info, indent=2, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    existing_manifest: dict[str, Any] | None = None
+    canonical_manifest = video_dir / "manifest.json"
+    if canonical_manifest.exists() or canonical_manifest.is_symlink():
+        existing_manifest = metadata_storage.read_manifest(video_dir)
+    existing_storage = existing_manifest.get("metadata_storage") if existing_manifest else None
+    if existing_storage is not None:
+        # Switching either half of a dual pair before the other would leave a
+        # crash window where the old canonical manifest cannot validate. Keep
+        # exact bytes on same-content runs and refuse non-atomic changes.
+        if metadata_storage_mode != "dual":
+            raise metadata_storage.MetadataIntegrityError(
+                "refusing to downgrade an existing dual archive through the legacy writer"
+            )
+        existing_raw = metadata_storage.read_metadata_bytes(video_dir, existing_manifest)
+        if existing_raw != requested_raw:
+            raise metadata_storage.MetadataIntegrityError(
+                "refusing non-atomic dual refresh/reuse with changed metadata bytes"
+            )
+        raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
+    elif existing_manifest is not None and metadata_storage_mode == "dual":
+        # G2 can opt an unchanged legacy archive into dual storage, but changed
+        # legacy metadata needs the separate migration lane: replacing the
+        # plaintext before the manifest switch would violate manifest-last
+        # atomicity if the process stopped between those steps.
+        existing_raw = metadata_storage.read_metadata_bytes(video_dir, existing_manifest)
+        if existing_raw != requested_raw:
+            raise metadata_storage.MetadataIntegrityError(
+                "refusing non-atomic legacy-to-dual refresh with changed metadata bytes"
+            )
+        raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
+    else:
+        plaintext = video_dir / "metadata.json"
+        if plaintext.exists() or plaintext.is_symlink():
+            existing_raw = metadata_storage.read_regular_bytes(
+                plaintext,
+                max_bytes=metadata_storage.DEFAULT_MAX_RAW_BYTES,
+            )
+            metadata_storage.parse_metadata_json(existing_raw)
+            if existing_raw != requested_raw:
+                raise metadata_storage.MetadataIntegrityError(
+                    "refusing orphaned plaintext metadata mismatch without a canonical manifest"
+                )
+            raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
+        else:
+            raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=refresh)
+    if raw != requested_raw:
+        raise metadata_storage.MetadataIntegrityError(
+            "metadata bytes changed during non-replacing archive creation"
+        )
+    if refresh or not subtitles_path.exists():
+        safe_write(subtitles_path, subtitles_list)
+    if metadata_storage_mode == "legacy":
+        return None
+    return metadata_storage.prepare_dual_generation(video_dir, raw)
 
 
 def write_metadata_only_archive(
@@ -423,6 +585,7 @@ def write_metadata_only_archive(
     *,
     yt_dlp_version_text: str,
     duplicate_policy: str,
+    metadata_descriptor: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     video_id = info.get("id") or video_dir.name
     manifest = {
@@ -444,9 +607,13 @@ def write_metadata_only_archive(
         ],
         "notes": "metadata-only archive; no subtitles or automatic captions exposed by YouTube; video/audio media not downloaded",
     }
-    manifest_json = json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True)
+    if metadata_descriptor is not None:
+        manifest = metadata_storage.prepare_manifest_with_storage(manifest, metadata_descriptor)
     safe_write(video_dir / "report.md", metadata_only_report_markdown(info, manifest))
-    safe_write(video_dir / "manifest.json", manifest_json)
+    if metadata_descriptor is not None:
+        metadata_storage.commit_manifest(video_dir, manifest)
+    else:
+        safe_write(video_dir / "manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True))
     return manifest
 
 
@@ -474,6 +641,19 @@ def main() -> int:
         action="store_true",
         help="Create a metadata-only archive instead of failing when YouTube exposes no captions",
     )
+    parser.add_argument(
+        "--metadata-storage",
+        choices=["legacy", "dual"],
+        default="legacy",
+        help="Metadata storage mode. dual is explicit opt-in; default keeps legacy plaintext output.",
+    )
+    # The canonical queue owns the writer lock and projection refresh. Accept
+    # its explicit carrier context so this sibling script can be deployed as a
+    # drop-in helper without loading or mutating those coordinator resources.
+    parser.add_argument("--state-root", help="Coordinator-owned state root; accepted for queue compatibility")
+    parser.add_argument("--projection-root", help="Coordinator-owned projection root; accepted for queue compatibility")
+    parser.add_argument("--storage-module", help="Coordinator storage module path; accepted for queue compatibility")
+    parser.add_argument("--writer-lock-held", action="store_true", help="Asserted by the coordinator-held writer lock")
     args = parser.parse_args()
 
     yt_dlp = shutil.which(args.yt_dlp_bin) or args.yt_dlp_bin
@@ -487,10 +667,11 @@ def main() -> int:
     video_id = info.get("id")
     if not video_id:
         raise SystemExit("Could not resolve YouTube video ID")
+    video_id = validate_video_id(video_id)
 
     video_dir = archive_root / video_id
     if not args.refresh:
-        existing = resolve_existing_archive(video_dir, args.lang)
+        existing = resolve_existing_archive(video_dir, args.lang, metadata_storage_mode=args.metadata_storage)
         if existing:
             existing["status"] = "reused"
             existing["notes"] = "complete existing archive reused; use --refresh to reprocess"
@@ -498,13 +679,19 @@ def main() -> int:
             return 0
 
     subtitles_text: str | None = None
+    metadata_descriptor: dict[str, Any] | None = None
 
     def ensure_base_artifacts() -> None:
-        nonlocal subtitles_text
+        nonlocal subtitles_text, metadata_descriptor
         if subtitles_text is None:
             subtitles_text = list_subs(yt_dlp, args.url)
-        if args.refresh or not (video_dir / "metadata.json").exists() or not (video_dir / "subtitles-list.txt").exists():
-            write_base_artifacts(video_dir, info, subtitles_text)
+        metadata_descriptor = write_base_artifacts(
+            video_dir,
+            info,
+            subtitles_text,
+            refresh=args.refresh,
+            metadata_storage_mode=args.metadata_storage,
+        )
 
     try:
         choices = caption_candidates(info, args.lang)
@@ -516,6 +703,7 @@ def main() -> int:
                 info,
                 yt_dlp_version_text=yt_dlp_version(yt_dlp),
                 duplicate_policy="refresh" if args.refresh else "reuse-existing-complete-archive",
+                metadata_descriptor=metadata_descriptor,
             )
             print(json.dumps(manifest, indent=2, ensure_ascii=False))
             return 0
@@ -526,7 +714,11 @@ def main() -> int:
 
     if args.lang == "best" and not args.refresh:
         for candidate_lang, _candidate_source, _entries in choices:
-            existing = resolve_existing_archive(video_dir, candidate_lang)
+            existing = resolve_existing_archive(
+                video_dir,
+                candidate_lang,
+                metadata_storage_mode=args.metadata_storage,
+            )
             if existing:
                 existing["status"] = "reused"
                 existing["notes"] = "complete existing archive reused after resolving best language; use --refresh to reprocess"
@@ -548,12 +740,9 @@ def main() -> int:
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
 
-    transcript_dir = video_dir / "transcript" / lang
-    reports_dir = video_dir / "reports"
-    manifests_dir = video_dir / "manifests"
-    transcript_dir.mkdir(parents=True, exist_ok=True)
-    reports_dir.mkdir(exist_ok=True)
-    manifests_dir.mkdir(exist_ok=True)
+    transcript_dir = ensure_real_subdirectories(video_dir, "transcript", lang)
+    reports_dir = ensure_real_subdirectories(video_dir, "reports")
+    manifests_dir = ensure_real_subdirectories(video_dir, "manifests")
 
     clean_lines, timestamped = parse_vtt(raw_vtt)
     timestamped_deduped = deoverlap_caption_stream(dedupe_consecutive(timestamped))
@@ -596,13 +785,13 @@ def main() -> int:
     if attempt_errors:
         manifest["notes"] += f"; selected {lang} after caption download fallback"
         manifest["caption_fallback_errors"] = attempt_errors
+    if metadata_descriptor is not None:
+        manifest = metadata_storage.prepare_manifest_with_storage(manifest, metadata_descriptor)
     summary = Path(args.summary_file).read_text(encoding="utf-8") if args.summary_file else None
     report = report_markdown(info, manifest, summary, "\n".join(f"[{ts}] {text}" for ts, text in timestamped_deduped))
-    manifest_json = json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True)
     safe_write(lang_report, report)
     safe_write(video_dir / "report.md", report)
-    safe_write(lang_manifest, manifest_json)
-    safe_write(video_dir / "manifest.json", manifest_json)
+    commit_archive_manifests(video_dir, lang_manifest, manifest, metadata_descriptor)
 
     print(json.dumps(manifest, indent=2, ensure_ascii=False))
     return 0

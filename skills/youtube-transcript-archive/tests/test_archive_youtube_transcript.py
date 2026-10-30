@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "archive_youtube_transcript.py"
@@ -154,7 +156,13 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as tmp_s:
             video_dir = Path(tmp_s) / "abc123"
-            self.module.write_base_artifacts(video_dir, info, "no captions listed\n")
+            self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "no captions listed\n",
+                refresh=False,
+                metadata_storage_mode="legacy",
+            )
 
             manifest = self.module.write_metadata_only_archive(
                 video_dir,
@@ -172,6 +180,557 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
             report = (video_dir / "report.md").read_text(encoding="utf-8")
             self.assertIn("Metadata-only archive", report)
             self.assertIn("No transcript available.", report)
+
+    def test_dual_metadata_only_archive_is_exact_and_manifest_selected(self) -> None:
+        info = {
+            "id": "abc123",
+            "title": "Unicode café — exact bytes",
+            "automatic_captions": {"fr": [{"name": "Français"}]},
+        }
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "no captions listed\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            self.assertIsNotNone(descriptor)
+            raw = (video_dir / "metadata.json").read_bytes()
+
+            manifest = self.module.write_metadata_only_archive(
+                video_dir,
+                info,
+                yt_dlp_version_text="test-version",
+                duplicate_policy="reuse-existing-complete-archive",
+                metadata_descriptor=descriptor,
+            )
+
+            self.assertEqual("dual", manifest["metadata_storage"]["state"])
+            self.assertIn(manifest["metadata_storage"]["canonical_filename"], manifest["files"])
+            recovered = self.module.metadata_storage.read_metadata_bytes(video_dir, manifest)
+            self.assertEqual(raw, recovered)
+            reused = self.module.resolve_existing_archive(
+                video_dir,
+                "best",
+                metadata_storage_mode="dual",
+            )
+            self.assertEqual(manifest["metadata_storage"], reused["metadata_storage"])
+
+    def test_declared_dual_archive_never_falls_back_to_plaintext(self) -> None:
+        info = {"id": "abc123", "title": "No fallback"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "none\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            manifest = self.module.write_metadata_only_archive(
+                video_dir,
+                info,
+                yt_dlp_version_text="test-version",
+                duplicate_policy="reuse-existing-complete-archive",
+                metadata_descriptor=descriptor,
+            )
+            (video_dir / manifest["metadata_storage"]["canonical_filename"]).unlink()
+            with self.assertRaises(self.module.metadata_storage.MetadataIntegrityError):
+                self.module.resolve_existing_archive(video_dir, "best", metadata_storage_mode="dual")
+
+    def test_language_manifest_key_rejects_path_traversal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_s:
+            with self.assertRaises(self.module.metadata_storage.MetadataPathError):
+                self.module.manifest_path_for(Path(tmp_s), "../../escape")
+
+    def test_caption_download_rejects_unsafe_language_before_running_yt_dlp(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_s, mock.patch.object(self.module, "run") as runner:
+            with self.assertRaises(self.module.metadata_storage.MetadataPathError):
+                self.module.download_caption_vtt(
+                    "/fixture/yt-dlp",
+                    "https://www.youtube.com/watch?v=abc123",
+                    "abc123",
+                    "../../escape",
+                    "automatic",
+                    Path(tmp_s) / "abc123",
+                )
+            runner.assert_not_called()
+
+    def test_caption_download_refuses_symlinked_destination_ancestors(self) -> None:
+        def emit_caption(_cmd, *, cwd):
+            (Path(cwd) / "abc123.en.vtt").write_text("WEBVTT\n", encoding="utf-8")
+            return mock.Mock()
+
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            video_dir = root / "abc123"
+            outside = root / "outside"
+            video_dir.mkdir()
+            outside.mkdir()
+            (video_dir / "raw").symlink_to(outside, target_is_directory=True)
+            with mock.patch.object(self.module, "run", side_effect=emit_caption):
+                with self.assertRaises(self.module.metadata_storage.MetadataPathError):
+                    self.module.download_caption_vtt(
+                        "/fixture/yt-dlp",
+                        "https://www.youtube.com/watch?v=abc123",
+                        "abc123",
+                        "en",
+                        "automatic",
+                        video_dir,
+                    )
+            self.assertEqual([], list(outside.iterdir()))
+
+    def test_caption_download_refuses_symlinked_final_file(self) -> None:
+        def emit_caption(_cmd, *, cwd):
+            (Path(cwd) / "abc123.en.vtt").write_text("WEBVTT\n", encoding="utf-8")
+            return mock.Mock()
+
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            video_dir = root / "abc123"
+            destination = video_dir / "raw" / "en"
+            outside = root / "outside.vtt"
+            destination.mkdir(parents=True)
+            outside.write_text("sentinel\n", encoding="utf-8")
+            target = destination / "abc123.en.vtt"
+            target.symlink_to(outside)
+            with mock.patch.object(self.module, "run", side_effect=emit_caption):
+                with self.assertRaises(self.module.metadata_storage.MetadataPathError):
+                    self.module.download_caption_vtt(
+                        "/fixture/yt-dlp",
+                        "https://www.youtube.com/watch?v=abc123",
+                        "abc123",
+                        "en",
+                        "automatic",
+                        video_dir,
+                    )
+            self.assertTrue(target.is_symlink())
+            self.assertEqual("sentinel\n", outside.read_text(encoding="utf-8"))
+
+    def test_parse_vtt_rejects_symlink_replacement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            outside = root / "outside.vtt"
+            outside.write_text("WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello\n", encoding="utf-8")
+            candidate = root / "candidate.vtt"
+            candidate.symlink_to(outside)
+
+            with self.assertRaises(self.module.metadata_storage.MetadataPathError):
+                self.module.parse_vtt(candidate)
+
+    def test_language_manifest_reuse_requires_the_canonical_commit_marker(self) -> None:
+        info = {"id": "abc123", "title": "Interrupted language manifest"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "captions\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            self.assertIsNotNone(descriptor)
+            language_manifest = video_dir / "manifests" / "en.json"
+            language_manifest.parent.mkdir()
+            manifest = self.module.metadata_storage.prepare_manifest_with_storage(
+                {
+                    "language": "en",
+                    "files": [
+                        "manifest.json",
+                        "metadata.json",
+                        "subtitles-list.txt",
+                        "manifests/en.json",
+                    ],
+                },
+                descriptor,
+            )
+            self.module.metadata_storage.durable_atomic_write(
+                language_manifest,
+                self.module.metadata_storage.manifest_bytes(manifest),
+            )
+
+            self.assertIsNone(
+                self.module.resolve_existing_archive(video_dir, "en", metadata_storage_mode="dual")
+            )
+            recovered = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "captions\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            self.assertEqual(descriptor, recovered)
+
+            self.module.metadata_storage.commit_manifest(video_dir, manifest)
+            reused = self.module.resolve_existing_archive(video_dir, "en", metadata_storage_mode="dual")
+            self.assertEqual(descriptor, reused["metadata_storage"])
+
+    def test_archive_manifest_publish_is_alias_first_and_byte_identical(self) -> None:
+        info = {"id": "abc123", "title": "Canonical last"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "captions\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            self.assertIsNotNone(descriptor)
+            manifests_dir = self.module.ensure_real_subdirectories(video_dir, "manifests")
+            language_manifest = manifests_dir / "en.json"
+            manifest = self.module.metadata_storage.prepare_manifest_with_storage(
+                {"language": "en", "files": ["manifest.json", "metadata.json"]},
+                descriptor,
+            )
+
+            with mock.patch.object(
+                self.module.metadata_storage,
+                "commit_manifest",
+                side_effect=RuntimeError("interrupted canonical commit"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "interrupted canonical commit"):
+                    self.module.commit_archive_manifests(
+                        video_dir,
+                        language_manifest,
+                        manifest,
+                        descriptor,
+                    )
+            self.assertTrue(language_manifest.exists())
+            self.assertFalse((video_dir / "manifest.json").exists())
+            self.assertIsNone(
+                self.module.resolve_existing_archive(video_dir, "en", metadata_storage_mode="dual")
+            )
+
+            self.module.commit_archive_manifests(
+                video_dir,
+                language_manifest,
+                manifest,
+                descriptor,
+            )
+            self.assertEqual(
+                (video_dir / "manifest.json").read_bytes(),
+                language_manifest.read_bytes(),
+            )
+            reused = self.module.resolve_existing_archive(video_dir, "en", metadata_storage_mode="dual")
+            self.assertEqual(descriptor, reused["metadata_storage"])
+
+    def test_non_replacing_creation_rejects_concurrent_metadata_appearance(self) -> None:
+        info = {"id": "abc123", "title": "First writer"}
+        conflicting = json.dumps(
+            {"id": "abc123", "title": "Concurrent writer"},
+            indent=2,
+            ensure_ascii=False,
+            sort_keys=True,
+        ).encode("utf-8")
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            with mock.patch.object(
+                self.module.metadata_storage,
+                "write_plaintext_metadata",
+                return_value=conflicting,
+            ):
+                with self.assertRaisesRegex(
+                    self.module.metadata_storage.MetadataIntegrityError,
+                    "changed during non-replacing archive creation",
+                ):
+                    self.module.write_base_artifacts(
+                        video_dir,
+                        info,
+                        "captions\n",
+                        refresh=False,
+                        metadata_storage_mode="dual",
+                    )
+
+    def test_orphaned_plaintext_mismatch_is_refused_without_replacement(self) -> None:
+        original = {"id": "abc123", "title": "Interrupted original"}
+        changed = {"id": "abc123", "title": "Changed retry"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            video_dir.mkdir()
+            original_raw = json.dumps(
+                original,
+                indent=2,
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode("utf-8")
+            self.module.metadata_storage.write_plaintext_metadata(
+                video_dir,
+                original_raw,
+                replace=False,
+            )
+
+            with self.assertRaisesRegex(
+                self.module.metadata_storage.MetadataIntegrityError,
+                "orphaned plaintext metadata mismatch",
+            ):
+                self.module.write_base_artifacts(
+                    video_dir,
+                    changed,
+                    "changed\n",
+                    refresh=False,
+                    metadata_storage_mode="dual",
+                )
+
+            self.assertEqual(original_raw, (video_dir / "metadata.json").read_bytes())
+            self.assertEqual([], list(video_dir.glob("metadata.*.json.gz")))
+            recovered = self.module.write_base_artifacts(
+                video_dir,
+                original,
+                "captions\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            self.assertEqual(self.module.metadata_storage.sha256_bytes(original_raw), recovered["raw_sha256"])
+
+    def test_dual_generation_is_fully_validated_before_descriptor_return(self) -> None:
+        info = {"id": "abc123", "title": "Round-trip gate"}
+        with tempfile.TemporaryDirectory() as tmp_s, mock.patch.object(
+            self.module.metadata_storage,
+            "prepare_dual_generation",
+            side_effect=self.module.metadata_storage.MetadataIntegrityError("fixture corruption"),
+        ):
+            video_dir = Path(tmp_s) / "abc123"
+            with self.assertRaisesRegex(
+                self.module.metadata_storage.MetadataIntegrityError, "fixture corruption"
+            ):
+                self.module.write_base_artifacts(
+                    video_dir,
+                    info,
+                    "none\n",
+                    refresh=False,
+                    metadata_storage_mode="dual",
+                )
+            self.assertFalse((video_dir / "manifest.json").exists())
+
+    def test_changed_dual_refresh_is_refused_without_damaging_old_manifest(self) -> None:
+        original = {"id": "abc123", "title": "Original"}
+        changed = {"id": "abc123", "title": "Changed"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                original,
+                "none\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            manifest = self.module.write_metadata_only_archive(
+                video_dir,
+                original,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+                metadata_descriptor=descriptor,
+            )
+            old_manifest = (video_dir / "manifest.json").read_bytes()
+            old_plaintext = (video_dir / "metadata.json").read_bytes()
+
+            with self.assertRaisesRegex(
+                self.module.metadata_storage.MetadataIntegrityError,
+                "non-atomic dual refresh",
+            ):
+                self.module.write_base_artifacts(
+                    video_dir,
+                    changed,
+                    "changed\n",
+                    refresh=True,
+                    metadata_storage_mode="dual",
+                )
+
+            self.assertEqual(old_manifest, (video_dir / "manifest.json").read_bytes())
+            self.assertEqual(old_plaintext, (video_dir / "metadata.json").read_bytes())
+            self.assertEqual(old_plaintext, self.module.metadata_storage.read_metadata_bytes(video_dir, manifest))
+
+    def test_changed_dual_reuse_is_refused_without_mixing_metadata_and_report_fields(self) -> None:
+        original = {"id": "abc123", "title": "Original"}
+        changed = {"id": "abc123", "title": "Changed"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                original,
+                "none\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            self.module.write_metadata_only_archive(
+                video_dir,
+                original,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+                metadata_descriptor=descriptor,
+            )
+            old_manifest = (video_dir / "manifest.json").read_bytes()
+            old_plaintext = (video_dir / "metadata.json").read_bytes()
+
+            with self.assertRaisesRegex(
+                self.module.metadata_storage.MetadataIntegrityError,
+                "non-atomic dual refresh/reuse",
+            ):
+                self.module.write_base_artifacts(
+                    video_dir,
+                    changed,
+                    "changed\n",
+                    refresh=False,
+                    metadata_storage_mode="dual",
+                )
+
+            self.assertEqual(old_manifest, (video_dir / "manifest.json").read_bytes())
+            self.assertEqual(old_plaintext, (video_dir / "metadata.json").read_bytes())
+
+    def test_changed_legacy_to_dual_refresh_is_refused_before_plaintext_replace(self) -> None:
+        original = {"id": "abc123", "title": "Original legacy"}
+        changed = {"id": "abc123", "title": "Changed for dual"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            self.module.write_base_artifacts(
+                video_dir,
+                original,
+                "none\n",
+                refresh=False,
+                metadata_storage_mode="legacy",
+            )
+            self.module.write_metadata_only_archive(
+                video_dir,
+                original,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+            )
+            old_manifest = (video_dir / "manifest.json").read_bytes()
+            old_plaintext = (video_dir / "metadata.json").read_bytes()
+
+            with self.assertRaisesRegex(
+                self.module.metadata_storage.MetadataIntegrityError,
+                "legacy-to-dual refresh",
+            ):
+                self.module.write_base_artifacts(
+                    video_dir,
+                    changed,
+                    "changed\n",
+                    refresh=True,
+                    metadata_storage_mode="dual",
+                )
+
+            self.assertEqual(old_manifest, (video_dir / "manifest.json").read_bytes())
+            self.assertEqual(old_plaintext, (video_dir / "metadata.json").read_bytes())
+            self.assertFalse(any(video_dir.glob("metadata.*.json.gz")))
+
+    def test_existing_dual_archive_cannot_be_downgraded_by_legacy_writer(self) -> None:
+        info = {"id": "abc123", "title": "Original"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "none\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            self.module.write_metadata_only_archive(
+                video_dir,
+                info,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+                metadata_descriptor=descriptor,
+            )
+            with self.assertRaisesRegex(
+                self.module.metadata_storage.MetadataIntegrityError,
+                "refusing to downgrade",
+            ):
+                self.module.write_base_artifacts(
+                    video_dir,
+                    info,
+                    "none\n",
+                    refresh=True,
+                    metadata_storage_mode="legacy",
+                )
+
+    def test_cli_rejects_unsafe_video_id_before_archive_child_creation(self) -> None:
+        info = {
+            "id": "../../outside-created",
+            "title": "Unsafe identity",
+            "subtitles": {},
+            "automatic_captions": {},
+        }
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            archive_root = root / "archive"
+            with (
+                mock.patch.object(self.module.shutil, "which", return_value="/fixture/yt-dlp"),
+                mock.patch.object(self.module, "load_json_from_yt_dlp", return_value=info),
+                mock.patch.object(
+                    sys,
+                    "argv",
+                    ["archive", "unsafe", "--archive-root", str(archive_root)],
+                ),
+            ):
+                with self.assertRaises(self.module.metadata_storage.MetadataPathError):
+                    self.module.main()
+            self.assertFalse((root / "outside-created").exists())
+
+    def test_cli_default_is_legacy_and_dual_requires_explicit_opt_in(self) -> None:
+        info = {"id": "abc123", "title": "Storage mode", "subtitles": {}, "automatic_captions": {}}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            common = ["archive", "https://www.youtube.com/watch?v=abc123", "--metadata-only-on-no-captions"]
+            with (
+                mock.patch.object(self.module.shutil, "which", return_value="/fixture/yt-dlp"),
+                mock.patch.object(self.module, "load_json_from_yt_dlp", return_value=info),
+                mock.patch.object(self.module, "list_subs", return_value="none\n"),
+                mock.patch.object(self.module, "yt_dlp_version", return_value="fixture"),
+                mock.patch.object(sys, "argv", common + ["--archive-root", str(root / "legacy")]),
+            ):
+                self.assertEqual(0, self.module.main())
+            legacy = json.loads((root / "legacy" / "abc123" / "manifest.json").read_text(encoding="utf-8"))
+            self.assertNotIn("metadata_storage", legacy)
+            self.assertEqual([], list((root / "legacy" / "abc123").glob("metadata.*.json.gz")))
+
+            with (
+                mock.patch.object(self.module.shutil, "which", return_value="/fixture/yt-dlp"),
+                mock.patch.object(self.module, "load_json_from_yt_dlp", return_value=info),
+                mock.patch.object(self.module, "list_subs", return_value="none\n"),
+                mock.patch.object(self.module, "yt_dlp_version", return_value="fixture"),
+                mock.patch.object(sys, "argv", common + ["--archive-root", str(root / "dual"), "--metadata-storage", "dual"]),
+            ):
+                self.assertEqual(0, self.module.main())
+            dual = json.loads((root / "dual" / "abc123" / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("dual", dual["metadata_storage"]["state"])
+            self.assertTrue((root / "dual" / "abc123" / dual["metadata_storage"]["canonical_filename"]).is_file())
+
+    def test_cli_accepts_queue_owned_carrier_context_without_mutating_it(self) -> None:
+        info = {"id": "abc123", "title": "Queue carrier", "subtitles": {}, "automatic_captions": {}}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            state_root = root / "state"
+            projection_root = root / "projection"
+            storage_module = root / "youtube_storage.py"
+            storage_module.write_text("# fixture only\n", encoding="utf-8")
+            argv = [
+                "archive",
+                "https://www.youtube.com/watch?v=abc123",
+                "--archive-root",
+                str(root / "archive"),
+                "--metadata-only-on-no-captions",
+                "--state-root",
+                str(state_root),
+                "--projection-root",
+                str(projection_root),
+                "--storage-module",
+                str(storage_module),
+                "--writer-lock-held",
+            ]
+            with (
+                mock.patch.object(self.module.shutil, "which", return_value="/fixture/yt-dlp"),
+                mock.patch.object(self.module, "load_json_from_yt_dlp", return_value=info),
+                mock.patch.object(self.module, "list_subs", return_value="none\n"),
+                mock.patch.object(self.module, "yt_dlp_version", return_value="fixture"),
+                mock.patch.object(sys, "argv", argv),
+            ):
+                self.assertEqual(0, self.module.main())
+            self.assertFalse(state_root.exists())
+            self.assertFalse(projection_root.exists())
 
 
 class BatchArchiveTests(unittest.TestCase):
@@ -304,6 +863,33 @@ class BatchArchiveTests(unittest.TestCase):
         needs_summary = self.module.needs_summary_entries(entries)
 
         self.assertEqual(["captioned"], [entry["video_id"] for entry in needs_summary])
+
+    def test_validate_entry_reports_declared_compressed_corruption(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            video_dir = root / "abc123"
+            video_dir.mkdir()
+            raw = b'{"id":"abc123"}'
+            filename, stored, descriptor = self.module.metadata_storage.build_gzip_generation(raw)
+            (video_dir / "metadata.json").write_bytes(raw)
+            (video_dir / filename).write_bytes(stored[:-1] + bytes([stored[-1] ^ 1]))
+            for name in ["manifest.json", "report.md", "subtitles-list.txt"]:
+                (video_dir / name).write_text("{}\n" if name.endswith(".json") else "ok\n", encoding="utf-8")
+            manifest = {
+                "files": ["manifest.json", "metadata.json", filename, "report.md", "subtitles-list.txt"],
+                "metadata_storage": descriptor,
+            }
+            entry = {
+                "status": "metadata-only-no-captions",
+                "video_id": "abc123",
+                "transcript_source": "none",
+                "manifest": manifest,
+            }
+
+            errors = self.module.validate_entry(root, entry)
+
+            self.assertEqual(1, len(errors))
+            self.assertIn("stored metadata SHA-256", errors[0])
 
     def test_validate_entry_can_require_filled_summaries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_s:

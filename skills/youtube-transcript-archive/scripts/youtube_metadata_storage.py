@@ -16,7 +16,7 @@ import os
 import re
 import stat
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Callable, Mapping
 
 SCHEMA = "openclaw.youtube-metadata-storage.v1"
@@ -169,8 +169,7 @@ def build_gzip_generation(raw: bytes, *, state: str = "dual") -> tuple[str, byte
     return filename, stored, descriptor
 
 
-def _safe_child(video_dir: Path, filename: str) -> Path:
-    name = _validate_filename(filename)
+def _real_video_directory(video_dir: Path) -> Path:
     try:
         directory_stat = video_dir.lstat()
     except FileNotFoundError as exc:
@@ -180,10 +179,56 @@ def _safe_child(video_dir: Path, filename: str) -> Path:
     base = video_dir.resolve(strict=True)
     if not base.is_dir():
         raise MetadataPathError(f"video directory is not a directory: {base}")
+    return base
+
+
+def _safe_child(video_dir: Path, filename: str) -> Path:
+    name = _validate_filename(filename)
+    base = _real_video_directory(video_dir)
     candidate = base / name
     if candidate.parent != base:
         raise MetadataPathError("selected metadata path escapes the video directory")
     return candidate
+
+
+def safe_relative_file(video_dir: Path, relative: Any) -> Path:
+    """Return one listed regular file after rejecting path and link traversal."""
+    if not isinstance(relative, str) or not relative or "\\" in relative or "\x00" in relative:
+        raise MetadataPathError("manifest file path must be a non-empty POSIX relative path")
+    posix = PurePosixPath(relative)
+    windows = PureWindowsPath(relative)
+    if (
+        posix.is_absolute()
+        or windows.is_absolute()
+        or bool(windows.drive)
+        or any(part in {"", ".", ".."} for part in posix.parts)
+    ):
+        raise MetadataPathError(f"unsafe manifest file path: {relative!r}")
+    base = _real_video_directory(video_dir)
+    current = base
+    for index, part in enumerate(posix.parts):
+        current = current / part
+        try:
+            value = current.lstat()
+        except FileNotFoundError as exc:
+            raise MetadataIntegrityError(f"listed archive file is missing: {relative}") from exc
+        if stat.S_ISLNK(value.st_mode):
+            raise MetadataPathError(f"listed archive path contains a symlink: {relative}")
+        if index < len(posix.parts) - 1:
+            if not stat.S_ISDIR(value.st_mode):
+                raise MetadataPathError(f"listed archive parent is not a directory: {relative}")
+        elif not stat.S_ISREG(value.st_mode) or value.st_nlink != 1:
+            raise MetadataPathError(f"listed archive path is not a single-link regular file: {relative}")
+    return current
+
+
+def validate_manifest_files(video_dir: Path, manifest: Mapping[str, Any]) -> list[str]:
+    files = manifest.get("files") if isinstance(manifest, Mapping) else None
+    if not isinstance(files, list) or not files or not all(isinstance(item, str) and item for item in files):
+        raise MetadataManifestError("manifest files must be a non-empty string list")
+    for relative in files:
+        safe_relative_file(video_dir, relative)
+    return list(files)
 
 
 def _same_file_identity(left: os.stat_result, right: os.stat_result) -> bool:
@@ -421,6 +466,56 @@ def write_immutable_generation(video_dir: Path, filename: str, stored: bytes) ->
     return "created"
 
 
+def write_plaintext_metadata(
+    video_dir: Path,
+    raw: bytes,
+    *,
+    replace: bool,
+    max_raw_bytes: int = DEFAULT_MAX_RAW_BYTES,
+) -> bytes:
+    """Create or explicitly replace ``metadata.json`` and verify exact bytes.
+
+    When replacement is disabled, an existing valid plaintext record is kept
+    byte-for-byte. This preserves the original canonical record on reuse paths.
+    """
+    if len(raw) > max_raw_bytes:
+        raise MetadataLimitError("plaintext metadata exceeds configured byte limit")
+    parse_metadata_json(raw)
+    target = _safe_child(video_dir, "metadata.json")
+    if target.exists() or target.is_symlink():
+        existing = read_regular_bytes(target, max_bytes=max_raw_bytes)
+        parse_metadata_json(existing)
+        if not replace or existing == raw:
+            return existing
+    durable_atomic_write(target, raw)
+    verified = read_regular_bytes(target, max_bytes=max_raw_bytes)
+    if verified != raw:
+        raise MetadataIntegrityError("plaintext metadata readback mismatch")
+    return verified
+
+
+def prepare_dual_generation(
+    video_dir: Path,
+    raw: bytes,
+    *,
+    max_raw_bytes: int = DEFAULT_MAX_RAW_BYTES,
+) -> dict[str, Any]:
+    """Write and fully verify an immutable dual generation without a manifest switch."""
+    if len(raw) > max_raw_bytes:
+        raise MetadataLimitError("plaintext metadata exceeds configured byte limit")
+    parse_metadata_json(raw)
+    filename, stored, descriptor = build_gzip_generation(raw, state="dual")
+    write_immutable_generation(video_dir, filename, stored)
+    recovered = read_metadata_bytes(
+        video_dir,
+        {"metadata_storage": descriptor},
+        max_raw_bytes=max_raw_bytes,
+    )
+    if recovered != raw:
+        raise MetadataIntegrityError("compressed metadata generation did not round-trip exact bytes")
+    return descriptor
+
+
 def prepare_manifest_with_storage(manifest: Mapping[str, Any], descriptor: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(manifest, Mapping):
         raise MetadataManifestError("manifest must be an object")
@@ -477,8 +572,7 @@ def write_dual_from_plaintext(
     notify = on_step or (lambda _step: None)
     raw = read_regular_bytes(_safe_child(video_dir, "metadata.json"), max_bytes=max_raw_bytes)
     parse_metadata_json(raw)
-    filename, stored, descriptor = build_gzip_generation(raw, state="dual")
-    write_immutable_generation(video_dir, filename, stored)
+    descriptor = prepare_dual_generation(video_dir, raw, max_raw_bytes=max_raw_bytes)
     notify("generation_committed")
     provisional = prepare_manifest_with_storage(manifest, descriptor)
     recovered = read_metadata_bytes(video_dir, provisional, max_raw_bytes=max_raw_bytes)
