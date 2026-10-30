@@ -20,11 +20,32 @@ HEAD_SHA = "2" * 40
 NEXT_SHA = "3" * 40
 
 
-def pull_request(head_sha=HEAD_SHA, head_repo="fr-meyer/agent-toolkit", state="open"):
+def pull_request(
+    head_sha=HEAD_SHA,
+    head_repo="fr-meyer/agent-toolkit",
+    state="open",
+    draft=False,
+    author=None,
+    base_ref="dev",
+):
     return {
         "number": 94,
         "state": state,
-        "base": {"ref": "dev", "sha": BASE_SHA},
+        "draft": draft,
+        "user": copy.deepcopy(
+            author
+            or {
+                "id": 26621962,
+                "login": "fr-meyer",
+                "type": "User",
+                "node_id": "MDQ6VXNlcjI2NjIxOTYy",
+            }
+        ),
+        "base": {
+            "ref": base_ref,
+            "sha": BASE_SHA,
+            "repo": {"full_name": "fr-meyer/agent-toolkit"},
+        },
         "head": {
             "ref": "chore/pullfrog-full-automation",
             "sha": head_sha,
@@ -324,7 +345,12 @@ class PullfrogCloudCoordinatorTests(unittest.TestCase):
             snapshot["policy"]["protected_refs"], ["main", "master", "staging"]
         )
         receipt = MODULE.evaluate_snapshot(snapshot)
-        self.assertEqual(receipt["status"], "clean")
+        self.assertEqual(receipt["status"], "stopped")
+        self.assertFalse(receipt["policy_decision"]["review_eligible"])
+        self.assertIn(
+            "base_ref_not_review_eligible",
+            receipt["authority_decision"]["blockers"],
+        )
         self.assertEqual(
             receipt["destination_policy"],
             {
@@ -418,9 +444,24 @@ class PullfrogCloudCoordinatorTests(unittest.TestCase):
 
     def test_fork_and_forbidden_governance_path_fail_closed(self):
         fork = base_snapshot()
-        fork["expected_pull_request"] = pull_request(head_repo="fork/agent-toolkit")
-        fork["observed_pull_request"] = pull_request(head_repo="fork/agent-toolkit")
+        external = {
+            "id": 444444444,
+            "login": "external-user",
+            "type": "User",
+            "node_id": "NODE_external",
+        }
+        fork["expected_pull_request"] = pull_request(
+            head_repo="external/agent-toolkit", author=external
+        )
+        fork["observed_pull_request"] = pull_request(
+            head_repo="external/agent-toolkit", author=external
+        )
         fork_receipt = MODULE.evaluate_snapshot(fork)
+        self.assertEqual(fork_receipt["review_contract"]["status"], "clean")
+        self.assertTrue(fork_receipt["policy_decision"]["review_eligible"])
+        self.assertFalse(fork_receipt["policy_decision"]["same_repository"])
+        self.assertFalse(fork_receipt["policy_decision"]["trusted_author"])
+        self.assertFalse(fork_receipt["policy_decision"]["mutation_authorized"])
         self.assertIn("fork_head_forbidden", fork_receipt["destination_guard"]["blockers"])
         self.assertEqual(fork_receipt["status"], "stopped")
 
@@ -431,6 +472,51 @@ class PullfrogCloudCoordinatorTests(unittest.TestCase):
             "forbidden_changed_path", workflow_receipt["destination_guard"]["blockers"]
         )
         self.assertEqual(workflow_receipt["would_action"], "none")
+
+    def test_untrusted_same_repository_findings_never_authorize_remediation(self):
+        snapshot = base_snapshot(with_findings=True)
+        untrusted = {
+            "id": 444444444,
+            "login": "untrusted-user",
+            "type": "User",
+            "node_id": "NODE_untrusted",
+        }
+        snapshot["expected_pull_request"]["user"] = copy.deepcopy(untrusted)
+        snapshot["observed_pull_request"]["user"] = copy.deepcopy(untrusted)
+        receipt = MODULE.evaluate_snapshot(snapshot)
+        self.assertEqual(receipt["review_contract"]["status"], "findings")
+        self.assertTrue(receipt["policy_decision"]["review_eligible"])
+        self.assertTrue(receipt["policy_decision"]["same_repository"])
+        self.assertFalse(receipt["policy_decision"]["trusted_author"])
+        self.assertFalse(receipt["policy_decision"]["mutation_authorized"])
+        self.assertFalse(receipt["policy_decision"]["remediation_allowed"])
+
+    def test_draft_retarget_and_author_drift_are_not_review_eligible(self):
+        variants = []
+        draft = base_snapshot()
+        draft["expected_pull_request"]["draft"] = True
+        draft["observed_pull_request"]["draft"] = True
+        variants.append(draft)
+        retargeted = base_snapshot()
+        retargeted["observed_pull_request"] = pull_request(base_ref="main")
+        variants.append(retargeted)
+        author_drift = base_snapshot()
+        author_drift["observed_pull_request"]["user"] = {
+            "id": 444444444,
+            "login": "external-user",
+            "type": "User",
+            "node_id": "NODE_external",
+        }
+        variants.append(author_drift)
+        for snapshot in variants:
+            with self.subTest(blockers=snapshot):
+                receipt = MODULE.evaluate_snapshot(snapshot)
+                self.assertFalse(receipt["policy_decision"]["review_eligible"])
+                self.assertFalse(receipt["policy_decision"]["mutation_authorized"])
+                self.assertIn(
+                    "pull_request_not_review_eligible",
+                    receipt["coordinator_blockers"],
+                )
 
     def test_wrong_app_cannot_spoof_pullfrog_or_required_checks(self):
         snapshot = base_snapshot()

@@ -28,6 +28,7 @@ if str(SCRIPT_DIR) not in sys.path:
 import pullfrog_cycle_contract as cycle_contract  # noqa: E402
 import pullfrog_destination_guard as destination_guard  # noqa: E402
 import pullfrog_review_contract as review_contract  # noqa: E402
+import pullfrog_trusted_author_policy as trusted_author_policy  # noqa: E402
 
 SNAPSHOT_SCHEMA = "pullfrog-cloud-snapshot.v1"
 RECEIPT_SCHEMA = "pullfrog-cloud-coordinator-receipt.v1"
@@ -184,6 +185,7 @@ def _identity_from_pr(
     head = _mapping(pr.get("head"))
     base = _mapping(pr.get("base"))
     head_repo = _mapping(head.get("repo"))
+    base_repo = _mapping(base.get("repo"))
     return {
         "slug": repository_slug,
         "pr_number": _integer(pr.get("number")),
@@ -192,6 +194,7 @@ def _identity_from_pr(
         "head_ref": _text(head.get("ref")),
         "head_sha": _text(head.get("sha")),
         "head_repository_slug": _text(head_repo.get("full_name")),
+        "base_repository_slug": _text(base_repo.get("full_name")) or repository_slug,
         "default_branch": default_branch,
         "protected_refs": protected_refs,
     }
@@ -422,8 +425,31 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         default_branch,
         protected_refs,
     )
-    if _text(_mapping(snapshot.get("observed_pull_request")).get("state")) != "open":
+    expected_pull_request = _mapping(snapshot.get("expected_pull_request"))
+    observed_pull_request = _mapping(snapshot.get("observed_pull_request"))
+    if _text(observed_pull_request.get("state")) != "open":
         coordinator_blockers.append("pull_request_not_open")
+    try:
+        authority_decision = trusted_author_policy.evaluate_pull_request_authority(
+            trusted_author_policy.load_policy(repository_slug),
+            repository_slug,
+            expected_pull_request,
+            observed_pull_request,
+        )
+    except trusted_author_policy.TrustedAuthorPolicyError as exc:
+        authority_decision = {
+            "schema": trusted_author_policy.AUTHORITY_SCHEMA,
+            "review_eligible": False,
+            "same_repository": False,
+            "trusted_author": False,
+            "mutation_authorized": False,
+            "blockers": [exc.code],
+            "identity": {},
+            "author_decision": {},
+            "policy": {},
+        }
+    if not authority_decision["review_eligible"]:
+        coordinator_blockers.append("pull_request_not_review_eligible")
 
     head_sha = _text(observed.get("head_sha"))
     check_runs = _list(snapshot.get("check_runs"))
@@ -615,13 +641,19 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         or _text(observed.get("base_ref")) in {"main", "master"}
     )
     policy_decision = {
+        "review_eligible": authority_decision["review_eligible"],
+        "same_repository": authority_decision["same_repository"],
+        "trusted_author": authority_decision["trusted_author"],
+        "mutation_authorized": authority_decision["mutation_authorized"],
         "remediation_allowed": bool(
-            effective_status == "remediation_ready"
+            authority_decision["mutation_authorized"]
+            and effective_status == "remediation_ready"
             and would_action == "start_remediation"
             and guard_receipt.get("status") == "allowed"
         ),
         "merge_allowed": bool(
-            effective_status == "clean"
+            authority_decision["mutation_authorized"]
+            and effective_status == "clean"
             and would_action == "complete"
             and gate.get("status") == "success"
             and _text(observed.get("base_ref")) not in {"main", "master"}
@@ -687,6 +719,7 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
             "speculoos": speculoos_details,
         },
         "review_contract": review_receipt,
+        "authority_decision": authority_decision,
         "policy_decision": policy_decision,
         "destination_guard": guard_receipt,
         "cycle_decision": decision,

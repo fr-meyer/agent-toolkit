@@ -30,6 +30,13 @@ def pr(head_sha=HEAD_SHA, base_sha=BASE_SHA, head_repo=REPOSITORY, state="open")
     return {
         "number": 95,
         "state": state,
+        "draft": False,
+        "user": {
+            "id": 26621962,
+            "login": "fr-meyer",
+            "type": "User",
+            "node_id": "MDQ6VXNlcjI2NjIxOTYy",
+        },
         "base": {
             "ref": "dev",
             "sha": base_sha,

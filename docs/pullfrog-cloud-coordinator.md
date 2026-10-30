@@ -15,7 +15,7 @@ Pullfrog remains the sole AI reviewer and intended fixer. The coordinator is rep
 
 The separately activation-gated Sol-to-Astra review fallback and its composite `pullfrog-review-gate` are audited in [`pullfrog-review-model-fallback.md`](pullfrog-review-model-fallback.md). A fallback verdict is review evidence only; it never authorizes remediation, publication, approval, or merge.
 
-The repository-owned trusted-author allowlist and canonical digest rules are documented in [`pullfrog-trusted-author-policy.md`](pullfrog-trusted-author-policy.md). The policy is implemented but not yet wired into every evidence and mutation transition. Until that integration is complete and reviewed, a same-repository head is not sufficient mutation authority.
+The repository-owned trusted-author allowlist and canonical digest rules are documented in [`pullfrog-trusted-author-policy.md`](pullfrog-trusted-author-policy.md). The read-only coordinator independently reports `review_eligible`, `same_repository`, `trusted_author`, and `mutation_authorized`. Reviews remain broad for valid PRs into exactly `dev` or `main`, including external contributors and forks, while remediation and merge decisions require a same-repository head and a trusted author. The policy is not yet bound into every evidence artifact and mutation transition, so a same-repository head is still not sufficient authority by itself.
 
 ## Current dry-run boundary
 
@@ -80,7 +80,7 @@ The coordinator performs bounded GitHub REST `GET` requests only. It reads:
 5. exact-head check runs;
 6. the PR again after collection.
 
-The before and after PR identities must match. The triggering head, review head, and every required check head must equal the same current PR head.
+The before and after PR identities, including author, draft state, base repository/ref/SHA, and head repository/ref/SHA, must match. The governed base must be this repository at exactly `dev` or `main`. The triggering head, review head, and every required check head must equal the same current PR head. A valid fork or untrusted author can retain read-only review evidence, but the receipt permanently reports `mutation_authorized: false` and cannot authorize remediation or merge.
 
 Check names are accepted only from their configured GitHub App slugs. On the native profile, the `pullfrog` and `pullfrog-approval` checks must come from the `pullfrog` app and share one check suite. On the scoped re-review profile, a GitHub Actions `pullfrog-review-gate` is accepted only when its immutable external ID matches the freshly reconstructed clean review-only contract's evidence profile and digest. A same-named check from another app is counted as spoofed and ignored. When an allowed app has rerun a check, only its newest exact-head check is authoritative and earlier runs are counted as superseded.
 
@@ -116,7 +116,7 @@ The workflow uploads only `artifacts/pullfrog-cloud-coordinator/receipt.json` wi
 The coordinator stops on all cycle-contract and destination-guard failures, including:
 
 - repository, PR, base, head, destination, or event drift;
-- fork, detached ref, protected/default/base destination, or forbidden authority path;
+- fork mutation, untrusted author mutation, detached ref, protected/default/base destination, or forbidden authority path;
 - stale or missing Pullfrog review, or a review gate that does not match the current evidence digest;
 - missing, pending, failed, skipped, cancelled, or timed-out CI or Speculoos evidence;
 - wrong-app check spoofing or Pullfrog check-suite mismatch;

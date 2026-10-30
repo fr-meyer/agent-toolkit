@@ -17,9 +17,11 @@ from pathlib import Path
 from typing import Any
 
 POLICY_SCHEMA = "pullfrog-trusted-author-policy.v1"
+AUTHORITY_SCHEMA = "pullfrog-pr-authority-decision.v1"
 POLICY_PATH = Path(__file__).with_name("pullfrog_trusted_author_policy.json")
 MAX_POLICY_BYTES = 64 * 1024
 ALLOWED_ACCOUNT_TYPES = frozenset({"Bot", "User"})
+REVIEW_BASE_REFS = frozenset({"dev", "main"})
 POLICY_KEYS = frozenset({"schema", "repository_slug", "trusted_authors"})
 AUTHOR_KEYS = frozenset({"account_id", "login", "type"})
 OWNER_RE = re.compile(r"^(?=.{1,39}$)(?!-)(?!.*--)[A-Za-z0-9-]+(?<!-)$")
@@ -28,6 +30,8 @@ LOGIN_RE = re.compile(
     r"^(?=.{1,100}$)(?!-)(?!.*--)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\[bot\])?$"
 )
 NODE_ID_RE = re.compile(r"^[A-Za-z0-9_+=/-]{1,256}$")
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 class TrustedAuthorPolicyError(Exception):
@@ -69,6 +73,19 @@ def canonical_repository_slug(value: str) -> str:
 def canonical_login(value: str) -> str:
     login = value.casefold()
     return login if LOGIN_RE.fullmatch(login) else ""
+
+
+def valid_branch(value: str) -> bool:
+    if not value or not BRANCH_RE.fullmatch(value):
+        return False
+    if value.startswith(("-", "/", "refs/")) or value.endswith(("/", ".")):
+        return False
+    if value == "@" or "@{" in value or ".." in value or "//" in value:
+        return False
+    return all(
+        component and not component.startswith(".") and not component.endswith(".lock")
+        for component in value.split("/")
+    )
 
 
 def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -212,6 +229,153 @@ def normalize_live_author(value: Any) -> dict[str, Any]:
 
 def author_from_pull_request(pr: Any) -> dict[str, Any]:
     return normalize_live_author(_mapping(pr).get("user"))
+
+
+def normalize_pull_request_identity(
+    governed_repository_slug: str,
+    pr: Any,
+) -> dict[str, Any]:
+    governed_repository = canonical_repository_slug(governed_repository_slug)
+    if not governed_repository:
+        raise TrustedAuthorPolicyError("invalid_governed_repository")
+    item = _mapping(pr)
+    head = _mapping(item.get("head"))
+    base = _mapping(item.get("base"))
+    head_repository = canonical_repository_slug(
+        _text(_mapping(head.get("repo")).get("full_name"))
+    )
+    base_repository = canonical_repository_slug(
+        _text(_mapping(base.get("repo")).get("full_name"))
+    )
+    pr_number = _integer(item.get("number"))
+    state = _text(item.get("state"))
+    draft = item.get("draft")
+    base_ref = _text(base.get("ref"))
+    base_sha = _text(base.get("sha"))
+    head_ref = _text(head.get("ref"))
+    head_sha = _text(head.get("sha"))
+    if pr_number is None or pr_number <= 0:
+        raise TrustedAuthorPolicyError("invalid_pull_request_number")
+    if state not in {"open", "closed"}:
+        raise TrustedAuthorPolicyError("invalid_pull_request_state")
+    if not isinstance(draft, bool):
+        raise TrustedAuthorPolicyError("invalid_pull_request_draft")
+    if not base_repository:
+        raise TrustedAuthorPolicyError("invalid_pull_request_base_repository")
+    if not head_repository:
+        raise TrustedAuthorPolicyError("invalid_pull_request_head_repository")
+    if not valid_branch(base_ref):
+        raise TrustedAuthorPolicyError("invalid_pull_request_base_ref")
+    if not valid_branch(head_ref):
+        raise TrustedAuthorPolicyError("invalid_pull_request_head_ref")
+    if not SHA_RE.fullmatch(base_sha):
+        raise TrustedAuthorPolicyError("invalid_pull_request_base_sha")
+    if not SHA_RE.fullmatch(head_sha) or head_sha == base_sha:
+        raise TrustedAuthorPolicyError("invalid_pull_request_head_sha")
+    return {
+        "repository_slug": governed_repository,
+        "pr_number": pr_number,
+        "state": state,
+        "draft": draft,
+        "base_repository_slug": base_repository,
+        "base_ref": base_ref,
+        "base_sha": base_sha,
+        "head_repository_slug": head_repository,
+        "head_ref": head_ref,
+        "head_sha": head_sha,
+        "author": author_from_pull_request(item),
+    }
+
+
+def evaluate_pull_request_authority(
+    policy: Any,
+    governed_repository_slug: str,
+    expected_pull_request: Any,
+    observed_pull_request: Any,
+) -> dict[str, Any]:
+    """Separate broad read-only review eligibility from mutation authority."""
+
+    normalized_policy = parse_policy(policy, governed_repository_slug)
+    governed_repository = normalized_policy["repository_slug"]
+    blockers: list[str] = []
+    identities: dict[str, dict[str, Any]] = {}
+    for name, value in (
+        ("expected", expected_pull_request),
+        ("observed", observed_pull_request),
+    ):
+        try:
+            identities[name] = normalize_pull_request_identity(
+                governed_repository,
+                value,
+            )
+        except TrustedAuthorPolicyError as exc:
+            blockers.append(f"{name}_{exc.code}")
+
+    expected = identities.get("expected", {})
+    observed = identities.get("observed", {})
+    if expected and observed:
+        for field in (
+            "repository_slug",
+            "pr_number",
+            "state",
+            "draft",
+            "base_repository_slug",
+            "base_ref",
+            "base_sha",
+            "head_repository_slug",
+            "head_ref",
+            "head_sha",
+        ):
+            if expected.get(field) != observed.get(field):
+                blockers.append(f"pull_request_{field}_drift")
+        expected_author = _mapping(expected.get("author"))
+        observed_author = _mapping(observed.get("author"))
+        if any(
+            expected_author.get(field) != observed_author.get(field)
+            for field in ("account_id", "login", "type")
+        ):
+            blockers.append("pull_request_author_drift")
+        if observed["state"] != "open":
+            blockers.append("pull_request_not_open")
+        if observed["draft"]:
+            blockers.append("pull_request_is_draft")
+        if observed["base_repository_slug"] != governed_repository:
+            blockers.append("governed_base_repository_mismatch")
+        if observed["base_ref"] not in REVIEW_BASE_REFS:
+            blockers.append("base_ref_not_review_eligible")
+
+    same_repository = bool(
+        observed
+        and observed.get("head_repository_slug") == governed_repository
+    )
+    author_decision: dict[str, Any] = {
+        "authorized": False,
+        "reason": "invalid_pull_request_author",
+        "author": _mapping(observed.get("author")),
+        "policy": {
+            "schema": normalized_policy["schema"],
+            "repository_slug": governed_repository,
+            "digest": policy_digest(normalized_policy),
+        },
+    }
+    if observed:
+        author_decision = evaluate_author(normalized_policy, observed.get("author"))
+    trusted_author = bool(author_decision.get("authorized"))
+    review_eligible = bool(expected and observed and not blockers)
+    mutation_authorized = bool(
+        review_eligible and same_repository and trusted_author
+    )
+    return {
+        "schema": AUTHORITY_SCHEMA,
+        "review_eligible": review_eligible,
+        "same_repository": same_repository,
+        "trusted_author": trusted_author,
+        "mutation_authorized": mutation_authorized,
+        "blockers": sorted(set(blockers)),
+        "identity": observed,
+        "author_decision": author_decision,
+        "policy": author_decision["policy"],
+    }
 
 
 def evaluate_author(policy: Any, live_author: Any) -> dict[str, Any]:

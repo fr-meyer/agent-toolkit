@@ -106,6 +106,30 @@ class PullfrogReviewContractTests(unittest.TestCase):
             ),
         )
 
+    def test_fork_review_evidence_is_valid_but_gate_publication_is_not(self):
+        fixture = snapshot()
+        for key in ("expected_identity", "observed_identity"):
+            fixture[key]["head_repository_slug"] = "external/agent-toolkit"
+        receipt = MODULE.evaluate_contract(fixture)
+        self.assertEqual(receipt["status"], "clean")
+        self.assertEqual(receipt["blockers"], [])
+        self.assertEqual(receipt["gate"]["external_id"], "")
+        selected = MODULE.select_gate([], fixture["observed_identity"], [receipt])
+        self.assertEqual(selected["status"], "missing")
+        self.assertEqual(selected["expected_external_ids"], [])
+
+    def test_review_identity_requires_governed_dev_or_main_base(self):
+        for base_ref in ("staging", "master"):
+            with self.subTest(base_ref=base_ref):
+                fixture = snapshot()
+                for key in ("expected_identity", "observed_identity"):
+                    fixture[key]["base_ref"] = base_ref
+                receipt = MODULE.evaluate_contract(fixture)
+                self.assertEqual(receipt["status"], "incomplete")
+                self.assertIn(
+                    "invalid_expected_review_identity", receipt["blockers"]
+                )
+
     def test_empty_or_markerless_review_is_never_complete(self):
         for body in ("", "No new issues found"):
             with self.subTest(body=body):

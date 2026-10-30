@@ -28,8 +28,19 @@ def pull_request(head_sha=HEAD_SHA, base_ref="dev"):
     return {
         "number": 94,
         "state": "open",
+        "draft": False,
+        "user": {
+            "id": 26621962,
+            "login": "fr-meyer",
+            "type": "User",
+            "node_id": "MDQ6VXNlcjI2NjIxOTYy",
+        },
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "base": {"ref": base_ref, "sha": BASE_SHA},
+        "base": {
+            "ref": base_ref,
+            "sha": BASE_SHA,
+            "repo": {"full_name": "fr-meyer/agent-toolkit"},
+        },
         "head": {
             "ref": "chore/pullfrog-full-automation",
             "sha": head_sha,
@@ -974,7 +985,7 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
                 "scripts/example.py",
             )
 
-    def test_non_dev_base_policy_reaches_claim_validator_and_publisher(self):
+    def test_non_review_target_base_cannot_reach_claim_or_publisher(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             subprocess.run(["git", "init", "-q"], cwd=root, check=True)
@@ -995,48 +1006,10 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
             decision, claim = MODULE.prepare_claim(
                 receipt, empty_ledger(), run_id="123", run_attempt=1
             )
-            self.assertEqual(decision["status"], "ready")
-            self.assertIsNotNone(claim)
-            assert claim is not None
-            self.assertEqual(
-                claim["destination_policy"],
-                {
-                    "default_branch": "main",
-                    "protected_refs": ["dev", "main", "staging"],
-                },
-            )
-
-            source_file.write_text("value = 2\n", encoding="utf-8")
-            raw_patch = subprocess.check_output(
-                [
-                    "git",
-                    "diff",
-                    "--binary",
-                    "--full-index",
-                    "--no-renames",
-                    source,
-                    "--",
-                ],
-                cwd=root,
-            )
-            subprocess.run(["git", "reset", "--hard", source], cwd=root, check=True)
-            candidate, sealed_patch = MODULE.prepare_candidate_from_patch(
-                claim=claim,
-                workspace=root,
-                action_outcome="success",
-                action_result_raw=action_result(claim),
-                raw_patch=raw_patch,
-                observed_identity=dict(claim["identity"]),
-            )
-            subprocess.run(["git", "reset", "--hard", source], cwd=root, check=True)
-            plan = MODULE.apply_candidate(
-                claim=claim,
-                candidate=candidate,
-                patch=sealed_patch,
-                workspace=root,
-            )
-            self.assertEqual(plan["source_head_sha"], source)
-            self.assertEqual(plan["destination_guard"]["status"], "allowed")
+            self.assertEqual(decision["status"], "no_action")
+            self.assertFalse(receipt["policy_decision"]["review_eligible"])
+            self.assertFalse(receipt["policy_decision"]["mutation_authorized"])
+            self.assertIsNone(claim)
 
     def test_raw_provider_patch_cannot_touch_forbidden_paths(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -14,6 +14,9 @@ SPEC.loader.exec_module(MODULE)
 
 REPOSITORY = "fr-meyer/agent-toolkit"
 EXPECTED_POLICY_DIGEST = "657eaab8a92d2517165f59a2746770ccfac70c340235040bf45aaca7b577b41f"
+BASE_SHA = "1" * 40
+HEAD_SHA = "2" * 40
+NEXT_SHA = "3" * 40
 
 
 def policy():
@@ -48,6 +51,35 @@ def live_author(
         "type": account_type,
         "node_id": node_id,
         "avatar_url": "https://example.invalid/untrusted-extra-field",
+    }
+
+
+def pull_request(
+    *,
+    author=None,
+    head_repository=REPOSITORY,
+    base_repository=REPOSITORY,
+    base_ref="dev",
+    base_sha=BASE_SHA,
+    head_sha=HEAD_SHA,
+    draft=False,
+    state="open",
+):
+    return {
+        "number": 95,
+        "state": state,
+        "draft": draft,
+        "user": copy.deepcopy(author or live_author()),
+        "base": {
+            "ref": base_ref,
+            "sha": base_sha,
+            "repo": {"full_name": base_repository},
+        },
+        "head": {
+            "ref": "feat/pullfrog-write-capable-loop",
+            "sha": head_sha,
+            "repo": {"full_name": head_repository},
+        },
     }
 
 
@@ -236,6 +268,123 @@ class PullfrogTrustedAuthorPolicyTests(unittest.TestCase):
             ):
                 loaded = MODULE.load_policy(REPOSITORY)
         self.assertEqual(loaded, MODULE.parse_policy(policy(), REPOSITORY))
+
+    def test_external_contributor_and_fork_are_review_only(self):
+        external = live_author(444444444, "external-user", "User", "NODE_external")
+        pr = pull_request(author=external, head_repository="external/agent-toolkit")
+        receipt = MODULE.evaluate_pull_request_authority(
+            policy(), REPOSITORY, pr, copy.deepcopy(pr)
+        )
+        self.assertTrue(receipt["review_eligible"])
+        self.assertFalse(receipt["same_repository"])
+        self.assertFalse(receipt["trusted_author"])
+        self.assertFalse(receipt["mutation_authorized"])
+        self.assertEqual(receipt["blockers"], [])
+
+    def test_untrusted_same_repository_author_is_review_only(self):
+        pr = pull_request(
+            author=live_author(444444444, "untrusted-user", "User", "NODE_untrusted")
+        )
+        receipt = MODULE.evaluate_pull_request_authority(
+            policy(), REPOSITORY, pr, copy.deepcopy(pr)
+        )
+        self.assertTrue(receipt["review_eligible"])
+        self.assertTrue(receipt["same_repository"])
+        self.assertFalse(receipt["trusted_author"])
+        self.assertFalse(receipt["mutation_authorized"])
+        self.assertEqual(
+            receipt["author_decision"]["reason"], "untrusted_account_id"
+        )
+
+    def test_trusted_human_and_custom_app_bots_are_mutation_authorized(self):
+        authors = (
+            live_author(),
+            live_author(285669409, "mergeguez[bot]", "Bot", "BOT_mergeguez"),
+            live_author(325213916, "le-commis[bot]", "Bot", "BOT_le_commis"),
+        )
+        for author in authors:
+            with self.subTest(login=author["login"]):
+                pr = pull_request(author=author)
+                receipt = MODULE.evaluate_pull_request_authority(
+                    policy(), REPOSITORY, pr, copy.deepcopy(pr)
+                )
+                self.assertTrue(receipt["review_eligible"])
+                self.assertTrue(receipt["same_repository"])
+                self.assertTrue(receipt["trusted_author"])
+                self.assertTrue(receipt["mutation_authorized"])
+
+    def test_malformed_author_and_pull_request_identity_fail_closed(self):
+        variants = []
+        malformed = pull_request()
+        del malformed["user"]["id"]
+        variants.append(malformed)
+        malformed = pull_request()
+        malformed["base"]["repo"]["full_name"] = ""
+        variants.append(malformed)
+        malformed = pull_request()
+        malformed["head"]["sha"] = "not-a-sha"
+        variants.append(malformed)
+        for pr in variants:
+            with self.subTest(pr=pr):
+                receipt = MODULE.evaluate_pull_request_authority(
+                    policy(), REPOSITORY, pr, copy.deepcopy(pr)
+                )
+                self.assertFalse(receipt["review_eligible"])
+                self.assertFalse(receipt["mutation_authorized"])
+                self.assertTrue(receipt["blockers"])
+
+    def test_drafts_closed_prs_and_non_governed_targets_are_not_review_eligible(self):
+        variants = (
+            pull_request(draft=True),
+            pull_request(state="closed"),
+            pull_request(base_repository="external/agent-toolkit"),
+            pull_request(base_ref="staging"),
+        )
+        for pr in variants:
+            with self.subTest(pr=pr):
+                receipt = MODULE.evaluate_pull_request_authority(
+                    policy(), REPOSITORY, pr, copy.deepcopy(pr)
+                )
+                self.assertFalse(receipt["review_eligible"])
+                self.assertFalse(receipt["mutation_authorized"])
+
+    def test_retargeting_and_exact_head_or_author_drift_fail_closed(self):
+        mutations = (
+            ("base_ref", lambda pr: pr["base"].__setitem__("ref", "main")),
+            ("base_sha", lambda pr: pr["base"].__setitem__("sha", NEXT_SHA)),
+            ("head_sha", lambda pr: pr["head"].__setitem__("sha", NEXT_SHA)),
+            (
+                "author",
+                lambda pr: pr.__setitem__(
+                    "user", live_author(444444444, "external-user", "User")
+                ),
+            ),
+        )
+        for name, mutate in mutations:
+            with self.subTest(name=name):
+                expected = pull_request()
+                observed = copy.deepcopy(expected)
+                mutate(observed)
+                receipt = MODULE.evaluate_pull_request_authority(
+                    policy(), REPOSITORY, expected, observed
+                )
+                self.assertFalse(receipt["review_eligible"])
+                self.assertFalse(receipt["mutation_authorized"])
+                self.assertTrue(
+                    any(blocker.endswith("_drift") for blocker in receipt["blockers"])
+                )
+
+    def test_pull_request_node_id_drift_is_diagnostic_only(self):
+        expected = pull_request()
+        observed = copy.deepcopy(expected)
+        observed["user"]["node_id"] = "NODE_diagnostic_change"
+        receipt = MODULE.evaluate_pull_request_authority(
+            policy(), REPOSITORY, expected, observed
+        )
+        self.assertTrue(receipt["review_eligible"])
+        self.assertTrue(receipt["trusted_author"])
+        self.assertTrue(receipt["mutation_authorized"])
+        self.assertEqual(receipt["blockers"], [])
 
     def test_pull_request_author_extraction_requires_complete_identity(self):
         pr = {"user": live_author()}
