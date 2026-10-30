@@ -29,6 +29,8 @@ Every decision requires exact-head results for:
 
 `pullfrog`, `ci`, `speculoos`, and `destination-guard` must succeed. `pullfrog-approval` must succeed for a clean review and fail for a review with outstanding findings. Missing, pending, failed, cancelled, timed-out, skipped, malformed, duplicated, or stale evidence stops the cycle unless that failure is the expected approval result for outstanding findings.
 
+The GitHub coordinator may satisfy the two Pullfrog inputs for a scoped fallback or re-review only with a repository-owned `pullfrog-review-gate` whose repository, PR, base SHA, head SHA, evidence profile, and evidence digest match a freshly reconstructed review-only contract. A successful gate translates only a clean contract into merge evaluation. A failed gate translates only a matching findings contract into bounded remediation, never into merge. This translation happens outside the provider-free cycle core. A newer finding, failed or pending raw check, unresolved thread, or mismatched gate digest prevents clean translation and stops merge authorization.
+
 ## Bounded progress and idempotency
 
 The claim key is `owner/repository:pr-number:head-sha:cycle-number`. Completed claims are idempotent and cannot trigger another remediation run.

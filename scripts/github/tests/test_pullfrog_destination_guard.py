@@ -172,7 +172,22 @@ class PullfrogDestinationGuardTests(unittest.TestCase):
         self.assertIn("destination_ref_mismatch", receipt["blockers"])
         self.assertIn("destination_sha_mismatch", receipt["blockers"])
 
-    def test_governance_and_workflow_paths_are_forbidden(self):
+    def test_governance_workflow_and_validation_authority_paths_are_forbidden(self):
+        self.assertTrue(
+            {
+                "scripts/github/pullfrog_review_fallback.py",
+                "scripts/github/pullfrog_review_contract.py",
+                "scripts/github/tests/test_pullfrog_review_fallback.py",
+                "scripts/github/tests/test_pullfrog_review_fallback_workflow_policy.py",
+                "scripts/github/tests/test_pullfrog_review_contract.py",
+            }.issubset(MODULE.PROTECTED_AUTOMATION_AUTHORITY_PATHS)
+        )
+        self.assertTrue(
+            any(
+                ".github/workflows/pullfrog-review-fallback.yml".startswith(prefix)
+                for prefix in MODULE.FORBIDDEN_PATH_PREFIXES
+            )
+        )
         for path in [
             ".github/workflows/pullfrog.yml",
             ".github/actions/unsafe/action.yml",
@@ -182,6 +197,7 @@ class PullfrogDestinationGuardTests(unittest.TestCase):
             "templates/starter-workflows/trigger.yml",
             "templates/repo-workflow-materialization-manifest.json",
             "templates/workflow-ref-sync-manifest.json",
+            *sorted(MODULE.PROTECTED_AUTOMATION_AUTHORITY_PATHS),
         ]:
             with self.subTest(path=path):
                 payload = base_payload()

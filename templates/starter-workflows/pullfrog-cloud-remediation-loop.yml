@@ -61,6 +61,7 @@ jobs:
       status: ${{ steps.claim.outputs.status }}
       reason: ${{ steps.claim.outputs.reason }}
       pr_number: ${{ steps.claim.outputs.pr_number }}
+      base_sha: ${{ steps.claim.outputs.base_sha }}
       source_head_sha: ${{ steps.claim.outputs.source_head_sha }}
       attempt_number: ${{ steps.claim.outputs.attempt_number }}
       claim_artifact: ${{ steps.claim.outputs.claim_artifact }}
@@ -518,6 +519,9 @@ jobs:
       actions: read
       contents: read
       pull-requests: read
+    outputs:
+      status: ${{ steps.terminal.outputs.status }}
+      result_head_sha: ${{ steps.terminal.outputs.result_head_sha }}
 
     steps:
       - name: Checkout trusted coordinator source
@@ -643,6 +647,368 @@ jobs:
       - name: Enforce exact-head publication result
         if: always() && (steps.apply.outcome != 'success' || steps.terminal.outcome != 'success')
         run: exit 1
+
+  rereview:
+    name: One exact-head Sol re-review after published remediation
+    needs:
+      - evaluate
+      - publish
+    if: >-
+      needs.publish.result == 'success' &&
+      needs.publish.outputs.status == 'pushed' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      checks: read
+      contents: read
+      id-token: write
+      pull-requests: read
+
+    steps:
+      - name: Checkout trusted default-branch re-review controller
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: trusted-controller
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Checkout exact published pull-request head
+        id: checkout
+        continue-on-error: true
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.publish.outputs.result_head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Re-read exact published head and unchanged base
+        id: preflight
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python trusted-controller/scripts/github/pullfrog_review_fallback.py verify-identity
+          --repository "$GITHUB_REPOSITORY"
+          --pr-number "${{ needs.evaluate.outputs.pr_number }}"
+          --expected-head-sha "${{ needs.publish.outputs.result_head_sha }}"
+          --expected-base-sha "${{ needs.evaluate.outputs.base_sha }}"
+          --run-attempt "$GITHUB_RUN_ATTEMPT"
+          --out artifacts/pullfrog-rereview/preflight.json
+
+      - name: Verify local exact-head checkout
+        id: local_head
+        if: steps.checkout.outcome == 'success' && steps.preflight.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "${{ needs.publish.outputs.result_head_sha }}"
+
+      - name: Mint least-privilege Pullfrog re-review token
+        id: review_token
+        if: steps.local_head.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/pullfrog-rereview/raw
+          python trusted-controller/scripts/github/pullfrog_review_fallback.py mint-review-token \
+            --repository "$GITHUB_REPOSITORY" \
+            --github-output "$GITHUB_OUTPUT" \
+            --out artifacts/pullfrog-rereview/raw/token-lease.json
+
+      - name: Run one review-only Sol attempt on the new exact head
+        id: pullfrog
+        if: steps.review_token.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.review_token.outputs.credential }}
+        uses: pullfrog/pullfrog@25a837a2b078177c3acdce790506d1fd1acedd82 # v0.1.102
+        with:
+          prompt: >-
+            Review pull request #${{ needs.evaluate.outputs.pr_number }} in
+            ${{ github.repository }} at exact head
+            ${{ needs.publish.outputs.result_head_sha }} against unchanged exact
+            base ${{ needs.evaluate.outputs.base_sha }} after one bounded
+            remediation commit. Re-read the live identity and stop on drift.
+            Review the complete diff and submit one complete Pullfrog review
+            containing the required divider marker. Do not modify, commit, push,
+            approve, merge, dispatch, release, deploy, change settings, resolve
+            threads, or delete branches. Return only the required structured
+            result.
+          timeout: 20m
+          cwd: source
+          model: openai/gpt-sol
+          effort: xhigh
+          push: disabled
+          shell: restricted
+          progress_comments: disabled
+          output_schema: >-
+            {"type":"object","additionalProperties":false,"required":["schema","status","repository","pr_number","base_sha","head_sha","model","effort","review_id","verdict","finding_count"],"properties":{"schema":{"const":"pullfrog-exact-head-rereview-result.v1"},"status":{"const":"review_submitted"},"repository":{"const":"${{ github.repository }}"},"pr_number":{"const":${{ needs.evaluate.outputs.pr_number }}},"base_sha":{"const":"${{ needs.evaluate.outputs.base_sha }}"},"head_sha":{"const":"${{ needs.publish.outputs.result_head_sha }}"},"model":{"const":"openai/gpt-sol"},"effort":{"const":"xhigh"},"review_id":{"type":"integer","minimum":1},"verdict":{"enum":["clean","findings"]},"finding_count":{"type":"integer","minimum":0}}}
+
+      - name: Capture bounded re-review result
+        if: always()
+        shell: bash
+        env:
+          PULLFROG_ACTION_OUTCOME: ${{ steps.pullfrog.outcome }}
+          PULLFROG_ACTION_RESULT: ${{ steps.pullfrog.outputs.result }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/pullfrog-rereview/raw
+          printf '%s\n' "$PULLFROG_ACTION_OUTCOME" > artifacts/pullfrog-rereview/raw/action-outcome.txt
+          if [[ -n "$PULLFROG_ACTION_RESULT" ]]; then
+            printf '%s\n' "$PULLFROG_ACTION_RESULT" > artifacts/pullfrog-rereview/raw/action-result.json
+          else
+            printf '{}\n' > artifacts/pullfrog-rereview/raw/action-result.json
+          fi
+          test -s artifacts/pullfrog-rereview/raw/token-lease.json || \
+            printf '{}\n' > artifacts/pullfrog-rereview/raw/token-lease.json
+
+      - name: Revoke least-privilege Pullfrog re-review token
+        id: revoke_token
+        if: always() && steps.review_token.outputs.credential != ''
+        continue-on-error: true
+        shell: bash
+        env:
+          PULLFROG_REVIEW_TOKEN: ${{ steps.review_token.outputs.credential }}
+        run: |
+          set -euo pipefail
+          python trusted-controller/scripts/github/pullfrog_review_fallback.py revoke-review-token \
+            --repository "$GITHUB_REPOSITORY" \
+            --out artifacts/pullfrog-rereview/raw/token-revocation.json
+
+      - name: Record credential disposal outcome
+        if: always()
+        shell: bash
+        env:
+          TOKEN_REVOCATION_OUTCOME: ${{ steps.revoke_token.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/pullfrog-rereview/raw
+          printf '%s\n' "$TOKEN_REVOCATION_OUTCOME" > artifacts/pullfrog-rereview/raw/token-revocation-outcome.txt
+          test -s artifacts/pullfrog-rereview/raw/token-revocation.json || \
+            printf '{}\n' > artifacts/pullfrog-rereview/raw/token-revocation.json
+
+      - name: Persist bounded first-attempt re-review evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-exact-head-rereview-raw-${{ github.run_id }}
+          path: artifacts/pullfrog-rereview/raw/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce bounded re-review attempt and token revocation
+        if: >-
+          always() &&
+          (steps.pullfrog.outcome != 'success' ||
+           steps.revoke_token.outcome != 'success')
+        run: exit 1
+
+  validate_rereview:
+    name: Validate first-attempt exact-head re-review evidence
+    needs:
+      - evaluate
+      - publish
+      - rereview
+    if: >-
+      always() &&
+      needs.publish.result == 'success' &&
+      needs.publish.outputs.status == 'pushed' &&
+      (needs.rereview.result != 'skipped' || github.run_attempt > 1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout fresh trusted re-review validator
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Download bounded first-attempt re-review evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pullfrog-exact-head-rereview-raw-${{ github.run_id }}
+          path: artifacts/pullfrog-rereview/raw
+
+      - name: Validate complete exact-head re-review contract
+        id: validate
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py verify-rereview-result
+          --repository "$GITHUB_REPOSITORY"
+          --pr-number "${{ needs.evaluate.outputs.pr_number }}"
+          --expected-head-sha "${{ needs.publish.outputs.result_head_sha }}"
+          --expected-base-sha "${{ needs.evaluate.outputs.base_sha }}"
+          --action-outcome-file artifacts/pullfrog-rereview/raw/action-outcome.txt
+          --action-result-file artifacts/pullfrog-rereview/raw/action-result.json
+          --token-lease-file artifacts/pullfrog-rereview/raw/token-lease.json
+          --token-revocation-file artifacts/pullfrog-rereview/raw/token-revocation.json
+          --token-revocation-outcome-file artifacts/pullfrog-rereview/raw/token-revocation-outcome.txt
+          --out artifacts/pullfrog-rereview/receipt.json
+
+      - name: Persist sanitized exact-head re-review receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-exact-head-rereview-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: artifacts/pullfrog-rereview/receipt.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce complete exact-head re-review contract
+        if: always() && steps.validate.outcome != 'success'
+        run: exit 1
+
+  reconcile_threads:
+    name: Reconcile only prior Pullfrog threads after clean re-review
+    needs:
+      - evaluate
+      - publish
+      - rereview
+      - validate_rereview
+    if: >-
+      always() &&
+      needs.publish.result == 'success' &&
+      needs.publish.outputs.status == 'pushed' &&
+      (needs.validate_rereview.result != 'skipped' || github.run_attempt > 1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout trusted default-branch thread reconciler
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Download sanitized exact-head re-review receipt
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pullfrog-exact-head-rereview-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: artifacts/pullfrog-rereview
+
+      - name: Reconcile bounded prior Pullfrog threads and revalidate contract
+        id: reconcile
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py reconcile-rereview-threads
+          --repository "$GITHUB_REPOSITORY"
+          --receipt artifacts/pullfrog-rereview/receipt.json
+          --out artifacts/pullfrog-rereview/reconciliation.json
+
+      - name: Persist sanitized thread-reconciliation receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-rereview-thread-reconciliation-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: artifacts/pullfrog-rereview/reconciliation.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce clean reconciled exact-head contract
+        if: always() && steps.reconcile.outcome != 'success'
+        run: exit 1
+
+  rereview_gate:
+    name: Publish exact-head gate after thread reconciliation
+    needs:
+      - evaluate
+      - publish
+      - rereview
+      - validate_rereview
+      - reconcile_threads
+    if: >-
+      always() &&
+      needs.publish.result == 'success' &&
+      needs.publish.outputs.status == 'pushed' &&
+      (needs.reconcile_threads.result != 'skipped' || github.run_attempt > 1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      checks: write
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout trusted default-branch gate publisher
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download sanitized thread-reconciliation receipt
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pullfrog-rereview-thread-reconciliation-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: artifacts/pullfrog-rereview
+
+      - name: Create or update exact repository PR base head gate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py publish-rereview-gate
+          --repository "$GITHUB_REPOSITORY"
+          --receipt artifacts/pullfrog-rereview/reconciliation.json
+          --details-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          --out artifacts/pullfrog-rereview/gate.json
+
+      - name: Hand off deliverable gate to a new exact-head evaluation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py handoff-controller
+          --repository "$GITHUB_REPOSITORY"
+          --source-receipt artifacts/pullfrog-rereview/reconciliation.json
+          --gate-receipt artifacts/pullfrog-rereview/gate.json
+          --out artifacts/pullfrog-rereview/handoff.json
+
+      - name: Persist sanitized re-review gate receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-exact-head-rereview-gate-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: |
+            artifacts/pullfrog-rereview/gate.json
+            artifacts/pullfrog-rereview/handoff.json
+          if-no-files-found: error
+          retention-days: 90
 
   auto_merge_eligible:
     name: Auto-merge clean exact-head PR to eligible non-stable base
