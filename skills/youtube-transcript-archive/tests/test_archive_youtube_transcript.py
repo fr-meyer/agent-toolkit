@@ -92,13 +92,13 @@ class CaptionSelectionTests(unittest.TestCase):
         ]
         calls = []
 
-        def download(lang: str, source: str) -> Path:
+        def download(lang: str, source: str) -> tuple[Path, bytes]:
             calls.append((lang, source))
             if lang == "en":
                 raise RuntimeError("simulated download failure")
-            return Path("/tmp/fr.vtt")
+            return Path("/tmp/fr.vtt"), b"WEBVTT\n"
 
-        lang, source, path, errors = self.module.select_caption_vtt(
+        lang, source, path, caption_bytes, errors = self.module.select_caption_vtt(
             choices,
             "best",
             False,
@@ -106,6 +106,7 @@ class CaptionSelectionTests(unittest.TestCase):
         )
 
         self.assertEqual(("fr-orig", "automatic", Path("/tmp/fr.vtt")), (lang, source, path))
+        self.assertEqual(b"WEBVTT\n", caption_bytes)
         self.assertEqual([("en", "automatic"), ("fr-orig", "automatic")], calls)
         self.assertEqual(1, len(errors))
         self.assertIn("simulated download failure", errors[0])
@@ -117,7 +118,7 @@ class CaptionSelectionTests(unittest.TestCase):
         ]
         calls = []
 
-        def download(lang: str, source: str) -> Path:
+        def download(lang: str, source: str) -> tuple[Path, bytes]:
             calls.append((lang, source))
             raise RuntimeError("simulated download failure")
 
@@ -319,6 +320,47 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
 
             with self.assertRaises(self.module.metadata_storage.MetadataPathError):
                 self.module.parse_vtt(candidate)
+
+    def test_caption_parsing_uses_verified_bytes_after_destination_replacement(self) -> None:
+        original_vtt = b"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nverified original\n"
+        replacement_vtt = b"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nreplaced outside\n"
+
+        def emit_caption(_cmd, *, cwd):
+            (Path(cwd) / "abc123.en.vtt").write_bytes(original_vtt)
+            return mock.Mock()
+
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            video_dir = root / "abc123"
+            video_dir.mkdir()
+            outside = root / "outside.vtt"
+            outside.write_bytes(replacement_vtt)
+            durable_write = self.module.metadata_storage.durable_atomic_write
+
+            def replace_after_commit(path: Path, data: bytes) -> None:
+                durable_write(path, data)
+                path.unlink()
+                path.symlink_to(outside)
+
+            with mock.patch.object(self.module, "run", side_effect=emit_caption), mock.patch.object(
+                self.module.metadata_storage,
+                "durable_atomic_write",
+                side_effect=replace_after_commit,
+            ):
+                raw_vtt, caption_bytes = self.module.download_caption_vtt(
+                    "/fixture/yt-dlp",
+                    "https://www.youtube.com/watch?v=abc123",
+                    "abc123",
+                    "en",
+                    "automatic",
+                    video_dir,
+                )
+
+            self.assertTrue(raw_vtt.is_symlink())
+            self.assertEqual(replacement_vtt, raw_vtt.read_bytes())
+            clean_lines, timestamped = self.module.parse_vtt_bytes(caption_bytes)
+            self.assertEqual(["verified original"], clean_lines)
+            self.assertEqual([("00:00:00.000", "verified original")], timestamped)
 
     def test_language_manifest_reuse_requires_the_canonical_commit_marker(self) -> None:
         info = {"id": "abc123", "title": "Interrupted language manifest"}

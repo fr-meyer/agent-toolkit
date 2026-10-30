@@ -108,7 +108,8 @@ def yt_dlp_version(yt_dlp: str) -> str:
 
 
 CaptionChoice = tuple[str, str, list[dict[str, Any]]]
-CaptionDownloader = Callable[[str, str], Path]
+CaptionDownload = tuple[Path, bytes]
+CaptionDownloader = Callable[[str, str], CaptionDownload]
 
 
 def has_any_captions(info: dict[str, Any]) -> bool:
@@ -223,7 +224,14 @@ def caption_error_summary(exc: subprocess.CalledProcessError | RuntimeError) -> 
     return detail
 
 
-def download_caption_vtt(yt_dlp: str, url: str, video_id: str, lang: str, source: str, video_dir: Path) -> Path:
+def download_caption_vtt(
+    yt_dlp: str,
+    url: str,
+    video_id: str,
+    lang: str,
+    source: str,
+    video_dir: Path,
+) -> CaptionDownload:
     video_id = validate_video_id(video_id)
     lang = validate_language_token(lang)
     with tempfile.TemporaryDirectory(prefix="youtube-transcript-") as tmp_s:
@@ -251,7 +259,7 @@ def download_caption_vtt(yt_dlp: str, url: str, video_id: str, lang: str, source
             max_bytes=64 * 1024 * 1024,
         )
         metadata_storage.durable_atomic_write(raw_vtt, caption_bytes)
-        return raw_vtt
+        return raw_vtt, caption_bytes
 
 
 def select_caption_vtt(
@@ -259,12 +267,12 @@ def select_caption_vtt(
     requested: str,
     no_caption_fallback: bool,
     download: CaptionDownloader,
-) -> tuple[str, str, Path, list[str]]:
+) -> tuple[str, str, Path, bytes, list[str]]:
     attempt_errors: list[str] = []
     for lang, source, _entries in choices:
         try:
-            raw_vtt = download(lang, source)
-            return lang, source, raw_vtt, attempt_errors
+            raw_vtt, caption_bytes = download(lang, source)
+            return lang, source, raw_vtt, caption_bytes, attempt_errors
         except (subprocess.CalledProcessError, RuntimeError) as exc:
             summary = caption_error_summary(exc)
             attempt_errors.append(f"{lang} ({source}): {summary}")
@@ -283,8 +291,7 @@ def clean_text(text: str) -> str:
     return text
 
 
-def parse_vtt(vtt_path: Path) -> tuple[list[str], list[tuple[str, str]]]:
-    raw_vtt = metadata_storage.read_regular_bytes(vtt_path, max_bytes=64 * 1024 * 1024)
+def parse_vtt_bytes(raw_vtt: bytes) -> tuple[list[str], list[tuple[str, str]]]:
     blocks: list[tuple[str, list[str]]] = []
     current_start: str | None = None
     current_lines: list[str] = []
@@ -317,6 +324,11 @@ def parse_vtt(vtt_path: Path) -> tuple[list[str], list[tuple[str, str]]]:
     clean_lines = [text for _, lines in blocks for text in lines]
     timestamped = [(ts, text) for ts, lines in blocks for text in lines]
     return clean_lines, timestamped
+
+
+def parse_vtt(vtt_path: Path) -> tuple[list[str], list[tuple[str, str]]]:
+    raw_vtt = metadata_storage.read_regular_bytes(vtt_path, max_bytes=64 * 1024 * 1024)
+    return parse_vtt_bytes(raw_vtt)
 
 
 def dedupe_consecutive(items: Iterable[Any]) -> list[Any]:
@@ -727,11 +739,11 @@ def main() -> int:
 
     ensure_base_artifacts()
 
-    def download_selected(candidate_lang: str, candidate_source: str) -> Path:
+    def download_selected(candidate_lang: str, candidate_source: str) -> CaptionDownload:
         return download_caption_vtt(yt_dlp, args.url, video_id, candidate_lang, candidate_source, video_dir)
 
     try:
-        lang, source, raw_vtt, attempt_errors = select_caption_vtt(
+        lang, source, raw_vtt, caption_bytes, attempt_errors = select_caption_vtt(
             choices,
             args.lang,
             args.no_caption_fallback,
@@ -744,7 +756,7 @@ def main() -> int:
     reports_dir = ensure_real_subdirectories(video_dir, "reports")
     manifests_dir = ensure_real_subdirectories(video_dir, "manifests")
 
-    clean_lines, timestamped = parse_vtt(raw_vtt)
+    clean_lines, timestamped = parse_vtt_bytes(caption_bytes)
     timestamped_deduped = deoverlap_caption_stream(dedupe_consecutive(timestamped))
     clean_deduped = [text for _, text in timestamped_deduped]
 
