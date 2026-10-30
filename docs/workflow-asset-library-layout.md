@@ -23,6 +23,10 @@ agent-toolkit/
 │       ├── pr-automation-dogfood-reusable.yml
 │       ├── pr-automation-dogfood-pr-trigger.yml
 │       ├── pullfrog.yml
+│       ├── pullfrog-cloud-coordinator-dry-run.yml
+│       ├── pullfrog-review-fallback.yml
+│       ├── pullfrog-cloud-remediation-loop.yml
+│       ├── speculoos.yml
 │       └── repository-similarity-preflight-ci.yml
 ├── templates/
 │   ├── reusable-workflows/
@@ -39,6 +43,10 @@ agent-toolkit/
 │   │   ├── cross-repo-workflow-updater-manual-trigger.yml
 │   │   ├── pr-automation-dogfood-pr-trigger.yml
 │   │   ├── pullfrog.yml
+│   │   ├── pullfrog-cloud-coordinator-dry-run.yml
+│   │   ├── pullfrog-review-fallback.yml
+│   │   ├── pullfrog-cloud-remediation-loop.yml
+│   │   ├── speculoos.yml
 │   │   └── repository-similarity-preflight-ci.yml
 │   ├── workflow-ref-sync-manifest.json
 │   └── repo-workflow-materialization-manifest.json
@@ -157,6 +165,14 @@ The repository-similarity preflight CI is a standalone repo-local entrypoint. It
 
 The PR automation dogfood pair also follows this pattern. Its canonical reusable harness lives in `templates/reusable-workflows/pr-automation-dogfood-reusable.yml`, its canonical pull-request trigger lives in `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml`, and both materialize to matching live copies under `.github/workflows/`. The trigger uses a relative same-commit call, so this pair does not need reusable-workflow SHA diffusion.
 
-The bounded Pullfrog entrypoint follows the standalone-starter pattern. Its canonical source lives in `templates/starter-workflows/pullfrog.yml` and materializes to `.github/workflows/pullfrog.yml`. It pins the Pullfrog action and checkout action to immutable commits, disables pushes, keeps the shell restricted, maps no provider secret, and remains optional review evidence rather than a required gate. See `docs/pullfrog-review-only-pilot.md`.
+The bounded Pullfrog entrypoint follows the standalone-starter pattern. Its canonical source lives in `templates/starter-workflows/pullfrog.yml` and materializes to `.github/workflows/pullfrog.yml`. It pins the Pullfrog action and checkout action to immutable commits, explicitly selects `openai/gpt-sol` at `xhigh`, disables pushes, keeps the shell restricted, and maps no provider secret. Pullfrog is the sole intended AI reviewer and future fixer, but write-capable activation remains separately gated. See `docs/pullfrog-review-only-pilot.md` for the historical pilot and `docs/pullfrog-cloud-coordinator.md` for the current architecture.
+
+The activation-gated Pullfrog review fallback is a separate standalone starter. Its canonical source lives in `templates/starter-workflows/pullfrog-review-fallback.yml` and materializes to `.github/workflows/pullfrog-review-fallback.yml`. It permits one `openai/gpt-astra` at `xhigh` review only after the exact recorded Sol cybersecurity-policy refusal on an unchanged same-repository PR head/base, separates provider and check-write authority, and emits the composite exact-head `pullfrog-review-gate`. Source availability does not enable the variable, authorize a hosted pilot, integrate gate consumers, or change required checks. See `docs/pullfrog-review-model-fallback.md`.
+
+The Pullfrog cloud coordinator dry run is another standalone starter. Its canonical source lives in `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml` and materializes to `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml`. It uses only read permissions and immutable action pins, collects bounded GitHub evidence, evaluates the exact-head contract and destination guard, and uploads a sanitized receipt. It never invokes a provider or performs a repository mutation.
+
+The separately gated Pullfrog cloud remediation loop follows the same standalone-starter pattern. Its canonical source lives in `templates/starter-workflows/pullfrog-cloud-remediation-loop.yml` and materializes to `.github/workflows/pullfrog-cloud-remediation-loop.yml`. It isolates native Pullfrog `fix_review` execution from a fresh read-only validator and from the trusted publisher, persists identity-bound claims and terminal history, and permits only one normal exact-head fast-forward push after a canonical sealed patch and post-patch guards pass. The publisher alone uses the separately provisioned `PULLFROG_REMEDIATION_PUBLISH_TOKEN` so the push emits the normal synchronize event and schedules fresh Pullfrog, CI, and Speculoos evidence. The source is not hosted activation authority; credential provisioning, publication, and the first write pilot remain separately approval-gated.
+
+The independent Speculoos PR gate follows the standalone-starter pattern. Its canonical source lives in `templates/starter-workflows/speculoos.yml` and materializes to `.github/workflows/speculoos.yml`. It runs read-only on the exact PR head, binds the manifest's current task to the live head and base, and executes the repository-bound zero-secret contract validator at `scripts/github/speculoos_pr_contract.py`. Candidate-facing Python entrypoints use isolated mode, and the workflow validator executes each allowlisted policy test directly rather than prepending a candidate-controlled discovery directory, so a repository file such as `scripts/github/argparse.py`, `scripts/github/tests/json.py`, or a root-level standard-library namesake cannot replace the interpreter's trusted imports. The validator checks the complete diff packet, including deleted paths, canonical release wording, documentation impact, workflow materialization, non-stable merge actor policy, whitespace, and red-list token patterns, then emits the exact `speculoos` check consumed by the Pullfrog coordinator. The destination guard blocks provider remediation from modifying this validator, the Pullfrog controller scripts, its shell validator, or the executable workflow-policy tests at both candidate sealing and publication. The hosted gate does not fetch the private Speculoos source repository or require a cross-repository credential. It excludes `main` and `master` targets and has no write or provider credential.
 
 Under the current policy, workflow-maintenance automation creates PR branches from `dev`, cross-repo divergence review is delivered on the update PR as a managed comment by default rather than as committed review-doc files, and cross-repo updater runs that need to clone, branch, or open PRs in consumer repositories should be configured with `ELEVATED_GITHUB_TOKEN` rather than relying on the built-in `GITHUB_TOKEN`.

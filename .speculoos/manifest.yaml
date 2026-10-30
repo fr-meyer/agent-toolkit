@@ -9,7 +9,10 @@ repository:
 status:
   phase: implementation
   blocker_summary:
-    - Pullfrog service configuration and model access remain separately approval-gated after repository workflow publication.
+    - PR #95 remains open and fail-closed at hosted head 5363904f2b0d1313084c2a76943ad24cf6f9eaa8 against base dev at 75418a1557b501b82c1ec0f7ee901a8dccaaacb7. Pullfrog produced complete exact-head review 5692731389 with two findings: the fallback credential route was broader than documented and failed-job reruns could exceed the one-attempt limit. Both findings are repaired locally and require guarded publication plus fresh exact-head review.
+    - The bounded Sol-to-Astra Pullfrog review fallback and composite pullfrog-review-gate remain unpublished and inactive. The local repair adds one scoped Pullfrog App review lease with required revocation, blocks provider execution after github.run_attempt=1, and preserves finalizer-only rerun recovery; hosted pilot, consumer integration, and required-check migration remain separate gates.
+    - Serving-ref activation, publisher-token provisioning, independent hosted Speculoos evidence, and the first hosted write pilot remain separately gated.
+    - Pullfrog provider push, approval, native repository-wide auto-merge, CI autofix, release, deployment, branch deletion, credentials, billing, and hosted settings remain disabled or separately gated. A repository-owned exact-head gate may auto-merge eligible feature PRs into any valid base except `main` or `master`.
 publication_policy:
   repository_visibility: shared-repository
   intended_public_visibility: public
@@ -21,41 +24,47 @@ release_policy:
   release_gate: separate-explicit-approval
 review_policy:
   self_managed:
-    policy: optional
-    fallback_role: emergency_fallback
-    evidence_source: ignored local self-review artifact
+    policy: disabled
+    evidence_source: historical-only; never satisfies required_pr_review
   legacy_pullfrog:
     policy: disabled
     evidence_source: historical-only
   pullfrog_review:
-    policy: optional
-    evidence_source: bounded exact-head comparison only; never satisfies required_pr_review
+    policy: primary
+    evidence_source: exact-head Pullfrog review plus app-bound pullfrog and pullfrog-approval checks
     controls:
-      push: disabled
+      provider_push: disabled
+      candidate_validation: fresh_read_only_job
+      trusted_publisher: implemented_local_not_activated
       shell: restricted
       approval: disabled
-      remediation: disabled
+      remediation: native_fix_review_local_candidate_only
+      review_model_fallback: sol_to_astra_source_prepared_not_published_or_activated
       ci_autofix: disabled
-      auto_merge: disabled
+      auto_merge: pullfrog-native-disabled; repository-owned-non-main-master
+  speculoos_evidence:
+    policy: required
+    evidence_source: independent exact-head hosted policy check
   legacy_coderabbit:
     policy: disabled
     evidence_source: historical-only
   mergeguez_review:
-    policy: primary
-    evidence_source: broker pr-state reviewers/reviews/checks normalized by review-evidence and merge-plan
-    protocol: https://github.com/fr-meyer/speculoos/blob/dev/docs/mergeguez-pr-command-protocol.md
+    policy: disabled
+    evidence_source: historical-only; Mergeguez is not a reviewer in the target architecture
   required_pr_review:
     policy: required
     primary:
-      - mergeguez_review
-    fallback_summary: self_managed evidence is not accepted for normal closeout; hosted Mergeguez review is mandatory.
+      - pullfrog_review
+    fallback_summary: Only the activation-gated Pullfrog Astra run may replace the exact recorded Sol cybersecurity-policy refusal; self-managed, Mergeguez, and CodeRabbit review remain ineligible.
 actor_policy:
   commit_actor: human_approved_agent_assisted
   push_actor: franck_user_pr_author
   pr_actor: franck_user_pr_author
-  review_actor: mergeguez_review
+  review_actor: pullfrog_review
   default_merge_actor: user_api
   feature_to_dev_merge_actor: mergeguez_dev_merge
+  non_stable_auto_merge_actor: github_actions_non_stable_auto_merge
+  stable_auto_merge: forbidden
   native_review_requires_distinct_author: true
   exact_pr_base_head_sha_required: true
 surfaces:
@@ -64,12 +73,13 @@ surfaces:
     authority: canonical
   github_pull_request:
     enabled: true
-    status: open
+    status: open-exact-head-review-findings-repaired-locally
+    number: 95
     base_branch: dev
     default_branch: main
-    head_branch: feat/pullfrog-review-pilot-20261026
-    head_sha: null
-    head_sha_source: Live PR #92 exact-head readback is supplied to review and merge gates; no self-referential SHA is committed
+    head_branch: feat/pullfrog-write-capable-loop
+    head_sha: 5363904f2b0d1313084c2a76943ad24cf6f9eaa8
+    head_sha_source: Exact hosted PR #95 identity reviewed in Pullfrog review 5692731389 before this local repair; re-read GitHub before publication, pilot, required-check changes, or merge
     merge_commit: null
 gates:
   before_publish:
@@ -78,8 +88,13 @@ gates:
     - private-data-check-pass
     - review-policy-recorded
     - review-request-dry-run-pass
+    - write-capable-publication-explicit-approval
   after_publish:
-    - exact-head-mergeguez-review-requested
-    - exact-head-review-and-check-evidence
-current_task: pullfrog-review-only-pilot-20261026
-current_task_metadata: .speculoos/tasks/pullfrog-review-only-pilot-20261026.yaml
+    - exact-head-pullfrog-review-requested
+    - exact-head-pullfrog-ci-speculoos-evidence
+    - hosted-write-pilot-separate-approval
+    - hosted-review-fallback-pilot-separate-approval
+    - composite-review-gate-consumers-validated
+    - required-check-migration-separate-approval
+current_task: pullfrog-cloud-remediation-20261028
+current_task_metadata: .speculoos/tasks/pullfrog-cloud-remediation-20261028.yaml

@@ -1,19 +1,24 @@
 {
   "schema_version": "0.1",
   "requirements": {
-    "required_sources": ["local_validation", "github_checks", "mergeguez_review"],
-    "optional_sources": ["self_managed", "pullfrog_review"],
+    "required_sources": [
+      "local_validation",
+      "github_checks",
+      "pullfrog_review",
+      "speculoos_evidence"
+    ],
+    "optional_sources": [],
     "reviewers": {
-      "self_managed": {"policy": "optional"},
-      "pullfrog_review": {"policy": "optional"},
-      "mergeguez_review": {"policy": "required"}
+      "self_managed": {"policy": "disabled"},
+      "pullfrog_review": {"policy": "required"},
+      "mergeguez_review": {"policy": "disabled"}
     },
     "reviewer_groups": {
       "required_pr_review": {
         "policy": "required",
-        "primary": ["mergeguez_review"],
-        "summary": "Mergeguez review evidence is the primary required PR-review source.",
-        "fallback_summary": "Neither self-managed nor Pullfrog evidence is accepted for normal closeout; hosted Mergeguez review is mandatory."
+        "primary": ["pullfrog_review"],
+        "summary": "Pullfrog is the sole required exact-head AI review source.",
+        "fallback_summary": "Self-managed, Mergeguez, and CodeRabbit review evidence cannot replace exact-head Pullfrog review."
       }
     }
   },
@@ -21,37 +26,44 @@
     "local_validation": {
       "kind": "local_validation",
       "status": "passed",
-      "summary": "Workflow materialization, checksum-verified actionlint, deterministic review-only policy tests, immutable-pin checks, YAML and JSON parsing, Speculoos validation, publish-check, and git diff checks passed for the Pullfrog pilot workflow proposal.",
-      "evidence_ref": ".speculoos/tasks/pullfrog-review-only-pilot-20261026.yaml",
-      "updated_at": "pullfrog-review-only-pilot-20261026"
+      "summary": "The current local repair passes 216 GitHub automation tests, the focused 98-test canonical-contract/coordinator/fallback/remediation/merge matrix, checksum-verified workflow validation, Python compilation, deterministic materialization, canonical/live byte identity, JSON parsing, whitespace checks, and the repository-bound exact-delta safety gates. Official Speculoos validate and publish-check are rerun against the final packet before publication.",
+      "evidence_ref": ".speculoos/tasks/pullfrog-cloud-remediation-20261028.yaml",
+      "updated_at": "pullfrog-complete-review-contract-20261029"
     },
     "github_checks": {
       "kind": "github_checks",
-      "status": "pending-live-read",
-      "summary": "Published PR #92 checks must be read live at the current exact head before merge; no self-referential head SHA is committed.",
-      "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pullfrog-review-only-pilot-20261026"
-    },
-    "self_managed": {
-      "kind": "self_managed",
-      "status": "pending",
-      "summary": "Emergency fallback only; not the normal review lane.",
-      "evidence_ref": ".speculoos/reviews/self-managed-review.json",
-      "updated_at": "pullfrog-review-only-pilot-20261026"
+      "status": "raw-checks-pass-complete-verdict-missing",
+      "summary": "PR #95 remains open at exact hosted head b19c82bd0bce27896a9a99960cdb8b32d08713b5. Dogfood, Speculoos, pullfrog, and pullfrog-approval raw checks succeed. Coordinator dry-runs 40821041281 and 40821037887 intentionally stop at the manual-governance boundary because the PR changes protected workflow, template, and Speculoos surfaces; this is not a failed exact-head PR check. The canonical complete-verdict gate is not yet present.",
+      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/95",
+      "updated_at": "pullfrog-complete-review-contract-20261029"
     },
     "pullfrog_review": {
       "kind": "pullfrog_review",
-      "status": "pending-separate-pilot",
-      "summary": "Optional exact-head comparison evidence only. Model authorization, service configuration, and the first invocation remain separate external gates and cannot satisfy the required review source.",
-      "evidence_ref": "docs/pullfrog-review-only-pilot.md",
-      "updated_at": "pullfrog-review-only-pilot-20261026"
+      "status": "missing-complete-exact-head-verdict",
+      "summary": "The two original findings from review 5692731389 are repaired at hosted head b19c82bd0bce27896a9a99960cdb8b32d08713b5, but exact-head Pullfrog reviews 5693046860 and 5693047157 have empty bodies. Passing raw checks and inline comments cannot manufacture the required nonempty marker-bearing complete verdict. The local canonical contract and bounded re-review/thread-reconciliation repair still require guarded publication and fresh hosted validation.",
+      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/95",
+      "updated_at": "pullfrog-complete-review-contract-20261029"
+    },
+    "speculoos_evidence": {
+      "kind": "speculoos_evidence",
+      "status": "passed-current-head-pending-contract-publication",
+      "summary": "Independent hosted Speculoos evidence succeeds on exact hosted head b19c82bd0bce27896a9a99960cdb8b32d08713b5. Publishing the canonical review-contract repair will create a new exact head, so fresh hosted Speculoos evidence will again be required and cannot be replaced by Pullfrog output.",
+      "evidence_ref": "https://github.com/fr-meyer/agent-toolkit/pull/95",
+      "updated_at": "pullfrog-complete-review-contract-20261029"
+    },
+    "self_managed": {
+      "kind": "self_managed",
+      "status": "disabled-historical",
+      "summary": "Not accepted as normal or fallback review evidence.",
+      "evidence_ref": ".speculoos/reviews/self-managed-review.json",
+      "updated_at": "pullfrog-cloud-remediation-20261028"
     },
     "mergeguez_review": {
       "kind": "mergeguez_review",
-      "status": "pending-live-read",
-      "summary": "Published PR #92 requires a fresh exact-head Mergeguez review after each head update and before merge; live evidence is not replaced by a committed SHA.",
-      "evidence_ref": "broker:mergeguez pr-state --json",
-      "updated_at": "pullfrog-review-only-pilot-20261026"
+      "status": "disabled-historical",
+      "summary": "Mergeguez is not a reviewer. It remains the manual publication and merge broker; automatic feature-to-dev merge is owned separately by the repository exact-head GitHub Actions gate, while stable-branch merge stays human-authorized.",
+      "evidence_ref": "docs/pullfrog-cloud-coordinator.md",
+      "updated_at": "pullfrog-cloud-remediation-20261028"
     }
   }
 }

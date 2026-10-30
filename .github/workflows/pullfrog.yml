@@ -36,6 +36,8 @@ jobs:
         with:
           prompt: ${{ inputs.prompt }}
           timeout: 15m
+          model: openai/gpt-sol
+          effort: xhigh
           push: disabled
           shell: restricted
           progress_comments: disabled
