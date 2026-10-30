@@ -36,6 +36,26 @@ The initial trusted mutation identities are:
 GitHub `node_id` may be retained as diagnostic evidence, but it is never an
 authorization key and does not enter the policy digest.
 
+## Review eligibility versus mutation authority
+
+The exact-head controller exposes four independent booleans:
+
+- `review_eligible` requires an open, non-draft PR with a complete author and
+  exact before/after identity, whose base repository is
+  `fr-meyer/agent-toolkit` and whose base ref is exactly `dev` or `main`;
+- `same_repository` records whether the head repository is also
+  `fr-meyer/agent-toolkit`;
+- `trusted_author` records whether the observed numeric account ID, case-folded
+  login, and exact account type match the current policy;
+- `mutation_authorized` requires all three preceding conditions.
+
+An external contributor, fork head, or untrusted same-repository author may
+therefore remain review-eligible while always mutation-ineligible. Its exact-head
+Pullfrog review evidence can be validated and retained, but it cannot publish a
+review gate, mint a remediation claim, reconcile threads, push, approve, or
+merge. Drafts, closed PRs, malformed identities, retargeting, and any author,
+base, or head drift fail review eligibility closed.
+
 ## Canonical digest
 
 The parser rejects unknown fields, duplicate JSON keys, duplicate account IDs,
@@ -50,10 +70,12 @@ test-vector update, and invalidates mutation evidence bound to an older digest.
 ## Mutation boundary
 
 The parser, artifact, and focused tests are protected automation-authority paths.
-Automatic remediation cannot change them. Later controller integration must load
-the policy from trusted default-branch controller source, bind its digest and the
-live PR author ID/login/type into every exact-head evidence contract, and re-read
-both immediately before each authority transition.
+Automatic remediation cannot change them. The read-only coordinator now loads
+the fixed policy, reports the four independent authority decisions, and prevents
+untrusted or fork-origin findings from authorizing remediation or merge. The
+next controller integration must bind the policy digest and live PR author
+ID/login/type into every exact-head evidence contract and re-read both
+immediately before each authority transition.
 
 This policy source does not itself authorize a hosted run, publication, settings
 change, credential provisioning, approval, merge, release, deployment, or branch

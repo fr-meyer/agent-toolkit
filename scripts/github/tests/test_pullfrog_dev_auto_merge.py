@@ -510,14 +510,18 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
         )
         self.assertEqual(len(client.push_calls), 1)
 
-    def test_clean_exact_head_non_stable_base_is_eligible(self):
+    def test_non_review_target_base_is_ineligible(self):
         client = FakeClient()
         receipt = retarget_base(clean_receipt(), client, "staging")
-        result = MODULE.merge_clean_pr(client, receipt, expected_head_sha=HEAD_SHA)
-        self.assertEqual(result["status"], "merged")
-        self.assertEqual(result["base_ref"], "staging")
-        self.assertEqual(client.refs["staging"], MERGE_SHA)
+        self.assert_code(
+            "invalid_review_contract",
+            MODULE.merge_clean_pr,
+            client,
+            receipt,
+            expected_head_sha=HEAD_SHA,
+        )
         self.assertEqual(client.refs["dev"], BASE_SHA)
+        self.assertEqual(client.refs["staging"], BASE_SHA)
 
     def test_main_and_master_bases_fail_closed(self):
         for base in ("main", "master"):
@@ -682,14 +686,19 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
         self.assertEqual(client.dispatch_calls[0][2]["source_commit"], MERGE_SHA)
         self.assertEqual(client.dispatch_calls[0][2]["previous_source_commit"], BASE_SHA)
 
-    def test_non_dev_merge_does_not_replay_dev_push_automation(self):
+    def test_non_review_target_base_never_merges_or_replays_automation(self):
         client = FakeClient()
         paths = ["scripts/github/cross_repo_workflow_updater.py"]
         client.files = [{"filename": path} for path in paths]
         receipt = retarget_base(receipt_for_paths(paths), client, "staging")
-        result = MODULE.merge_clean_pr(client, receipt, expected_head_sha=HEAD_SHA)
-        self.assertEqual(result["status"], "merged")
-        self.assertEqual(result["downstream_dispatches"], [])
+        self.assert_code(
+            "invalid_review_contract",
+            MODULE.merge_clean_pr,
+            client,
+            receipt,
+            expected_head_sha=HEAD_SHA,
+        )
+        self.assertEqual(client.push_calls, [])
         self.assertEqual(client.dispatch_calls, [])
 
     def test_downstream_dispatch_failure_is_durable_after_confirmed_merge(self):
