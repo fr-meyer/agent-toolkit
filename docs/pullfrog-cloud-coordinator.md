@@ -15,6 +15,8 @@ Pullfrog remains the sole AI reviewer and intended fixer. The coordinator is rep
 
 The separately activation-gated Sol-to-Astra review fallback and its composite `pullfrog-review-gate` are audited in [`pullfrog-review-model-fallback.md`](pullfrog-review-model-fallback.md). A fallback verdict is review evidence only; it never authorizes remediation, publication, approval, or merge.
 
+The repository-owned trusted-author allowlist and canonical digest rules are documented in [`pullfrog-trusted-author-policy.md`](pullfrog-trusted-author-policy.md). The policy is implemented but not yet wired into every evidence and mutation transition. Until that integration is complete and reviewed, a same-repository head is not sufficient mutation authority.
+
 ## Current dry-run boundary
 
 The current implementation is deliberately non-mutating:
