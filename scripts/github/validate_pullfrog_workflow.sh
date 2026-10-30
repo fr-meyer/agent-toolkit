@@ -41,6 +41,7 @@ policy_tests=(
   "$repo_root/scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py"
   "$repo_root/scripts/github/tests/test_pullfrog_review_fallback_workflow_policy.py"
   "$repo_root/scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py"
+  "$repo_root/scripts/github/tests/test_pullfrog_trusted_author_policy.py"
   "$repo_root/scripts/github/tests/test_pullfrog_workflow_policy.py"
 )
 

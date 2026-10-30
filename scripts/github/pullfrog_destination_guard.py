@@ -31,6 +31,8 @@ PROTECTED_AUTOMATION_AUTHORITY_PATHS = frozenset(
         "scripts/github/pullfrog_dev_auto_merge.py",
         "scripts/github/pullfrog_review_fallback.py",
         "scripts/github/pullfrog_review_contract.py",
+        "scripts/github/pullfrog_trusted_author_policy.json",
+        "scripts/github/pullfrog_trusted_author_policy.py",
         "scripts/github/speculoos_pr_contract.py",
         "scripts/github/validate_pullfrog_workflow.sh",
         "scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py",
@@ -39,6 +41,7 @@ PROTECTED_AUTOMATION_AUTHORITY_PATHS = frozenset(
         "scripts/github/tests/test_pullfrog_review_fallback.py",
         "scripts/github/tests/test_pullfrog_review_fallback_workflow_policy.py",
         "scripts/github/tests/test_pullfrog_review_contract.py",
+        "scripts/github/tests/test_pullfrog_trusted_author_policy.py",
         "scripts/github/tests/test_pullfrog_workflow_policy.py",
     }
 )
