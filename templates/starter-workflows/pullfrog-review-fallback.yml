@@ -369,6 +369,9 @@ jobs:
       needs.evaluate.result == 'success' &&
       needs.gate_initial.result == 'success' &&
       needs.evaluate.outputs.status == 'fallback_ready' &&
+      needs.evaluate.outputs.authorized_fallback == 'true' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.authorize_fallback) ||
+       vars.PULLFROG_REVIEW_FALLBACK_ENABLED == 'true') &&
       (needs.fallback.result != 'skipped' || github.run_attempt > 1)
     runs-on: ubuntu-latest
     timeout-minutes: 10

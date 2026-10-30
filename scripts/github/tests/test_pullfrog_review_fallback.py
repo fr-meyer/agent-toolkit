@@ -511,6 +511,26 @@ class FakeClient:
         return {"id": 901}
 
 
+class SupersededReviewClient(FakeClient):
+    def __init__(self):
+        super().__init__()
+        self.reviews = [review(700, self.body)]
+
+    def get(self, path):
+        prefix = f"/repos/{REPOSITORY}/pulls/95/reviews/"
+        if path.startswith(prefix):
+            review_id = int(path.removeprefix(prefix))
+            return copy.deepcopy(
+                next(item for item in self.reviews if item["id"] == review_id)
+            )
+        return super().get(path)
+
+    def paginated(self, path):
+        if path == f"/repos/{REPOSITORY}/pulls/95/reviews":
+            return copy.deepcopy(self.reviews)
+        return super().paginated(path)
+
+
 class PullfrogReviewFallbackResultTests(unittest.TestCase):
     def coordinator(self):
         return MODULE.evaluate_snapshot(snapshot())
@@ -687,6 +707,58 @@ class PullfrogReviewFallbackResultTests(unittest.TestCase):
         decision = COORDINATOR.evaluate_snapshot(
             coordinator_snapshot(client, publication)
         )
+        self.assertFalse(decision["policy_decision"]["remediation_allowed"])
+        self.assertNotEqual(decision["would_action"], "start_remediation")
+
+        handoff = MODULE.dispatch_controller_after_gate(
+            client,
+            coordinator,
+            publication,
+        )
+        self.assertEqual(handoff["status"], "not_deliverable")
+        self.assertFalse(
+            any(path.endswith("/dispatches") for path, _ in client.posts)
+        )
+
+    def test_superseded_clean_fallback_cannot_authorize_new_findings(self):
+        client = SupersededReviewClient()
+        receipt = self.verify(client, "success", self.result("clean", 0))
+        self.assertEqual(receipt["status"], "valid")
+
+        later_review = review(
+            701,
+            complete_body(MODULE.FALLBACK_RESOLVED_MODEL, clean=False),
+        )
+        later_review["submitted_at"] = "2026-10-29T08:49:22Z"
+        client.reviews.append(later_review)
+        later_comment = fallback_finding_comment()
+        later_comment["pull_request_review_id"] = 701
+        client.comments = [later_comment]
+        live_contract = MODULE._collect_live_contract(
+            client,
+            pr_number=95,
+            base_sha=BASE_SHA,
+            head_sha=HEAD_SHA,
+            evidence_profile=MODULE.review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
+        )
+        self.assertEqual(live_contract["status"], "findings")
+
+        coordinator = self.coordinator()
+        publication = MODULE.publish_gate(
+            client,
+            coordinator,
+            "https://example.test/run",
+            True,
+            receipt,
+        )
+        self.assertEqual(publication["conclusion"], "failure")
+        self.assertFalse(
+            publication["external_id"].endswith(live_contract["evidence_digest"])
+        )
+
+        decision_snapshot = coordinator_snapshot(client, publication)
+        decision_snapshot["reviews"] = copy.deepcopy(client.reviews)
+        decision = COORDINATOR.evaluate_snapshot(decision_snapshot)
         self.assertFalse(decision["policy_decision"]["remediation_allowed"])
         self.assertNotEqual(decision["would_action"], "start_remediation")
 

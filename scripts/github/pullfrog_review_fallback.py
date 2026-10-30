@@ -1781,8 +1781,17 @@ def publish_gate(
             conclusion = "failure"
             title = "Pullfrog review gate failed live revalidation"
             summary = "Saved review evidence no longer matches the current exact-head contract."
-            if re.fullmatch(r"[0-9a-f]{64}", live_digest):
-                evidence_digest = live_digest
+            evidence_digest = _digest(
+                {
+                    "live_revalidation_failed": True,
+                    "saved_evidence_digest": evidence_digest,
+                    "result_receipt": result_receipt or {},
+                    "coordinator_evidence_digest": _text(
+                        coordinator.get("evidence_digest")
+                    ),
+                    "live_contract": live_contract,
+                }
+            )
 
     if not re.fullmatch(r"[0-9a-f]{64}", evidence_digest):
         evidence_digest = _digest(

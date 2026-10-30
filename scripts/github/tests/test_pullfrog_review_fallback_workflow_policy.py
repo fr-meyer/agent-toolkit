@@ -128,11 +128,20 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         self.assertNotIn("actions: write", fallback_section)
         self.assertNotIn("contents: write", fallback_section)
 
-    def test_failed_job_rerun_skips_provider_but_can_recover_finalization(self):
+    def test_failed_job_rerun_recovers_only_with_active_authorization(self):
         fallback_section = self.template.split("  fallback:\n", 1)[1].split("  finalize:\n", 1)[0]
         finalize_section = self.template.split("  finalize:\n", 1)[1]
         self.assertIn("github.run_attempt == 1", fallback_section)
         self.assertIn("needs.gate_initial.result == 'success'", finalize_section)
+        self.assertIn(
+            "needs.evaluate.outputs.authorized_fallback == 'true'",
+            finalize_section,
+        )
+        self.assertIn(
+            "((github.event_name == 'workflow_dispatch' && inputs.authorize_fallback) ||\n"
+            "       vars.PULLFROG_REVIEW_FALLBACK_ENABLED == 'true')",
+            finalize_section,
+        )
         self.assertIn(
             "(needs.fallback.result != 'skipped' || github.run_attempt > 1)",
             finalize_section,

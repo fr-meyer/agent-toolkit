@@ -151,16 +151,19 @@ Its jobs separate authority:
    repository, PR, head, base, model, effort, review ID, verdict, and finding
    count validate against fresh GitHub state and an exact-head Pullfrog review
    footer showing `gpt-6-astra`. Every associated finding comment must belong to
-   Pullfrog, bind to that exact head, and match the structured count; a clean
-   verdict must have zero comments.
+   Pullfrog and bind to that exact head. The structured finding count must match
+   the canonical contract count, including a summary-only finding; a clean
+   verdict must have zero canonical findings.
 
 Only bounded action outcome/result files and sanitized lease/revocation receipts
 cross from the provider job to the trusted finalizer. No token value, patch,
 provider credential, prompt, raw log, or content/check/action-dispatch write
 token crosses the provider boundary. Failed-job reruns skip the entire provider
-job via `github.run_attempt == 1`; when the first attempt already persisted its
-bounded artifact, a later attempt may rerun only the fresh validator and gate
-finalizer. The trusted default-branch finalizer alone has check-write plus
+job via `github.run_attempt == 1`; when an explicitly authorized or globally
+enabled first attempt already persisted its bounded artifact, a later attempt
+may rerun only the fresh validator and gate finalizer while that authorization
+remains active. A disabled evaluation and its reruns cannot enter finalization
+recovery or consume the unused provider attempt. The trusted default-branch finalizer alone has check-write plus
 workflow-dispatch authority. After publishing, it re-reads the live open PR,
 gate, contract status, evidence profile/digest, and expected conclusion before
 one exact-PR/head controller handoff; in-progress, invalid, stale, drifted, or
@@ -179,8 +182,9 @@ evidence profile, and evidence digest. The check is:
   bounded remediation but can never authorize merge;
 - failed with a distinct non-canonical digest for every invalid state, including
   Astra refusal, malformed output, token-scope or revocation failure,
-  review/model mismatch, drift, API failure, or duplicate attempt. That digest
-  cannot match current canonical findings evidence or authorize remediation.
+  review/model mismatch, saved-versus-live review drift, API failure, or
+  duplicate attempt. That digest cannot match current canonical findings
+  evidence or authorize remediation.
 
 While Astra activation is disabled, a recognized refusal publishes
 `action_required` and cannot invoke the fallback provider. That disabled
