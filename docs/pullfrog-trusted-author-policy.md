@@ -70,12 +70,18 @@ test-vector update, and invalidates mutation evidence bound to an older digest.
 ## Mutation boundary
 
 The parser, artifact, and focused tests are protected automation-authority paths.
-Automatic remediation cannot change them. The read-only coordinator now loads
-the fixed policy, reports the four independent authority decisions, and prevents
+Automatic remediation cannot change them. The read-only coordinator loads the
+fixed policy, reports the four independent authority decisions, and prevents
 untrusted or fork-origin findings from authorizing remediation or merge. The
-next controller integration must bind the policy digest and live PR author
-ID/login/type into every exact-head evidence contract and re-read both
-immediately before each authority transition.
+canonical review identity now includes the live author ID, case-folded login,
+account type, policy schema, and policy digest. Its derived identity digest is
+bound into review-gate external IDs, cycle decisions, remediation claims,
+candidates, action results, publish plans, terminals, fallback and re-review
+receipts, reconciliation records, controller handoffs, and merge receipts.
+Trusted jobs re-read the live PR author and current repository-owned policy
+before every provider, reconciliation, publication, dispatch, push, and merge
+authority transition. Any author, identity-digest, or policy-digest drift stops
+the transition.
 
 This policy source does not itself authorize a hosted run, publication, settings
 change, credential provisioning, approval, merge, release, deployment, or branch
@@ -86,7 +92,15 @@ deletion.
 ```bash
 python3 -I scripts/github/tests/test_pullfrog_trusted_author_policy.py -v
 python3 -I scripts/github/tests/test_pullfrog_destination_guard.py -v
+python3 -I scripts/github/tests/test_pullfrog_review_contract.py -v
+python3 -I scripts/github/tests/test_pullfrog_cloud_remediation.py -v
+python3 -I scripts/github/tests/test_pullfrog_review_fallback.py -v
+python3 -I scripts/github/tests/test_pullfrog_dev_auto_merge.py -v
 python3 -m py_compile \
   scripts/github/pullfrog_trusted_author_policy.py \
+  scripts/github/pullfrog_review_contract.py \
+  scripts/github/pullfrog_cloud_remediation.py \
+  scripts/github/pullfrog_review_fallback.py \
+  scripts/github/pullfrog_dev_auto_merge.py \
   scripts/github/tests/test_pullfrog_trusted_author_policy.py
 ```

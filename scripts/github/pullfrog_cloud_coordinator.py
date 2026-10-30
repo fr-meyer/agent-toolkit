@@ -182,19 +182,34 @@ def _identity_from_pr(
     default_branch: str,
     protected_refs: list[str],
 ) -> dict[str, Any]:
-    head = _mapping(pr.get("head"))
-    base = _mapping(pr.get("base"))
-    head_repo = _mapping(head.get("repo"))
-    base_repo = _mapping(base.get("repo"))
+    try:
+        canonical = review_contract.identity_from_pull_request(repository_slug, pr)
+    except trusted_author_policy.TrustedAuthorPolicyError:
+        head = _mapping(pr.get("head"))
+        base = _mapping(pr.get("base"))
+        canonical = review_contract.normalize_identity(
+            {
+                "repository_slug": repository_slug,
+                "pr_number": _integer(pr.get("number")),
+                "base_ref": _text(base.get("ref")),
+                "base_sha": _text(base.get("sha")),
+                "head_ref": _text(head.get("ref")),
+                "head_sha": _text(head.get("sha")),
+                "head_repository_slug": _text(
+                    _mapping(head.get("repo")).get("full_name")
+                ),
+                "base_repository_slug": _text(
+                    _mapping(base.get("repo")).get("full_name")
+                ),
+            }
+        )
     return {
-        "slug": repository_slug,
-        "pr_number": _integer(pr.get("number")),
-        "base_ref": _text(base.get("ref")),
-        "base_sha": _text(base.get("sha")),
-        "head_ref": _text(head.get("ref")),
-        "head_sha": _text(head.get("sha")),
-        "head_repository_slug": _text(head_repo.get("full_name")),
-        "base_repository_slug": _text(base_repo.get("full_name")) or repository_slug,
+        "slug": canonical["repository_slug"],
+        **{
+            key: value
+            for key, value in canonical.items()
+            if key != "repository_slug"
+        },
         "default_branch": default_branch,
         "protected_refs": protected_refs,
     }
@@ -450,6 +465,22 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         }
     if not authority_decision["review_eligible"]:
         coordinator_blockers.append("pull_request_not_review_eligible")
+    authority_identity = _mapping(authority_decision.get("identity"))
+    authority_policy = _mapping(authority_decision.get("policy"))
+    canonical_authority_identity = review_contract.normalize_identity(
+        {
+            **authority_identity,
+            "trusted_author_policy_schema": authority_policy.get("schema"),
+            "trusted_author_policy_digest": authority_policy.get("digest"),
+            "author_login": _mapping(authority_identity.get("author")).get("login"),
+            "author_account_id": _mapping(authority_identity.get("author")).get(
+                "account_id"
+            ),
+            "author_type": _mapping(authority_identity.get("author")).get("type"),
+        }
+    )
+    if review_contract.normalize_identity(observed) != canonical_authority_identity:
+        coordinator_blockers.append("authority_identity_mismatch")
 
     head_sha = _text(observed.get("head_sha"))
     check_runs = _list(snapshot.get("check_runs"))
@@ -587,10 +618,16 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     cycle_state = {
         "schema": cycle_contract.STATE_SCHEMA,
         "expected": {key: expected[key] for key in (
-            "slug", "pr_number", "base_ref", "base_sha", "head_ref", "head_sha", "head_repository_slug"
+            "slug", "pr_number", "base_ref", "base_sha", "head_ref", "head_sha",
+            "head_repository_slug", "base_repository_slug", "author_login",
+            "author_account_id", "author_type", "trusted_author_policy_schema",
+            "trusted_author_policy_digest",
         )},
         "observed": {key: observed[key] for key in (
-            "slug", "pr_number", "base_ref", "base_sha", "head_ref", "head_sha", "head_repository_slug"
+            "slug", "pr_number", "base_ref", "base_sha", "head_ref", "head_sha",
+            "head_repository_slug", "base_repository_slug", "author_login",
+            "author_account_id", "author_type", "trusted_author_policy_schema",
+            "trusted_author_policy_digest",
         )},
         "event": {
             "delivery_id": delivery_id,
@@ -682,13 +719,14 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
             "branch_deletion": False,
         },
         "identity": {
-            "repository_slug": repository_slug,
-            "pr_number": observed.get("pr_number"),
-            "base_ref": observed.get("base_ref"),
-            "base_sha": observed.get("base_sha"),
-            "head_ref": observed.get("head_ref"),
-            "head_sha": head_sha,
-            "head_repository_slug": observed.get("head_repository_slug"),
+            **review_contract.normalize_identity(observed),
+            "identity_digest": (
+                review_contract.identity_digest(observed)
+                if review_contract._valid_review_identity(
+                    review_contract.normalize_identity(observed)
+                )
+                else ""
+            ),
             "event_head_sha": event_head_sha,
         },
         "destination_policy": {

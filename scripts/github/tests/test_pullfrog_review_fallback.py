@@ -329,10 +329,7 @@ class PullfrogReviewFallbackDecisionTests(unittest.TestCase):
     def test_prior_exact_head_gate_blocks_duplicate_fallback(self):
         fixture = snapshot()
         external_id = MODULE._gate_external_id(
-            REPOSITORY,
-            95,
-            HEAD_SHA,
-            BASE_SHA,
+            fixture["expected_identity"],
             MODULE.review_contract.NATIVE_EVIDENCE_PROFILE,
             "a" * 64,
         )
@@ -421,6 +418,18 @@ class PullfrogReviewFallbackDecisionTests(unittest.TestCase):
                 receipt = MODULE.evaluate_snapshot(fixture)
                 self.assertEqual(receipt["status"], "stopped")
                 self.assertIn(blocker, receipt["blockers"])
+
+    def test_draft_pull_request_cannot_authorize_fallback(self):
+        fixture = snapshot()
+        fixture["observed_pull_request"]["draft"] = True
+        fixture["expected_identity"] = MODULE._identity(
+            REPOSITORY,
+            fixture["observed_pull_request"],
+        )
+        receipt = MODULE.evaluate_snapshot(fixture)
+        self.assertEqual(receipt["status"], "stopped")
+        self.assertFalse(receipt["authorized_fallback"])
+        self.assertIn("pull_request_is_draft", receipt["blockers"])
 
     def test_fallback_workflow_check_is_ignored_without_recursive_gate_update(self):
         fixture = snapshot()
@@ -1048,8 +1057,8 @@ class PullfrogExactHeadRereviewTests(unittest.TestCase):
         self.assertEqual(publication["conclusion"], "success")
         self.assertTrue(
             publication["external_id"].startswith(
-                f"pullfrog-review-gate:v3:{REPOSITORY}:95:{BASE_SHA}:{HEAD_SHA}:"
-                "review-only:"
+                "pullfrog-review-gate:v4:"
+                f"{receipt['identity_digest']}:review-only:"
             )
         )
 
@@ -1230,6 +1239,7 @@ class PullfrogExactHeadRereviewTests(unittest.TestCase):
             "pr_number": 95,
             "base_sha": BASE_SHA,
             "head_sha": HEAD_SHA,
+            "identity_digest": receipt["identity_digest"],
             "review_id": 700,
             "source_review": MODULE._rereview_source_summary(receipt),
             "resolved_thread_count": 0,
@@ -1287,6 +1297,7 @@ class PullfrogExactHeadRereviewTests(unittest.TestCase):
             "pr_number": 95,
             "base_sha": BASE_SHA,
             "head_sha": HEAD_SHA,
+            "identity_digest": receipt["identity_digest"],
             "review_id": 700,
             "source_review": MODULE._rereview_source_summary(receipt),
             "resolved_thread_count": 0,

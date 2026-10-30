@@ -23,6 +23,10 @@ DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 OWNER_RE = re.compile(r"^(?=.{1,39}$)(?!-)(?!.*--)[A-Za-z0-9-]+(?<!-)$")
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+LOGIN_RE = re.compile(
+    r"^(?=.{1,100}$)(?!-)(?!.*--)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\[bot\])?$"
+)
+TRUSTED_AUTHOR_POLICY_SCHEMA = "pullfrog-trusted-author-policy.v1"
 DELIVERY_RE = re.compile(r"^[A-Za-z0-9._:-]{1,200}$")
 REVIEW_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,200}$")
 ALLOWED_EVENT_KINDS = {
@@ -172,12 +176,20 @@ def _validate_expected_observed(
     observed_slug = _canonical_slug(_text(observed.get("slug")))
     expected_head_repository = _canonical_slug(_text(expected.get("head_repository_slug")))
     observed_head_repository = _canonical_slug(_text(observed.get("head_repository_slug")))
+    expected_base_repository = _canonical_slug(_text(expected.get("base_repository_slug")))
+    observed_base_repository = _canonical_slug(_text(observed.get("base_repository_slug")))
     expected_pr = expected.get("pr_number")
     observed_pr = observed.get("pr_number")
 
-    for prefix, slug, pr_number, head_repository in (
-        ("expected", expected_slug, expected_pr, expected_head_repository),
-        ("observed", observed_slug, observed_pr, observed_head_repository),
+    for prefix, item, slug, pr_number, head_repository, base_repository in (
+        (
+            "expected", expected, expected_slug, expected_pr,
+            expected_head_repository, expected_base_repository,
+        ),
+        (
+            "observed", observed, observed_slug, observed_pr,
+            observed_head_repository, observed_base_repository,
+        ),
     ):
         if not slug:
             blockers.append(f"invalid_{prefix}_repository")
@@ -185,11 +197,34 @@ def _validate_expected_observed(
             blockers.append(f"invalid_{prefix}_pr_number")
         if not head_repository:
             blockers.append(f"invalid_{prefix}_head_repository")
+        if not base_repository or base_repository != slug:
+            blockers.append(f"invalid_{prefix}_base_repository")
+        author_login = _text(item.get("author_login"))
+        author_account_id = item.get("author_account_id")
+        author_type = _text(item.get("author_type"))
+        if not LOGIN_RE.fullmatch(author_login) or author_login != author_login.casefold():
+            blockers.append(f"invalid_{prefix}_author_login")
+        if (
+            not isinstance(author_account_id, int)
+            or isinstance(author_account_id, bool)
+            or author_account_id < 1
+        ):
+            blockers.append(f"invalid_{prefix}_author_account_id")
+        if author_type not in {"Bot", "User"} or (
+            (author_type == "Bot") != author_login.endswith("[bot]")
+        ):
+            blockers.append(f"invalid_{prefix}_author_type")
+        if item.get("trusted_author_policy_schema") != TRUSTED_AUTHOR_POLICY_SCHEMA:
+            blockers.append(f"invalid_{prefix}_trusted_author_policy_schema")
+        if not DIGEST_RE.fullmatch(
+            _text(item.get("trusted_author_policy_digest"))
+        ):
+            blockers.append(f"invalid_{prefix}_trusted_author_policy_digest")
         for field in ("base_sha", "head_sha"):
-            if not SHA_RE.fullmatch(_text((expected if prefix == "expected" else observed).get(field))):
+            if not SHA_RE.fullmatch(_text(item.get(field))):
                 blockers.append(f"invalid_{prefix}_{field}")
         for field in ("base_ref", "head_ref"):
-            if not _valid_branch(_text((expected if prefix == "expected" else observed).get(field))):
+            if not _valid_branch(_text(item.get(field))):
                 blockers.append(f"invalid_{prefix}_{field}")
 
     comparisons = {
@@ -200,6 +235,21 @@ def _validate_expected_observed(
         "head_ref_drift": _text(expected.get("head_ref")) != _text(observed.get("head_ref")),
         "head_sha_drift": _text(expected.get("head_sha")) != _text(observed.get("head_sha")),
         "head_repository_drift": expected_head_repository != observed_head_repository,
+        "base_repository_drift": expected_base_repository != observed_base_repository,
+        "author_login_drift": _text(expected.get("author_login"))
+        != _text(observed.get("author_login")),
+        "author_account_id_drift": expected.get("author_account_id")
+        != observed.get("author_account_id"),
+        "author_type_drift": _text(expected.get("author_type"))
+        != _text(observed.get("author_type")),
+        "trusted_author_policy_schema_drift": _text(
+            expected.get("trusted_author_policy_schema")
+        )
+        != _text(observed.get("trusted_author_policy_schema")),
+        "trusted_author_policy_digest_drift": _text(
+            expected.get("trusted_author_policy_digest")
+        )
+        != _text(observed.get("trusted_author_policy_digest")),
     }
     blockers.extend(name for name, drifted in comparisons.items() if drifted)
     if (
@@ -393,7 +443,46 @@ def evaluate_state(state: dict[str, Any]) -> dict[str, Any]:
             "base_sha": _text(observed.get("base_sha")),
             "head_ref": _text(observed.get("head_ref")),
             "head_sha": head_sha,
-            "head_repository_slug": _canonical_slug(_text(observed.get("head_repository_slug"))),
+            "head_repository_slug": _canonical_slug(
+                _text(observed.get("head_repository_slug"))
+            ),
+            "base_repository_slug": _canonical_slug(
+                _text(observed.get("base_repository_slug"))
+            ),
+            "author_login": _text(observed.get("author_login")),
+            "author_account_id": observed.get("author_account_id"),
+            "author_type": _text(observed.get("author_type")),
+            "trusted_author_policy_schema": _text(
+                observed.get("trusted_author_policy_schema")
+            ),
+            "trusted_author_policy_digest": _text(
+                observed.get("trusted_author_policy_digest")
+            ),
+            "identity_digest": _canonical_digest(
+                {
+                    "repository_slug": slug,
+                    "pr_number": pr_number,
+                    "base_ref": _text(observed.get("base_ref")),
+                    "base_sha": _text(observed.get("base_sha")),
+                    "head_ref": _text(observed.get("head_ref")),
+                    "head_sha": head_sha,
+                    "head_repository_slug": _canonical_slug(
+                        _text(observed.get("head_repository_slug"))
+                    ),
+                    "base_repository_slug": _canonical_slug(
+                        _text(observed.get("base_repository_slug"))
+                    ),
+                    "author_login": _text(observed.get("author_login")),
+                    "author_account_id": observed.get("author_account_id"),
+                    "author_type": _text(observed.get("author_type")),
+                    "trusted_author_policy_schema": _text(
+                        observed.get("trusted_author_policy_schema")
+                    ),
+                    "trusted_author_policy_digest": _text(
+                        observed.get("trusted_author_policy_digest")
+                    ),
+                }
+            ),
         },
         "event": {
             "delivery_id": delivery_id,

@@ -81,8 +81,10 @@ The fallback controller:
 2. resolves the linked Actions run and requires the trusted
    `.github/workflows/pullfrog.yml` workflow, `workflow_dispatch`, and
    `pullfrog[bot]` actor;
-3. re-reads the live same-repository open PR and requires unchanged exact head
-   and base SHAs;
+3. re-reads the live same-repository open PR and current repository-owned
+   trusted-author policy, then requires unchanged exact base/head repositories,
+   refs, SHAs, author ID/login/type, policy schema/digest, and derived identity
+   digest;
 4. requires exactly one failed `Run review-only agent` step and no other
    failed step;
 5. requires exactly one failure annotation whose text exactly equals one of
@@ -91,8 +93,9 @@ The fallback controller:
 7. rejects fallback when a complete exact-head Pullfrog verdict already exists;
 8. records partial exact-head reviews/comments only as counts and digests, never
    as raw receipt text;
-9. treats the exact-head initial composite gate as the durable attempt claim and
-   rejects every fresh duplicate evaluation for that head;
+9. treats the composite gate bound to the complete identity digest, evidence
+   profile, and evidence digest as the durable attempt claim, and rejects every
+   fresh duplicate evaluation for that exact identity;
 10. permits provider execution only on `github.run_attempt == 1`, with the same
     invariant rechecked by the trusted preflight, so failed-job and individual-job
     reruns cannot consume another Astra attempt;
@@ -109,6 +112,12 @@ check-write authority. The separate trusted publisher supplies the composite
 gate only after it re-reads and matches the authoritative review ID and current
 evidence digest. Inline comments attached to an empty-body, failed review remain
 evidence to reconcile, but do not manufacture a complete verdict.
+
+Every fallback result receipt, exact-head re-review receipt, reconciliation
+record, gate publication, and controller handoff carries the same identity
+digest. Each trusted transition reconstructs it from the live PR and current
+repository-owned policy, so author or policy drift cannot inherit an earlier
+review result or gate.
 
 After a remediation commit, a finding-free Sol re-review may enter the explicit
 `reconciliation_required` state when only prior `pullfrog[bot]` threads remain

@@ -18,6 +18,25 @@ BASE_SHA = "1" * 40
 HEAD_SHA = "2" * 40
 NEXT_SHA = "3" * 40
 OUTPUT_DIGEST = "a" * 64
+POLICY_DIGEST = "9" * 64
+
+
+def exact_identity():
+    return {
+        "slug": "fr-meyer/agent-toolkit",
+        "pr_number": 94,
+        "base_ref": "dev",
+        "base_sha": BASE_SHA,
+        "base_repository_slug": "fr-meyer/agent-toolkit",
+        "head_ref": "chore/pullfrog-full-automation",
+        "head_sha": HEAD_SHA,
+        "head_repository_slug": "fr-meyer/agent-toolkit",
+        "author_login": "fr-meyer",
+        "author_account_id": 26621962,
+        "author_type": "User",
+        "trusted_author_policy_schema": MODULE.TRUSTED_AUTHOR_POLICY_SCHEMA,
+        "trusted_author_policy_digest": POLICY_DIGEST,
+    }
 
 
 def finding(summary="Reject stale exact-head evidence"):
@@ -35,24 +54,8 @@ def base_state(with_findings=False):
     approval_status = "failure" if with_findings else "success"
     return {
         "schema": MODULE.STATE_SCHEMA,
-        "expected": {
-            "slug": "fr-meyer/agent-toolkit",
-            "pr_number": 94,
-            "base_ref": "dev",
-            "base_sha": BASE_SHA,
-            "head_ref": "chore/pullfrog-full-automation",
-            "head_sha": HEAD_SHA,
-            "head_repository_slug": "fr-meyer/agent-toolkit",
-        },
-        "observed": {
-            "slug": "fr-meyer/agent-toolkit",
-            "pr_number": 94,
-            "base_ref": "dev",
-            "base_sha": BASE_SHA,
-            "head_ref": "chore/pullfrog-full-automation",
-            "head_sha": HEAD_SHA,
-            "head_repository_slug": "fr-meyer/agent-toolkit",
-        },
+        "expected": exact_identity(),
+        "observed": exact_identity(),
         "event": {
             "delivery_id": "delivery-1",
             "kind": "pullfrog_review_completed",
@@ -138,6 +141,18 @@ class PullfrogCycleContractTests(unittest.TestCase):
             "head_ref_drift": ("head_ref", "fix/other"),
             "head_sha_drift": ("head_sha", "4" * 40),
             "head_repository_drift": ("head_repository_slug", "fork/agent-toolkit"),
+            "base_repository_drift": ("base_repository_slug", "fork/agent-toolkit"),
+            "author_login_drift": ("author_login", "mergeguez[bot]"),
+            "author_account_id_drift": ("author_account_id", 285669409),
+            "author_type_drift": ("author_type", "Bot"),
+            "trusted_author_policy_schema_drift": (
+                "trusted_author_policy_schema",
+                "pullfrog-trusted-author-policy.v2",
+            ),
+            "trusted_author_policy_digest_drift": (
+                "trusted_author_policy_digest",
+                "8" * 64,
+            ),
         }
         for blocker, (field, value) in variants.items():
             with self.subTest(blocker=blocker):

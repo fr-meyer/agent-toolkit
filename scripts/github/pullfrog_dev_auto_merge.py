@@ -117,41 +117,22 @@ def _write_object(path: Path, value: dict[str, Any]) -> None:
 
 
 def _validated_identity(value: Any) -> dict[str, Any]:
-    identity = _mapping(value)
-    repository_slug = cycle_contract._canonical_slug(_text(identity.get("repository_slug")))
-    head_repository_slug = cycle_contract._canonical_slug(
-        _text(identity.get("head_repository_slug"))
-    )
-    pr_number = _integer(identity.get("pr_number"))
-    base_ref = _text(identity.get("base_ref"))
-    base_sha = _text(identity.get("base_sha"))
-    head_ref = _text(identity.get("head_ref"))
-    head_sha = _text(identity.get("head_sha"))
+    identity = review_contract.normalize_identity(value)
+    head_ref = identity["head_ref"]
     if (
-        not repository_slug
-        or head_repository_slug != repository_slug
-        or pr_number is None
-        or pr_number < 1
-        or base_ref in FORBIDDEN_BASE_REFS
-        or not cycle_contract._valid_branch(base_ref)
-        or not cycle_contract._valid_branch(head_ref)
+        not review_contract._valid_gate_identity(identity)
+        or identity["base_ref"] in FORBIDDEN_BASE_REFS
         or not any(
             head_ref.startswith(prefix) and len(head_ref) > len(prefix)
             for prefix in ALLOWED_HEAD_PREFIXES
         )
-        or not SHA_RE.fullmatch(base_sha)
-        or not SHA_RE.fullmatch(head_sha)
     ):
         raise AutoMergeError("ineligible_identity")
-    return {
-        "repository_slug": repository_slug,
-        "pr_number": pr_number,
-        "base_ref": base_ref,
-        "base_sha": base_sha,
-        "head_ref": head_ref,
-        "head_sha": head_sha,
-        "head_repository_slug": head_repository_slug,
-    }
+    if _text(_mapping(value).get("identity_digest")) != review_contract.identity_digest(
+        identity
+    ):
+        raise AutoMergeError("invalid_identity_digest")
+    return identity
 
 
 def _validated_receipt_check_rules(
@@ -230,6 +211,10 @@ def validate_clean_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
     observed_checks = _mapping(evidence.get("observed_checks"))
     required_checks = evidence.get("required_checks")
     event = _mapping(decision.get("event"))
+    authority = _mapping(receipt.get("authority_decision"))
+    policy_decision = _mapping(receipt.get("policy_decision"))
+    author = _mapping(_mapping(authority.get("identity")).get("author"))
+    policy = _mapping(authority.get("policy"))
     if (
         decision.get("schema") != cycle_contract.DECISION_SCHEMA
         or decision.get("status") != "clean"
@@ -242,6 +227,27 @@ def validate_clean_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
         or repository.get("head_ref") != identity["head_ref"]
         or repository.get("head_sha") != identity["head_sha"]
         or repository.get("head_repository_slug") != identity["head_repository_slug"]
+        or repository.get("base_repository_slug") != identity["base_repository_slug"]
+        or repository.get("author_login") != identity["author_login"]
+        or repository.get("author_account_id") != identity["author_account_id"]
+        or repository.get("author_type") != identity["author_type"]
+        or repository.get("trusted_author_policy_schema")
+        != identity["trusted_author_policy_schema"]
+        or repository.get("trusted_author_policy_digest")
+        != identity["trusted_author_policy_digest"]
+        or repository.get("identity_digest") != review_contract.identity_digest(identity)
+        or authority.get("review_eligible") is not True
+        or authority.get("same_repository") is not True
+        or authority.get("trusted_author") is not True
+        or authority.get("mutation_authorized") is not True
+        or author.get("login") != identity["author_login"]
+        or author.get("account_id") != identity["author_account_id"]
+        or author.get("type") != identity["author_type"]
+        or policy.get("schema") != identity["trusted_author_policy_schema"]
+        or policy.get("digest") != identity["trusted_author_policy_digest"]
+        or policy_decision.get("mutation_authorized") is not True
+        or policy_decision.get("merge_allowed") is not True
+        or policy_decision.get("manual_governance_required") is not False
         or _mapping(receipt.get("identity")).get("event_head_sha") != identity["head_sha"]
         or event.get("head_sha") != identity["head_sha"]
         or review.get("head_sha") != identity["head_sha"]
@@ -325,19 +331,17 @@ def _latest_human_verdicts(reviews: list[Any]) -> dict[str, str]:
 
 
 def _assert_live_pull_request(pr: dict[str, Any], identity: dict[str, Any]) -> None:
-    head = _mapping(pr.get("head"))
-    base = _mapping(pr.get("base"))
-    head_repo = _mapping(head.get("repo"))
+    try:
+        observed = review_contract.identity_from_pull_request(
+            identity["repository_slug"], pr
+        )
+    except review_contract.trusted_author_policy.TrustedAuthorPolicyError as exc:
+        raise AutoMergeError("live_pull_request_identity_invalid") from exc
     if (
         pr.get("state") != "open"
         or pr.get("draft") is True
-        or _text(base.get("ref")) != identity["base_ref"]
-        or _text(base.get("ref")) in FORBIDDEN_BASE_REFS
-        or _text(base.get("sha")) != identity["base_sha"]
-        or _text(head.get("ref")) != identity["head_ref"]
-        or _text(head.get("sha")) != identity["head_sha"]
-        or cycle_contract._canonical_slug(_text(head_repo.get("full_name")))
-        != identity["repository_slug"]
+        or observed != identity
+        or observed["base_ref"] in FORBIDDEN_BASE_REFS
     ):
         raise AutoMergeError("live_pull_request_drift")
 
@@ -734,6 +738,12 @@ class GitHubMergeClient(coordinator.GitHubReadClient):
         token = self.token
         if not token:
             raise AutoMergeError("missing_github_token")
+        _assert_live_pull_request(
+            _mapping(
+                self.get(f"{self.allowed_prefix}/pulls/{identity['pr_number']}")
+            ),
+            identity,
+        )
         remote = self._repository_remote()
         with tempfile.TemporaryDirectory(prefix="pullfrog-auto-merge-") as temporary:
             workspace = Path(temporary)
@@ -815,6 +825,14 @@ class GitHubMergeClient(coordinator.GitHubReadClient):
             if advertised_old != identity["base_sha"]:
                 raise AutoMergeError("base_compare_and_swap_failed")
             pack = self._pack_objects(workspace, merge_sha, identity["base_sha"])
+            _assert_live_pull_request(
+                _mapping(
+                    self.get(
+                        f"{self.allowed_prefix}/pulls/{identity['pr_number']}"
+                    )
+                ),
+                identity,
+            )
             response = self._submit_receive_pack(
                 remote,
                 token,
@@ -991,6 +1009,16 @@ def merge_clean_pr(
         "base_ref": identity["base_ref"],
         "head_ref": identity["head_ref"],
         "head_sha": identity["head_sha"],
+        "identity_digest": review_contract.identity_digest(identity),
+        "author_login": identity["author_login"],
+        "author_account_id": identity["author_account_id"],
+        "author_type": identity["author_type"],
+        "trusted_author_policy_schema": identity[
+            "trusted_author_policy_schema"
+        ],
+        "trusted_author_policy_digest": identity[
+            "trusted_author_policy_digest"
+        ],
         "merge_commit_sha": merge_sha,
         "merge_method": "merge",
         "merge_transport": "exact-old-oid-normal-fast-forward-push",

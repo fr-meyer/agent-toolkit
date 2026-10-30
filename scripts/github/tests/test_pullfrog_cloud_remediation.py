@@ -22,6 +22,7 @@ COORDINATOR = MODULE.coordinator
 BASE_SHA = "1" * 40
 HEAD_SHA = "2" * 40
 RESULT_SHA = "3" * 40
+REPOSITORY = "fr-meyer/agent-toolkit"
 
 
 def pull_request(head_sha=HEAD_SHA, base_ref="dev"):
@@ -139,11 +140,20 @@ def remediation_receipt(head_sha=HEAD_SHA, base_ref="dev"):
 
 
 def empty_ledger():
-    return MODULE.build_ledger("fr-meyer/agent-toolkit", 94, [], [], [])
+    return MODULE.build_ledger(REPOSITORY, 94, [], [], [])
+
+
+def exact_identity(source_head=HEAD_SHA):
+    return MODULE.review_contract.identity_from_pull_request(
+        REPOSITORY,
+        pull_request(source_head),
+    )
 
 
 def make_claim(source_head=HEAD_SHA, cycle=0, attempt=1, run_id="123"):
-    claim_key = f"fr-meyer/agent-toolkit:94:{source_head}:{cycle}"
+    claim_key = f"{REPOSITORY}:94:{source_head}:{cycle}"
+    identity = exact_identity(source_head)
+    identity_digest = MODULE.review_contract.identity_digest(identity)
     value = {
         "schema": MODULE.CLAIM_SCHEMA,
         "run_id": run_id,
@@ -152,15 +162,8 @@ def make_claim(source_head=HEAD_SHA, cycle=0, attempt=1, run_id="123"):
         "claim_key": claim_key,
         "cycle_number": cycle,
         "attempt_number": attempt,
-        "identity": {
-            "repository_slug": "fr-meyer/agent-toolkit",
-            "pr_number": 94,
-            "base_ref": "dev",
-            "base_sha": BASE_SHA,
-            "head_ref": "chore/pullfrog-full-automation",
-            "head_sha": source_head,
-            "head_repository_slug": "fr-meyer/agent-toolkit",
-        },
+        "identity": identity,
+        "identity_digest": identity_digest,
         "destination_policy": {
             "default_branch": "main",
             "protected_refs": ["dev", "main"],
@@ -186,6 +189,7 @@ def make_claim(source_head=HEAD_SHA, cycle=0, attempt=1, run_id="123"):
             "run_id": run_id,
             "run_attempt": 1,
             "attempt_number": attempt,
+            "identity_digest": identity_digest,
         }
     )
     return value
@@ -197,6 +201,7 @@ def action_result(claim):
             "schema": MODULE.ACTION_RESULT_SCHEMA,
             "status": "local_changes_ready",
             "source_head_sha": claim["identity"]["head_sha"],
+            "identity_digest": claim["identity_digest"],
             "review_id": claim["review_id"],
             "tests_passed": True,
         }
@@ -213,6 +218,7 @@ def make_candidate(claim):
         "cycle_number": claim["cycle_number"],
         "attempt_number": claim["attempt_number"],
         "source_head_sha": claim["identity"]["head_sha"],
+        "identity_digest": claim["identity_digest"],
         "patch_digest": "8" * 64,
         "patch_bytes": 10,
         "changed_paths": changed_paths,
@@ -230,6 +236,7 @@ def make_publish_plan(claim, candidate, result_head=RESULT_SHA):
         "head_ref": claim["identity"]["head_ref"],
         "source_head_sha": claim["identity"]["head_sha"],
         "result_head_sha": result_head,
+        "identity_digest": claim["identity_digest"],
         "candidate_digest": MODULE._digest(candidate),
         "patch_digest": candidate["patch_digest"],
         "changed_paths_digest": candidate["changed_paths_digest"],
@@ -287,6 +294,13 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
         self.assertNotIn("PRIVATE COMMENT TEXT", rendered)
         self.assertIn("Do not call `push_branch`", rendered)
         self.assertIn(HEAD_SHA, rendered)
+        identity = claim["identity"]
+        self.assertIn(
+            f"trusted-author policy `{identity['trusted_author_policy_schema']}@"
+            f"{identity['trusted_author_policy_digest']}`",
+            rendered,
+        )
+        self.assertIn(f"identity digest `{claim['identity_digest']}`", rendered)
 
         payload = MODULE.build_pullfrog_payload(claim)
         self.assertTrue(payload["~pullfrog"])
@@ -307,6 +321,51 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
         )
         self.assertIn("call `set_output` exactly once", payload["prompt"])
         self.assertNotIn("PRIVATE REVIEW TEXT", json.dumps(payload))
+
+    def test_prepare_claim_requires_trusted_mutation_authority(self):
+        receipt = remediation_receipt()
+        receipt["authority_decision"]["trusted_author"] = False
+        receipt["authority_decision"]["mutation_authorized"] = False
+        receipt["authority_decision"]["author_decision"]["authorized"] = False
+        receipt["policy_decision"]["trusted_author"] = False
+        receipt["policy_decision"]["mutation_authorized"] = False
+        receipt["policy_decision"]["remediation_allowed"] = False
+        with self.assertRaisesRegex(
+            MODULE.RemediationError,
+            "invalid_coordinator_mutation_authority",
+        ):
+            MODULE.prepare_claim(
+                receipt,
+                empty_ledger(),
+                run_id="123",
+                run_attempt=1,
+            )
+
+    def test_prepare_claim_rechecks_current_policy_digest(self):
+        receipt = remediation_receipt()
+        changed_policy = MODULE.trusted_author_policy.load_policy(REPOSITORY)
+        changed_policy["trusted_authors"].append(
+            {
+                "account_id": 999999999,
+                "login": "new-policy-user",
+                "type": "User",
+            }
+        )
+        with mock.patch.object(
+            MODULE.trusted_author_policy,
+            "load_policy",
+            return_value=changed_policy,
+        ):
+            with self.assertRaisesRegex(
+                MODULE.RemediationError,
+                "invalid_coordinator_mutation_authority",
+            ):
+                MODULE.prepare_claim(
+                    receipt,
+                    empty_ledger(),
+                    run_id="123",
+                    run_attempt=1,
+                )
 
     def test_prepare_claim_cli_emits_identity_for_clean_no_action(self):
         receipt = remediation_receipt()
@@ -483,6 +542,22 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
             claim, "provider_failed", "provider_failed"
         )
         terminal["attempt_number"] = 2
+        with self.assertRaisesRegex(MODULE.RemediationError, "terminal_claim_mismatch"):
+            MODULE.build_ledger(
+                "fr-meyer/agent-toolkit", 94, [claim], [], [terminal]
+            )
+
+        candidate = make_candidate(claim)
+        candidate["identity_digest"] = "9" * 64
+        with self.assertRaisesRegex(MODULE.RemediationError, "candidate_claim_mismatch"):
+            MODULE.build_ledger(
+                "fr-meyer/agent-toolkit", 94, [claim], [candidate], []
+            )
+
+        terminal = MODULE.terminal_receipt(
+            claim, "provider_failed", "provider_failed"
+        )
+        terminal["identity_digest"] = "9" * 64
         with self.assertRaisesRegex(MODULE.RemediationError, "terminal_claim_mismatch"):
             MODULE.build_ledger(
                 "fr-meyer/agent-toolkit", 94, [claim], [], [terminal]
@@ -1138,6 +1213,7 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
                 "cycle_number": claim["cycle_number"],
                 "attempt_number": claim["attempt_number"],
                 "source_head_sha": source,
+                "identity_digest": claim["identity_digest"],
                 "patch_digest": MODULE._bytes_digest(patch),
                 "patch_bytes": len(patch),
                 "changed_paths": changed_paths,

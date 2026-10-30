@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "pullfrog_dev_auto_merge.py"
 SPEC = importlib.util.spec_from_file_location("pullfrog_dev_auto_merge", SCRIPT)
@@ -22,6 +23,10 @@ COORDINATOR_TEST_SPEC.loader.exec_module(COORDINATOR_TEST)
 BASE_SHA = "1" * 40
 HEAD_SHA = "2" * 40
 MERGE_SHA = "3" * 40
+POLICY = MODULE.review_contract.trusted_author_policy.load_policy(
+    "fr-meyer/agent-toolkit"
+)
+POLICY_DIGEST = MODULE.review_contract.trusted_author_policy.policy_digest(POLICY)
 
 
 def check_run(
@@ -57,6 +62,11 @@ def review_identity(base_ref="dev"):
         "head_ref": "feat/pullfrog-write-capable-loop",
         "head_sha": HEAD_SHA,
         "head_repository_slug": "fr-meyer/agent-toolkit",
+        "author_login": "fr-meyer",
+        "author_account_id": 26621962,
+        "author_type": "User",
+        "trusted_author_policy_schema": POLICY["schema"],
+        "trusted_author_policy_digest": POLICY_DIGEST,
     }
 
 
@@ -99,135 +109,16 @@ def clean_review_contract(base_ref="dev"):
 
 
 def clean_receipt():
-    repository = {
-        "slug": "fr-meyer/agent-toolkit",
-        "pr_number": 95,
-        "base_ref": "dev",
-        "base_sha": BASE_SHA,
-        "head_ref": "feat/pullfrog-write-capable-loop",
-        "head_sha": HEAD_SHA,
-        "head_repository_slug": "fr-meyer/agent-toolkit",
-    }
-    observed = {
-        name: {"status": "success", "head_sha": HEAD_SHA}
-        for name in MODULE.REQUIRED_CHECKS
-    }
-    contract = clean_review_contract()
-    check_details = {
-        "pullfrog": {
-            "name": "pullfrog",
-            "app_slug": "pullfrog",
-            "status": "success",
-            "head_sha": HEAD_SHA,
-            "check_run_id": 101,
-            "check_suite_id": 900,
-        },
-        "pullfrog_approval": {
-            "name": "pullfrog-approval",
-            "app_slug": "pullfrog",
-            "status": "success",
-            "head_sha": HEAD_SHA,
-            "check_run_id": 102,
-            "check_suite_id": 900,
-        },
-        "pullfrog_review_gate": {
-            "name": MODULE.review_contract.GATE_NAME,
-            "app_slug": MODULE.review_contract.GATE_APP,
-            "status": "success",
-            "head_sha": HEAD_SHA,
-            "check_run_id": 105,
-            "check_suite_id": 903,
-            "external_id": contract["gate"]["external_id"],
-            "evidence_profile": contract["evidence_profile"],
-            "evidence_digest": contract["evidence_digest"],
-        },
-        "ci": [
-            {
-                "name": "dogfood / Provider-free PR automation contract",
-                "app_slug": "github-actions",
-                "status": "success",
-                "head_sha": HEAD_SHA,
-                "check_run_id": 103,
-                "check_suite_id": 901,
-            }
-        ],
-        "speculoos": [
-            {
-                "name": "speculoos",
-                "app_slug": "github-actions",
-                "status": "success",
-                "head_sha": HEAD_SHA,
-                "check_run_id": 104,
-                "check_suite_id": 902,
-            }
-        ],
-    }
-    changed_paths = ["scripts/example.py"]
-    return {
-        "schema": MODULE.COORDINATOR_SCHEMA,
-        "mode": "dry-run",
-        "status": "clean",
-        "would_action": "complete",
-        "executed_action": "none",
-        "coordinator_blockers": [],
-        "mutation": {
-            "enabled": False,
-            "attempted": False,
-            "repository_write": False,
-            "provider_invocation": False,
-            "approval": False,
-            "merge": False,
-            "rerun": False,
-            "release": False,
-            "deployment": False,
-            "settings_change": False,
-            "branch_deletion": False,
-        },
-        "identity": {
-            "repository_slug": repository["slug"],
-            "pr_number": repository["pr_number"],
-            "base_ref": repository["base_ref"],
-            "base_sha": repository["base_sha"],
-            "head_ref": repository["head_ref"],
-            "head_sha": repository["head_sha"],
-            "head_repository_slug": repository["head_repository_slug"],
-            "event_head_sha": repository["head_sha"],
-        },
-        "collection": {
-            "changed_paths_count": len(changed_paths),
-            "changed_paths_digest": MODULE._digest(changed_paths),
-        },
-        "checks": check_details,
-        "review_contract": contract,
-        "destination_guard": {
-            "status": "allowed",
-            "blockers": [],
-            "destination": {
-                "repository_slug": repository["slug"],
-                "ref": repository["head_ref"],
-                "sha": repository["head_sha"],
-                "attempt": 1,
-            },
-        },
-        "cycle_decision": {
-            "schema": MODULE.cycle_contract.DECISION_SCHEMA,
-            "status": "clean",
-            "action": "complete",
-            "blockers": [],
-            "repository": repository,
-            "event": {"head_sha": HEAD_SHA},
-            "review": {
-                "head_sha": HEAD_SHA,
-                "finding_count": 0,
-                "review_id": "700",
-            },
-            "evidence": {
-                "required_checks": sorted(MODULE.REQUIRED_CHECKS),
-                "missing_checks": [],
-                "observed_checks": observed,
-            },
-        },
-    }
+    snapshot = COORDINATOR_TEST.base_snapshot()
+    for name in ("expected_pull_request", "observed_pull_request"):
+        snapshot[name]["number"] = 95
+        snapshot[name]["head"]["ref"] = "feat/pullfrog-write-capable-loop"
+    snapshot["files"] = [{"filename": "scripts/example.py"}]
+    COORDINATOR_TEST.add_matching_gate(snapshot)
+    receipt = COORDINATOR_TEST.MODULE.evaluate_snapshot(snapshot)
+    if receipt.get("status") != "clean":
+        raise AssertionError(receipt)
+    return receipt
 
 
 def receipt_for_paths(paths):
@@ -243,12 +134,14 @@ def receipt_for_paths(paths):
 def review_only_receipt():
     receipt = clean_receipt()
     identity = review_identity()
+    reviews = exact_head_reviews()
+    reviews[0]["id"] = 601
     contract = MODULE.review_contract.evaluate_contract(
         {
             "schema": MODULE.review_contract.SNAPSHOT_SCHEMA,
             "expected_identity": identity,
             "observed_identity": identity,
-            "reviews": exact_head_reviews(),
+            "reviews": reviews,
             "review_comments": [],
             "review_threads": [],
             "check_runs": [],
@@ -292,7 +185,17 @@ class FakeClient:
             "state": "open",
             "draft": False,
             "title": "Guarded Pullfrog loop",
-            "base": {"ref": "dev", "sha": BASE_SHA},
+            "user": {
+                "id": 26621962,
+                "login": "fr-meyer",
+                "type": "User",
+                "node_id": "MDQ6VXNlcjI2NjIxOTYy",
+            },
+            "base": {
+                "ref": "dev",
+                "sha": BASE_SHA,
+                "repo": {"full_name": "fr-meyer/agent-toolkit"},
+            },
             "head": {
                 "ref": "feat/pullfrog-write-capable-loop",
                 "sha": HEAD_SHA,
@@ -315,7 +218,7 @@ class FakeClient:
             ),
             check_run(
                 103,
-                "dogfood / Provider-free PR automation contract",
+                "ci-required",
                 "github-actions",
                 suite_id=901,
             ),
@@ -490,6 +393,7 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
 
     def test_clean_review_only_gate_merges_without_raw_pullfrog_checks(self):
         client = FakeClient()
+        client.reviews[0]["id"] = 601
         client.check_runs = [
             item
             for item in client.check_runs
@@ -514,7 +418,7 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
         client = FakeClient()
         receipt = retarget_base(clean_receipt(), client, "staging")
         self.assert_code(
-            "invalid_review_contract",
+            "ineligible_identity",
             MODULE.merge_clean_pr,
             client,
             receipt,
@@ -569,6 +473,10 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
             ("review_id", 701),
             ("unresolved_threads", 1),
             ("base_sha", "4" * 40),
+            ("author_account_id", 285669409),
+            ("author_login", "mergeguez[bot]"),
+            ("author_type", "Bot"),
+            ("trusted_author_policy_digest", "9" * 64),
             ("evidence_digest", "4" * 64),
         )
         for field, value in variants:
@@ -612,6 +520,9 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
             ("base", "sha", "5" * 40),
             ("base", "ref", "main"),
             ("head", "ref", "release/v1"),
+            ("user", "id", 285669409),
+            ("user", "login", "mergeguez[bot]"),
+            ("user", "type", "Bot"),
         )
         for section, key, value in variants:
             with self.subTest(section=section, key=key):
@@ -625,6 +536,27 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
                     expected_head_sha=HEAD_SHA,
                 )
                 self.assertEqual(client.push_calls, [])
+
+    def test_live_trusted_author_policy_drift_fails_closed(self):
+        client = FakeClient()
+        receipt = clean_receipt()
+        changed_policy = copy.deepcopy(POLICY)
+        changed_policy["trusted_authors"].append(
+            {"account_id": 999999999, "login": "other-user", "type": "User"}
+        )
+        with mock.patch.object(
+            MODULE.review_contract.trusted_author_policy,
+            "load_policy",
+            return_value=changed_policy,
+        ):
+            self.assert_code(
+                "live_pull_request_drift",
+                MODULE.merge_clean_pr,
+                client,
+                receipt,
+                expected_head_sha=HEAD_SHA,
+            )
+        self.assertEqual(client.push_calls, [])
 
     def test_human_changes_requested_blocks_merge(self):
         client = FakeClient()
@@ -692,7 +624,7 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
         client.files = [{"filename": path} for path in paths]
         receipt = retarget_base(receipt_for_paths(paths), client, "staging")
         self.assert_code(
-            "invalid_review_contract",
+            "ineligible_identity",
             MODULE.merge_clean_pr,
             client,
             receipt,
@@ -985,6 +917,30 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
                 def _repository_remote(self):
                     return str(remote)
 
+                def get(self, path):
+                    if path == f"{self.allowed_prefix}/pulls/95":
+                        return {
+                            "number": 95,
+                            "state": "open",
+                            "draft": False,
+                            "user": {
+                                "id": 26621962,
+                                "login": "fr-meyer",
+                                "type": "User",
+                            },
+                            "base": {
+                                "ref": "dev",
+                                "sha": base_sha,
+                                "repo": {"full_name": self.repository_slug},
+                            },
+                            "head": {
+                                "ref": "feat/test",
+                                "sha": head_sha,
+                                "repo": {"full_name": self.repository_slug},
+                            },
+                        }
+                    return super().get(path)
+
             class RacingClient(LocalClient):
                 def _submit_receive_pack(self, remote_path, token, body):
                     subprocess.run(
@@ -1007,9 +963,15 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
                 "pr_number": 95,
                 "base_ref": "dev",
                 "base_sha": base_sha,
+                "base_repository_slug": "fr-meyer/agent-toolkit",
                 "head_ref": "feat/test",
                 "head_sha": head_sha,
                 "head_repository_slug": "fr-meyer/agent-toolkit",
+                "author_login": "fr-meyer",
+                "author_account_id": 26621962,
+                "author_type": "User",
+                "trusted_author_policy_schema": POLICY["schema"],
+                "trusted_author_policy_digest": POLICY_DIGEST,
             }
             racing_client = RacingClient(
                 "https://api.github.com", "test-token", "fr-meyer/agent-toolkit"
