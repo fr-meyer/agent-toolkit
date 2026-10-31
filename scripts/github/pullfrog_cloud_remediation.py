@@ -1551,6 +1551,7 @@ def main() -> int:
                 "status": decision["status"],
                 "reason": decision["reason"],
                 "pr_number": _integer(identity.get("pr_number")) or "",
+                "base_sha": _text(identity.get("base_sha")),
                 "source_head_sha": _text(identity.get("head_sha")),
                 "attempt_number": _integer(_mapping(claim or {}).get("attempt_number")) or "",
                 "claim_artifact": (

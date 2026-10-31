@@ -47,7 +47,9 @@ def check(name, conclusion="success", app="pullfrog", check_id=100, suite_id=50,
 
 def base_snapshot(with_findings=False):
     approval = "failure" if with_findings else "success"
-    review_body = "One exact-head issue" if with_findings else "No new issues found"
+    review_body = (
+        "One exact-head issue" if with_findings else "No new issues found"
+    ) + "\n<!-- PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ -->"
     comments = []
     if with_findings:
         comments = [
@@ -83,6 +85,23 @@ def base_snapshot(with_findings=False):
             }
         ],
         "review_comments": comments,
+        "review_threads": [
+            {
+                "isResolved": not with_findings,
+                "isOutdated": False,
+                "path": "scripts/example.py",
+                "line": 12,
+                "comments": {
+                    "nodes": [
+                        {
+                            "databaseId": 701,
+                            "author": {"login": "pullfrog[bot]"},
+                            "pullRequestReview": {"databaseId": 601},
+                        }
+                    ]
+                },
+            }
+        ],
         "files": [
             {"filename": "scripts/example.py"},
             {"filename": "docs/example.md"},
@@ -103,6 +122,42 @@ def base_snapshot(with_findings=False):
     }
 
 
+def add_matching_gate(snapshot, evidence_profile=MODULE.review_contract.NATIVE_EVIDENCE_PROFILE):
+    expected = MODULE._identity_from_pr(
+        snapshot["repository_slug"],
+        snapshot["expected_pull_request"],
+        snapshot["repository"]["default_branch"],
+        snapshot["policy"]["protected_refs"],
+    )
+    observed = MODULE._identity_from_pr(
+        snapshot["repository_slug"],
+        snapshot["observed_pull_request"],
+        snapshot["repository"]["default_branch"],
+        snapshot["policy"]["protected_refs"],
+    )
+    contract = MODULE.review_contract.evaluate_contract(
+        {
+            "schema": MODULE.review_contract.SNAPSHOT_SCHEMA,
+            "expected_identity": expected,
+            "observed_identity": observed,
+            "reviews": snapshot["reviews"],
+            "review_comments": snapshot["review_comments"],
+            "review_threads": snapshot["review_threads"],
+            "check_runs": snapshot["check_runs"],
+        },
+        evidence_profile,
+    )
+    gate = check(
+        MODULE.review_contract.GATE_NAME,
+        app=MODULE.review_contract.GATE_APP,
+        check_id=900,
+        suite_id=900,
+    )
+    gate["external_id"] = contract["gate"]["external_id"]
+    snapshot["check_runs"].append(gate)
+    return contract
+
+
 class PullfrogCloudCoordinatorTests(unittest.TestCase):
     def test_clean_exact_head_is_reported_without_mutation(self):
         receipt = MODULE.evaluate_snapshot(base_snapshot())
@@ -111,6 +166,97 @@ class PullfrogCloudCoordinatorTests(unittest.TestCase):
         self.assertEqual(receipt["executed_action"], "none")
         self.assertFalse(receipt["mutation"]["enabled"])
         self.assertFalse(any(receipt["mutation"].values()))
+        self.assertFalse(receipt["policy_decision"]["merge_allowed"])
+
+    def test_matching_digest_bound_gate_authorizes_merge(self):
+        snapshot = base_snapshot()
+        contract = add_matching_gate(snapshot)
+        receipt = MODULE.evaluate_snapshot(snapshot)
+        self.assertEqual(receipt["status"], "clean")
+        self.assertTrue(receipt["policy_decision"]["merge_allowed"])
+        self.assertEqual(
+            receipt["checks"]["pullfrog_review_gate"]["evidence_digest"],
+            contract["evidence_digest"],
+        )
+
+    def test_review_only_gate_can_authorize_a_clean_re_review_without_raw_checks(self):
+        snapshot = base_snapshot()
+        snapshot["check_runs"] = [
+            item
+            for item in snapshot["check_runs"]
+            if item["name"] not in {"pullfrog", "pullfrog-approval"}
+        ]
+        contract = add_matching_gate(
+            snapshot,
+            MODULE.review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
+        )
+        receipt = MODULE.evaluate_snapshot(snapshot)
+        self.assertEqual(receipt["status"], "clean")
+        self.assertTrue(receipt["policy_decision"]["merge_allowed"])
+        self.assertEqual(
+            receipt["review_contract"]["evidence_profile"],
+            MODULE.review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
+        )
+        self.assertEqual(
+            receipt["checks"]["pullfrog_review_gate"]["evidence_digest"],
+            contract["evidence_digest"],
+        )
+
+    def test_failed_review_only_gate_can_authorize_bounded_remediation_findings(self):
+        snapshot = base_snapshot(with_findings=True)
+        snapshot["check_runs"] = [
+            item
+            for item in snapshot["check_runs"]
+            if item["name"] not in {"pullfrog", "pullfrog-approval"}
+        ]
+        contract = add_matching_gate(
+            snapshot,
+            MODULE.review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
+        )
+        snapshot["check_runs"][-1]["conclusion"] = "failure"
+        receipt = MODULE.evaluate_snapshot(snapshot)
+        self.assertEqual(contract["status"], "findings")
+        self.assertEqual(receipt["status"], "remediation_ready")
+        self.assertEqual(receipt["would_action"], "start_remediation")
+        self.assertTrue(receipt["policy_decision"]["remediation_allowed"])
+        self.assertFalse(receipt["policy_decision"]["merge_allowed"])
+        self.assertEqual(
+            receipt["review_contract"]["evidence_profile"],
+            MODULE.review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
+        )
+
+    def test_newer_same_head_failure_or_finding_invalidates_older_gate(self):
+        for variant in ("failed_approval", "finding"):
+            with self.subTest(variant=variant):
+                snapshot = base_snapshot()
+                add_matching_gate(snapshot)
+                if variant == "failed_approval":
+                    snapshot["check_runs"].append(
+                        check(
+                            "pullfrog-approval",
+                            "failure",
+                            check_id=901,
+                            suite_id=50,
+                        )
+                    )
+                else:
+                    snapshot["review_comments"].append(
+                        {
+                            "id": 702,
+                            "pull_request_review_id": 601,
+                            "commit_id": HEAD_SHA,
+                            "path": "scripts/example.py",
+                            "line": 13,
+                            "body": "A newer exact-head finding.",
+                            "user": {"login": "pullfrog[bot]"},
+                        }
+                    )
+                receipt = MODULE.evaluate_snapshot(snapshot)
+                self.assertFalse(receipt["policy_decision"]["merge_allowed"])
+                self.assertNotEqual(
+                    receipt["checks"]["pullfrog_review_gate"]["status"],
+                    "success",
+                )
 
     def test_live_base_and_default_are_always_protected_during_collection(self):
         fixture = base_snapshot()
@@ -143,6 +289,20 @@ class PullfrogCloudCoordinatorTests(unittest.TestCase):
                 if suffix not in mapping:
                     raise AssertionError(path)
                 return copy.deepcopy(mapping[suffix])
+
+            def graphql(self, query, variables):
+                return {
+                    "data": {
+                        "repository": {
+                            "pullRequest": {
+                                "reviewThreads": {
+                                    "nodes": copy.deepcopy(fixture["review_threads"]),
+                                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                                }
+                            }
+                        }
+                    }
+                }
 
         with mock.patch.object(MODULE, "GitHubReadClient", return_value=StubClient()):
             snapshot = MODULE.collect_github_snapshot(
@@ -359,7 +519,7 @@ class PullfrogCloudCoordinatorTests(unittest.TestCase):
                 "id": 602,
                 "commit_id": NEXT_SHA,
                 "submitted_at": "2026-10-27T11:00:00Z",
-                "body": "  ONE exact-head issue  ",
+                "body": "  ONE exact-head issue  \n<!-- PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ -->",
             }
         )
         snapshot["review_comments"][0].update(

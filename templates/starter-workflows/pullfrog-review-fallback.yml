@@ -1,0 +1,467 @@
+# Managed by templates/repo-workflow-materialization-manifest.json.
+# Edit templates/starter-workflows/pullfrog-review-fallback.yml, then rematerialize the live workflow.
+name: Pullfrog review fallback
+run-name: Pullfrog review fallback · ${{ github.event_name }} · ${{ github.run_id }}
+
+on:
+  check_run:
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      primary_check_run_id:
+        description: Exact Pullfrog primary check-run ID
+        required: true
+        type: number
+      expected_pr_number:
+        description: Exact open pull-request number
+        required: true
+        type: number
+      expected_head_sha:
+        description: Exact 40-character pull-request head SHA
+        required: true
+        type: string
+      expected_base_sha:
+        description: Exact 40-character pull-request base SHA
+        required: true
+        type: string
+      authorize_fallback:
+        description: Authorize one bounded hosted fallback pilot for this exact identity
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pullfrog-review-fallback-${{ github.repository_id }}-${{ inputs.expected_head_sha || github.event.check_run.head_sha || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    name: Evaluate exact-head fallback policy
+    if: >-
+      (github.event_name == 'check_run' &&
+       github.event.check_run.app.slug == 'pullfrog' &&
+       (github.event.check_run.name == 'pullfrog' ||
+        github.event.check_run.name == 'pullfrog-approval')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.authorize_fallback)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: read
+    outputs:
+      status: ${{ steps.policy.outputs.status }}
+      authorized_fallback: ${{ steps.policy.outputs.authorized_fallback }}
+      repository: ${{ steps.policy.outputs.repository }}
+      pr_number: ${{ steps.policy.outputs.pr_number }}
+      head_sha: ${{ steps.policy.outputs.head_sha }}
+      base_sha: ${{ steps.policy.outputs.base_sha }}
+      gate_external_id: ${{ steps.policy.outputs.gate_external_id }}
+
+    steps:
+      - name: Checkout trusted fallback controller
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Evaluate recognized refusal and exact-head evidence
+        id: policy
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PRIMARY_CHECK_RUN_ID: ${{ inputs.primary_check_run_id || github.event.check_run.id }}
+          EXPECTED_PR_NUMBER: ${{ inputs.expected_pr_number }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          EXPECTED_BASE_SHA: ${{ inputs.expected_base_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/pullfrog-review-fallback/evaluate
+          args=(
+            --repository "$GITHUB_REPOSITORY"
+            --primary-check-run-id "$PRIMARY_CHECK_RUN_ID"
+            --out artifacts/pullfrog-review-fallback/evaluate/coordinator.json
+            --github-output "$GITHUB_OUTPUT"
+          )
+          if [[ -n "$EXPECTED_PR_NUMBER" ]]; then
+            args+=(--expected-pr-number "$EXPECTED_PR_NUMBER")
+          fi
+          if [[ -n "$EXPECTED_HEAD_SHA" ]]; then
+            args+=(--expected-head-sha "$EXPECTED_HEAD_SHA")
+          fi
+          if [[ -n "$EXPECTED_BASE_SHA" ]]; then
+            args+=(--expected-base-sha "$EXPECTED_BASE_SHA")
+          fi
+          python scripts/github/pullfrog_review_fallback.py evaluate-github "${args[@]}"
+
+      - name: Upload sanitized fallback decision
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-review-fallback-decision-${{ github.run_id }}
+          path: artifacts/pullfrog-review-fallback/evaluate/coordinator.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish sanitized decision summary
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py summarize
+          --receipt artifacts/pullfrog-review-fallback/evaluate/coordinator.json
+          --github-step-summary "$GITHUB_STEP_SUMMARY"
+
+  gate_initial:
+    name: Publish exact-head review gate
+    needs: evaluate
+    if: >-
+      needs.evaluate.result == 'success' &&
+      needs.evaluate.outputs.status != 'ignored_fallback_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      checks: write
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout trusted gate publisher
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download sanitized fallback decision
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pullfrog-review-fallback-decision-${{ github.run_id }}
+          path: artifacts/pullfrog-review-fallback/evaluate
+
+      - name: Create or update composite exact-head gate
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FALLBACK_ENABLED: ${{ (github.event_name == 'workflow_dispatch' && inputs.authorize_fallback) || vars.PULLFROG_REVIEW_FALLBACK_ENABLED == 'true' }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/pullfrog-review-fallback/gate
+          python scripts/github/pullfrog_review_fallback.py publish-gate \
+            --repository "$GITHUB_REPOSITORY" \
+            --coordinator artifacts/pullfrog-review-fallback/evaluate/coordinator.json \
+            --details-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --enabled "$FALLBACK_ENABLED" \
+            --out artifacts/pullfrog-review-fallback/gate/initial.json
+
+      - name: Hand off deliverable gate to exact-head controller
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py handoff-controller
+          --repository "$GITHUB_REPOSITORY"
+          --source-receipt artifacts/pullfrog-review-fallback/evaluate/coordinator.json
+          --gate-receipt artifacts/pullfrog-review-fallback/gate/initial.json
+          --out artifacts/pullfrog-review-fallback/gate/handoff.json
+
+      - name: Upload sanitized initial gate receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-review-gate-initial-${{ github.run_id }}
+          path: artifacts/pullfrog-review-fallback/gate/
+          if-no-files-found: error
+          retention-days: 30
+
+  fallback:
+    name: Run one Astra exact-head fallback
+    needs:
+      - evaluate
+      - gate_initial
+    if: >-
+      needs.evaluate.result == 'success' &&
+      needs.gate_initial.result == 'success' &&
+      github.run_attempt == 1 &&
+      needs.evaluate.outputs.status == 'fallback_ready' &&
+      needs.evaluate.outputs.authorized_fallback == 'true' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.authorize_fallback) ||
+       vars.PULLFROG_REVIEW_FALLBACK_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout trusted fallback preflight
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: trusted-controller
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Seal trusted preflight outside candidate workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 0555 \
+            trusted-controller/scripts/github/pullfrog_review_fallback.py \
+            "$RUNNER_TEMP/pullfrog_review_fallback.py"
+          install -m 0444 \
+            trusted-controller/scripts/github/pullfrog_review_contract.py \
+            "$RUNNER_TEMP/pullfrog_review_contract.py"
+          rm -rf trusted-controller
+
+      - name: Checkout exact untrusted pull-request head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.evaluate.outputs.head_sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download sanitized fallback decision
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pullfrog-review-fallback-decision-${{ github.run_id }}
+          path: artifacts/pullfrog-review-fallback/evaluate
+
+      - name: Re-read exact head and base immediately before fallback
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "${{ needs.evaluate.outputs.head_sha }}"
+          python "$RUNNER_TEMP/pullfrog_review_fallback.py" verify-identity \
+            --repository "$GITHUB_REPOSITORY" \
+            --pr-number "${{ needs.evaluate.outputs.pr_number }}" \
+            --expected-head-sha "${{ needs.evaluate.outputs.head_sha }}" \
+            --expected-base-sha "${{ needs.evaluate.outputs.base_sha }}" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --out artifacts/pullfrog-review-fallback/evaluate/preflight.json
+
+      - name: Mint least-privilege Pullfrog review token
+        id: review_token
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/pullfrog_review_fallback.py" mint-review-token \
+            --repository "$GITHUB_REPOSITORY" \
+            --github-output "$GITHUB_OUTPUT" \
+            --out "$RUNNER_TEMP/pullfrog-review-token-lease.json"
+
+      - name: Run review-only Astra fallback
+        id: pullfrog
+        continue-on-error: true
+        env:
+          # Force the action's documented external-token route. The token is a
+          # short-lived Pullfrog App installation token scoped only to
+          # contents:read plus pull_requests:write, so the provider can publish
+          # its Pullfrog-authored review but cannot write contents/checks or
+          # dispatch Actions through the action's normal MCP credential.
+          GH_TOKEN: ${{ steps.review_token.outputs.credential }}
+        uses: pullfrog/pullfrog@25a837a2b078177c3acdce790506d1fd1acedd82 # v0.1.102
+        with:
+          prompt: >-
+            Review pull request #${{ needs.evaluate.outputs.pr_number }} in
+            ${{ needs.evaluate.outputs.repository }} at the exact head
+            ${{ needs.evaluate.outputs.head_sha }} against exact base
+            ${{ needs.evaluate.outputs.base_sha }}. This is the single authorized
+            review fallback after primary Pullfrog check
+            ${{ github.event.check_run.id || inputs.primary_check_run_id }} ended
+            with the recognized OpenAI cybersecurity-policy refusal and no complete
+            verdict. Do not modify, commit, push, approve, merge, dispatch, release,
+            deploy, change settings, resolve threads, or delete branches. Re-read the
+            live PR identity before submitting anything and stop on any drift. Review
+            the complete diff, reconcile but do not silently discard partial comments
+            left by the failed primary run, submit one complete Pullfrog review bound
+            to the exact head, and return only the required structured result.
+          timeout: 20m
+          cwd: source
+          model: openai/gpt-astra
+          effort: xhigh
+          push: disabled
+          shell: restricted
+          progress_comments: disabled
+          output_schema: >-
+            {"type":"object","additionalProperties":false,"required":["schema","status","repository","pr_number","base_sha","head_sha","model","effort","review_id","verdict","finding_count"],"properties":{"schema":{"const":"pullfrog-review-fallback-result.v1"},"status":{"const":"review_submitted"},"repository":{"const":"${{ needs.evaluate.outputs.repository }}"},"pr_number":{"const":${{ needs.evaluate.outputs.pr_number }}},"base_sha":{"const":"${{ needs.evaluate.outputs.base_sha }}"},"head_sha":{"const":"${{ needs.evaluate.outputs.head_sha }}"},"model":{"const":"openai/gpt-astra"},"effort":{"const":"xhigh"},"review_id":{"type":"integer","minimum":1},"verdict":{"enum":["clean","findings"]},"finding_count":{"type":"integer","minimum":0}}}
+
+      - name: Capture bounded untrusted action result
+        if: always()
+        shell: bash
+        env:
+          PULLFROG_ACTION_OUTCOME: ${{ steps.pullfrog.outcome }}
+          PULLFROG_ACTION_RESULT: ${{ steps.pullfrog.outputs.result }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/pullfrog-review-fallback/raw
+          printf '%s\n' "$PULLFROG_ACTION_OUTCOME" > artifacts/pullfrog-review-fallback/raw/action-outcome.txt
+          if [[ -n "$PULLFROG_ACTION_RESULT" ]]; then
+            printf '%s\n' "$PULLFROG_ACTION_RESULT" > artifacts/pullfrog-review-fallback/raw/action-result.json
+          else
+            printf '{}\n' > artifacts/pullfrog-review-fallback/raw/action-result.json
+          fi
+          install -m 0400 \
+            "$RUNNER_TEMP/pullfrog-review-token-lease.json" \
+            artifacts/pullfrog-review-fallback/raw/token-lease.json
+
+      - name: Revoke least-privilege Pullfrog review token
+        id: revoke_token
+        if: always() && steps.review_token.outputs.credential != ''
+        continue-on-error: true
+        shell: bash
+        env:
+          PULLFROG_REVIEW_TOKEN: ${{ steps.review_token.outputs.credential }}
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/pullfrog_review_fallback.py" revoke-review-token \
+            --repository "$GITHUB_REPOSITORY" \
+            --out artifacts/pullfrog-review-fallback/raw/token-revocation.json
+
+      - name: Record credential disposal outcome
+        if: always()
+        shell: bash
+        env:
+          TOKEN_REVOCATION_OUTCOME: ${{ steps.revoke_token.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/pullfrog-review-fallback/raw
+          printf '%s\n' "$TOKEN_REVOCATION_OUTCOME" \
+            > artifacts/pullfrog-review-fallback/raw/token-revocation-outcome.txt
+
+      - name: Upload bounded untrusted fallback result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-review-fallback-raw-${{ github.run_id }}
+          path: artifacts/pullfrog-review-fallback/raw/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce provider outcome after evidence capture
+        if: always()
+        shell: bash
+        env:
+          PULLFROG_ACTION_OUTCOME: ${{ steps.pullfrog.outcome }}
+          TOKEN_REVOCATION_OUTCOME: ${{ steps.revoke_token.outcome }}
+        run: >-
+          test "$PULLFROG_ACTION_OUTCOME" = 'success' &&
+          test "$TOKEN_REVOCATION_OUTCOME" = 'success'
+
+  finalize:
+    name: Validate fallback and finalize review gate
+    needs:
+      - evaluate
+      - gate_initial
+      - fallback
+    if: >-
+      always() &&
+      needs.evaluate.result == 'success' &&
+      needs.gate_initial.result == 'success' &&
+      needs.evaluate.outputs.status == 'fallback_ready' &&
+      needs.evaluate.outputs.authorized_fallback == 'true' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.authorize_fallback) ||
+       vars.PULLFROG_REVIEW_FALLBACK_ENABLED == 'true') &&
+      (needs.fallback.result != 'skipped' || github.run_attempt > 1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      checks: write
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout fresh trusted fallback validator
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download sanitized fallback decision
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pullfrog-review-fallback-decision-${{ github.run_id }}
+          path: artifacts/pullfrog-review-fallback/evaluate
+
+      - name: Download bounded untrusted fallback result
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pullfrog-review-fallback-raw-${{ github.run_id }}
+          path: artifacts/pullfrog-review-fallback/raw
+
+      - name: Validate structured result and exact-head Pullfrog review
+        id: validate
+        continue-on-error: true
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/pullfrog-review-fallback/final
+          python scripts/github/pullfrog_review_fallback.py verify-fallback-result \
+            --repository "$GITHUB_REPOSITORY" \
+            --coordinator artifacts/pullfrog-review-fallback/evaluate/coordinator.json \
+            --action-outcome-file artifacts/pullfrog-review-fallback/raw/action-outcome.txt \
+            --action-result-file artifacts/pullfrog-review-fallback/raw/action-result.json \
+            --token-lease-file artifacts/pullfrog-review-fallback/raw/token-lease.json \
+            --token-revocation-file artifacts/pullfrog-review-fallback/raw/token-revocation.json \
+            --token-revocation-outcome-file artifacts/pullfrog-review-fallback/raw/token-revocation-outcome.txt \
+            --out artifacts/pullfrog-review-fallback/final/result.json
+
+      - name: Finalize composite exact-head gate
+        if: always()
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python scripts/github/pullfrog_review_fallback.py publish-gate \
+            --repository "$GITHUB_REPOSITORY" \
+            --coordinator artifacts/pullfrog-review-fallback/evaluate/coordinator.json \
+            --result-receipt artifacts/pullfrog-review-fallback/final/result.json \
+            --details-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --enabled true \
+            --out artifacts/pullfrog-review-fallback/final/gate.json
+
+      - name: Hand off deliverable gate to exact-head controller
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py handoff-controller
+          --repository "$GITHUB_REPOSITORY"
+          --source-receipt artifacts/pullfrog-review-fallback/evaluate/coordinator.json
+          --gate-receipt artifacts/pullfrog-review-fallback/final/gate.json
+          --out artifacts/pullfrog-review-fallback/final/handoff.json
+
+      - name: Upload sanitized final fallback receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-review-fallback-final-${{ github.run_id }}
+          path: artifacts/pullfrog-review-fallback/final/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish sanitized final summary
+        if: always()
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py summarize
+          --receipt artifacts/pullfrog-review-fallback/final/result.json
+          --github-step-summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce valid fallback verdict
+        if: always()
+        run: test "${{ steps.validate.outcome }}" = 'success'

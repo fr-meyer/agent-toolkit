@@ -27,6 +27,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import pullfrog_cycle_contract as cycle_contract  # noqa: E402
 import pullfrog_destination_guard as destination_guard  # noqa: E402
+import pullfrog_review_contract as review_contract  # noqa: E402
 
 SNAPSHOT_SCHEMA = "pullfrog-cloud-snapshot.v1"
 RECEIPT_SCHEMA = "pullfrog-cloud-coordinator-receipt.v1"
@@ -43,10 +44,10 @@ EVENT_KINDS = {
     "required_evidence_completed",
     "workflow_dispatch",
 }
-PULLFROG_LOGIN = "pullfrog[bot]"
-PULLFROG_APP = "pullfrog"
-PULLFROG_CHECK = "pullfrog"
-PULLFROG_APPROVAL_CHECK = "pullfrog-approval"
+PULLFROG_LOGIN = review_contract.PULLFROG_LOGIN
+PULLFROG_APP = review_contract.PULLFROG_APP
+PULLFROG_CHECK = review_contract.PULLFROG_CHECK
+PULLFROG_APPROVAL_CHECK = review_contract.PULLFROG_APPROVAL_CHECK
 STATUS_PRIORITY = {
     "missing": 7,
     "timed_out": 6,
@@ -457,16 +458,52 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         if any(item["stale_count"] for item in details):
             coordinator_blockers.append(f"{group}_check_stale")
 
-    selected_review = _select_review(_list(snapshot.get("reviews")), head_sha)
-    findings, output_digest, review_comment_count, review_comment_blockers = _review_findings(
-        selected_review,
-        _list(snapshot.get("review_comments")),
-        approval["status"],
-        head_sha,
+    contract_snapshot = {
+        "schema": review_contract.SNAPSHOT_SCHEMA,
+        "expected_identity": expected,
+        "observed_identity": observed,
+        "reviews": _list(snapshot.get("reviews")),
+        "review_comments": _list(snapshot.get("review_comments")),
+        "review_threads": _list(snapshot.get("review_threads")),
+        "check_runs": check_runs,
+    }
+    native_review_receipt = review_contract.evaluate_contract(contract_snapshot)
+    review_only_receipt = review_contract.evaluate_contract(
+        contract_snapshot,
+        review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
     )
-    coordinator_blockers.extend(review_comment_blockers)
-    if not selected_review:
-        coordinator_blockers.append("missing_exact_head_pullfrog_review")
+    gate = review_contract.select_gate(
+        check_runs,
+        observed,
+        [native_review_receipt, review_only_receipt],
+    )
+    review_receipt = native_review_receipt
+    matched_profile = _text(gate.get("evidence_profile"))
+    matched_digest = _text(gate.get("evidence_digest"))
+    matched_contract_status = _text(gate.get("contract_status"))
+    for candidate in (native_review_receipt, review_only_receipt):
+        candidate_status = _text(candidate.get("status"))
+        expected_gate_status = (
+            "success" if candidate_status == "clean" else "failure"
+        )
+        if (
+            candidate_status in {"clean", "findings"}
+            and candidate.get("blockers") == []
+            and candidate_status == matched_contract_status
+            and gate.get("status") == expected_gate_status
+            and candidate.get("evidence_profile") == matched_profile
+            and candidate.get("evidence_digest") == matched_digest
+        ):
+            review_receipt = candidate
+            break
+    review_evidence = _mapping(review_receipt.get("review"))
+    findings = _list(review_evidence.get("findings"))
+    output_digest = _text(review_evidence.get("output_digest"))
+    review_comment_count = _integer(review_evidence.get("comment_count")) or 0
+    if review_receipt.get("status") in {"incomplete", "reconciliation_required"}:
+        coordinator_blockers.extend(
+            _text(item) for item in _list(review_receipt.get("blockers"))
+        )
 
     history = _validated_history(snapshot.get("history"))
     cycle_number = history["cycle_number"]
@@ -496,8 +533,30 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     guard_receipt = destination_guard.evaluate_guard(guard_payload)
     guard_status = "success" if guard_receipt["status"] == "allowed" else "failure"
 
-    review_status = pullfrog["status"]
-    if review_status == "success" and not selected_review:
+    gated_clean = bool(
+        gate.get("status") == "success"
+        and review_receipt.get("status") == "clean"
+        and review_receipt.get("evidence_profile") == gate.get("evidence_profile")
+        and review_receipt.get("evidence_digest") == gate.get("evidence_digest")
+    )
+    gated_findings = bool(
+        gate.get("status") == "failure"
+        and review_receipt.get("status") == "findings"
+        and review_receipt.get("evidence_profile") == gate.get("evidence_profile")
+        and review_receipt.get("evidence_digest") == gate.get("evidence_digest")
+    )
+    effective_pullfrog_status = (
+        "success" if gated_clean or gated_findings else pullfrog["status"]
+    )
+    effective_approval_status = (
+        "success"
+        if gated_clean
+        else "failure"
+        if gated_findings
+        else approval["status"]
+    )
+    review_status = effective_pullfrog_status
+    if review_receipt.get("status") in {"incomplete", "reconciliation_required"}:
         review_status = "missing"
     cycle_state = {
         "schema": cycle_contract.STATE_SCHEMA,
@@ -525,14 +584,22 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         },
         "review": {
             "status": review_status,
-            "head_sha": _text(selected_review.get("commit_id")) or head_sha,
-            "review_id": str(_integer(selected_review.get("id")) or 0),
+            "head_sha": _text(review_evidence.get("head_sha")) or head_sha,
+            "review_id": str(_integer(review_evidence.get("review_id")) or 0),
             "output_digest": output_digest,
             "findings": findings,
         },
         "checks": [
-            {"name": "pullfrog", "status": pullfrog["status"], "head_sha": head_sha},
-            {"name": "pullfrog-approval", "status": approval["status"], "head_sha": head_sha},
+            {
+                "name": "pullfrog",
+                "status": effective_pullfrog_status,
+                "head_sha": head_sha,
+            },
+            {
+                "name": "pullfrog-approval",
+                "status": effective_approval_status,
+                "head_sha": head_sha,
+            },
             ci,
             speculoos,
             {"name": "destination-guard", "status": guard_status, "head_sha": head_sha},
@@ -543,6 +610,24 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     coordinator_blockers = sorted(set(coordinator_blockers))
     effective_status = "stopped" if coordinator_blockers else decision["status"]
     would_action = "none" if coordinator_blockers else decision["action"]
+    manual_governance_required = bool(
+        "forbidden_changed_path" in _list(guard_receipt.get("blockers"))
+        or _text(observed.get("base_ref")) in {"main", "master"}
+    )
+    policy_decision = {
+        "remediation_allowed": bool(
+            effective_status == "remediation_ready"
+            and would_action == "start_remediation"
+            and guard_receipt.get("status") == "allowed"
+        ),
+        "merge_allowed": bool(
+            effective_status == "clean"
+            and would_action == "complete"
+            and gate.get("status") == "success"
+            and _text(observed.get("base_ref")) not in {"main", "master"}
+        ),
+        "manual_governance_required": manual_governance_required,
+    }
     return {
         "schema": RECEIPT_SCHEMA,
         "mode": MODE,
@@ -586,6 +671,10 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
             "reviews_seen": len(_list(snapshot.get("reviews"))),
             "review_comments_seen": len(_list(snapshot.get("review_comments"))),
             "selected_review_comment_count": review_comment_count,
+            "unresolved_pullfrog_thread_count": _integer(
+                _mapping(review_receipt.get("threads")).get("unresolved_pullfrog_count")
+            )
+            or 0,
             "check_runs_seen": len(check_runs),
             "changed_paths_count": len(changed_paths),
             "changed_paths_digest": _digest(sorted(changed_paths)),
@@ -593,9 +682,12 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "checks": {
             "pullfrog": pullfrog,
             "pullfrog_approval": approval,
+            "pullfrog_review_gate": gate,
             "ci": ci_details,
             "speculoos": speculoos_details,
         },
+        "review_contract": review_receipt,
+        "policy_decision": policy_decision,
         "destination_guard": guard_receipt,
         "cycle_decision": decision,
     }
@@ -650,6 +742,34 @@ class GitHubReadClient:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise CoordinatorError("invalid_github_api_response") from exc
 
+    def graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        request = urllib.request.Request(
+            self.api_url + "/graphql",
+            data=json.dumps({"query": query, "variables": variables}).encode("utf-8"),
+            method="POST",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {self.token}",
+                "Content-Type": "application/json",
+                "User-Agent": "agent-toolkit-pullfrog-cloud-coordinator",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                data = response.read(MAX_RESPONSE_BYTES + 1)
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+            raise CoordinatorError("github_graphql_read_failed") from exc
+        if len(data) > MAX_RESPONSE_BYTES:
+            raise CoordinatorError("github_api_response_too_large")
+        try:
+            value = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise CoordinatorError("invalid_github_api_response") from exc
+        if not isinstance(value, dict) or value.get("errors"):
+            raise CoordinatorError("invalid_github_graphql_response")
+        return value
+
     def paginated(self, path: str) -> list[Any]:
         items: list[Any] = []
         for page in range(1, MAX_PAGES + 1):
@@ -696,6 +816,10 @@ def collect_github_snapshot(
     )
     reviews = client.paginated(f"{prefix}/pulls/{pr_number}/reviews")
     comments = client.paginated(f"{prefix}/pulls/{pr_number}/comments")
+    review_threads = review_contract.collect_review_threads(
+        client,
+        _identity_from_pr(client.repository_slug, expected_pr, default_branch, effective_protected_refs),
+    )
     files = client.paginated(f"{prefix}/pulls/{pr_number}/files")
     check_payload = _mapping(
         client.get(f"{prefix}/commits/{expected_head_sha}/check-runs?per_page=100")
@@ -717,6 +841,7 @@ def collect_github_snapshot(
         "observed_pull_request": observed_pr,
         "reviews": reviews,
         "review_comments": comments,
+        "review_threads": review_threads,
         "files": files,
         "check_runs": check_runs,
         "history": history,
