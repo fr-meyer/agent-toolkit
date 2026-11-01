@@ -181,7 +181,7 @@ jobs:
           retention-days: 30
 
   fallback:
-    name: Run one Astra exact-head fallback
+    name: Run one credential-isolated Astra analysis
     needs:
       - evaluate
       - gate_initial
@@ -250,42 +250,32 @@ jobs:
             --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --out artifacts/pullfrog-review-fallback/evaluate/preflight.json
 
-      - name: Mint least-privilege Pullfrog review token
-        id: review_token
-        shell: bash
-        run: |
-          set -euo pipefail
-          python "$RUNNER_TEMP/pullfrog_review_fallback.py" mint-review-token \
-            --repository "$GITHUB_REPOSITORY" \
-            --github-output "$GITHUB_OUTPUT" \
-            --out "$RUNNER_TEMP/pullfrog-review-token-lease.json"
-
-      - name: Run review-only Astra fallback
+      - name: Run Astra with read-only GitHub authority
         id: pullfrog
         continue-on-error: true
         env:
-          # Force the action's documented external-token route. The token is a
-          # short-lived Pullfrog App installation token scoped only to
-          # contents:read plus pull_requests:write, so the provider can publish
-          # its Pullfrog-authored review but cannot write contents/checks or
-          # dispatch Actions through the action's normal MCP credential.
-          GH_TOKEN: ${{ steps.review_token.outputs.credential }}
+          # Supplying the read-only job token prevents Pullfrog from minting its
+          # normal contents/pull-requests/checks/actions write-capable MCP token.
+          # The model can inspect GitHub state but cannot publish or mutate it.
+          GH_TOKEN: ${{ github.token }}
+          # The action bootstrap defaults to pullfrog@^0.1.102. Force the
+          # checked-out immutable action source instead of a floating npm CLI.
+          PULLFROG_FORCE_LOCAL_CLI: '1'
         uses: pullfrog/pullfrog@25a837a2b078177c3acdce790506d1fd1acedd82 # v0.1.102
         with:
           prompt: >-
-            Review pull request #${{ needs.evaluate.outputs.pr_number }} in
-            ${{ needs.evaluate.outputs.repository }} at the exact head
+            Analyze pull request #${{ needs.evaluate.outputs.pr_number }} in
+            ${{ needs.evaluate.outputs.repository }} at exact head
             ${{ needs.evaluate.outputs.head_sha }} against exact base
-            ${{ needs.evaluate.outputs.base_sha }}. This is the single authorized
-            review fallback after primary Pullfrog check
+            ${{ needs.evaluate.outputs.base_sha }}. This is analysis only after
+            primary Pullfrog check
             ${{ github.event.check_run.id || inputs.primary_check_run_id }} ended
-            with the recognized OpenAI cybersecurity-policy refusal and no complete
-            verdict. Do not modify, commit, push, approve, merge, dispatch, release,
-            deploy, change settings, resolve threads, or delete branches. Re-read the
-            live PR identity before submitting anything and stop on any drift. Review
-            the complete diff, reconcile but do not silently discard partial comments
-            left by the failed primary run, submit one complete Pullfrog review bound
-            to the exact head, and return only the required structured result.
+            with the recognized OpenAI cybersecurity-policy refusal. Do not call
+            any GitHub mutation, publication, review, progress, approval, merge,
+            dispatch, release, deployment, settings, thread-resolution, branch,
+            commit, or push tool. Inspect the complete diff and return only the
+            required structured review draft. A separate trusted publisher will
+            revalidate the exact identity and publish the draft.
           timeout: 20m
           cwd: source
           model: openai/gpt-astra
@@ -294,9 +284,9 @@ jobs:
           shell: restricted
           progress_comments: disabled
           output_schema: >-
-            {"type":"object","additionalProperties":false,"required":["schema","status","repository","pr_number","base_sha","head_sha","model","effort","review_id","verdict","finding_count"],"properties":{"schema":{"const":"pullfrog-review-fallback-result.v1"},"status":{"const":"review_submitted"},"repository":{"const":"${{ needs.evaluate.outputs.repository }}"},"pr_number":{"const":${{ needs.evaluate.outputs.pr_number }}},"base_sha":{"const":"${{ needs.evaluate.outputs.base_sha }}"},"head_sha":{"const":"${{ needs.evaluate.outputs.head_sha }}"},"model":{"const":"openai/gpt-astra"},"effort":{"const":"xhigh"},"review_id":{"type":"integer","minimum":1},"verdict":{"enum":["clean","findings"]},"finding_count":{"type":"integer","minimum":0}}}
+            {"type":"object","additionalProperties":false,"required":["schema","status","repository","pr_number","base_sha","head_sha","model","effort","verdict","finding_count","summary","findings"],"properties":{"schema":{"const":"pullfrog-review-draft.v1"},"status":{"const":"review_ready"},"repository":{"const":"${{ needs.evaluate.outputs.repository }}"},"pr_number":{"const":${{ needs.evaluate.outputs.pr_number }}},"base_sha":{"const":"${{ needs.evaluate.outputs.base_sha }}"},"head_sha":{"const":"${{ needs.evaluate.outputs.head_sha }}"},"model":{"const":"openai/gpt-astra"},"effort":{"const":"xhigh"},"verdict":{"enum":["clean","findings"]},"finding_count":{"type":"integer","minimum":0,"maximum":50},"summary":{"type":"string","minLength":1,"maxLength":12000},"findings":{"type":"array","maxItems":50,"items":{"type":"object","additionalProperties":false,"required":["severity","path","line","body"],"properties":{"severity":{"enum":["blocker","high","medium","low"]},"path":{"type":"string","minLength":1,"maxLength":1024},"line":{"type":"integer","minimum":1},"body":{"type":"string","minLength":1,"maxLength":4000}}}}}}
 
-      - name: Capture bounded untrusted action result
+      - name: Capture bounded untrusted review draft
         if: always()
         shell: bash
         env:
@@ -304,42 +294,151 @@ jobs:
           PULLFROG_ACTION_RESULT: ${{ steps.pullfrog.outputs.result }}
         run: |
           set -euo pipefail
-          mkdir -p artifacts/pullfrog-review-fallback/raw
-          printf '%s\n' "$PULLFROG_ACTION_OUTCOME" > artifacts/pullfrog-review-fallback/raw/action-outcome.txt
+          mkdir -p artifacts/pullfrog-review-fallback/provider
+          printf '%s\n' "$PULLFROG_ACTION_OUTCOME" \
+            > artifacts/pullfrog-review-fallback/provider/provider-outcome.txt
           if [[ -n "$PULLFROG_ACTION_RESULT" ]]; then
-            printf '%s\n' "$PULLFROG_ACTION_RESULT" > artifacts/pullfrog-review-fallback/raw/action-result.json
+            printf '%s\n' "$PULLFROG_ACTION_RESULT" \
+              > artifacts/pullfrog-review-fallback/provider/review-draft.json
           else
-            printf '{}\n' > artifacts/pullfrog-review-fallback/raw/action-result.json
+            printf '{}\n' \
+              > artifacts/pullfrog-review-fallback/provider/review-draft.json
           fi
-          install -m 0400 \
-            "$RUNNER_TEMP/pullfrog-review-token-lease.json" \
-            artifacts/pullfrog-review-fallback/raw/token-lease.json
+
+      - name: Upload bounded provider draft
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-review-fallback-provider-${{ github.run_id }}
+          path: artifacts/pullfrog-review-fallback/provider/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce provider outcome after evidence capture
+        if: always()
+        env:
+          PULLFROG_ACTION_OUTCOME: ${{ steps.pullfrog.outcome }}
+        run: test "$PULLFROG_ACTION_OUTCOME" = 'success'
+
+  publish_review:
+    name: Publish validated Pullfrog review with isolated authority
+    needs:
+      - evaluate
+      - gate_initial
+      - fallback
+    if: >-
+      needs.evaluate.result == 'success' &&
+      needs.gate_initial.result == 'success' &&
+      needs.fallback.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout fresh trusted review publisher
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download sanitized fallback decision
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pullfrog-review-fallback-decision-${{ github.run_id }}
+          path: artifacts/pullfrog-review-fallback/evaluate
+
+      - name: Download bounded provider draft
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pullfrog-review-fallback-provider-${{ github.run_id }}
+          path: artifacts/pullfrog-review-fallback/provider
+
+      - name: Re-read exact identity before publication authority exists
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py verify-identity
+          --repository "$GITHUB_REPOSITORY"
+          --pr-number "${{ needs.evaluate.outputs.pr_number }}"
+          --expected-head-sha "${{ needs.evaluate.outputs.head_sha }}"
+          --expected-base-sha "${{ needs.evaluate.outputs.base_sha }}"
+          --run-attempt "$GITHUB_RUN_ATTEMPT"
+          --out artifacts/pullfrog-review-fallback/evaluate/publisher-preflight.json
+
+      - name: Mint least-privilege Pullfrog review token
+        id: review_token
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/github/pullfrog_review_fallback.py mint-review-token \
+            --repository "$GITHUB_REPOSITORY" \
+            --github-output "$GITHUB_OUTPUT" \
+            --out "$RUNNER_TEMP/pullfrog-review-token-lease.json"
+
+      - name: Publish validated review draft
+        id: publisher
+        if: steps.review_token.outcome == 'success'
+        continue-on-error: true
+        env:
+          PULLFROG_REVIEW_TOKEN: ${{ steps.review_token.outputs.credential }}
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py publish-review-draft
+          --repository "$GITHUB_REPOSITORY"
+          --pr-number "${{ needs.evaluate.outputs.pr_number }}"
+          --expected-head-sha "${{ needs.evaluate.outputs.head_sha }}"
+          --expected-base-sha "${{ needs.evaluate.outputs.base_sha }}"
+          --identity-preflight artifacts/pullfrog-review-fallback/evaluate/publisher-preflight.json
+          --model openai/gpt-astra
+          --resolved-model gpt-6-astra
+          --effort xhigh
+          --result-schema pullfrog-review-fallback-result.v1
+          --draft artifacts/pullfrog-review-fallback/provider/review-draft.json
+          --out artifacts/pullfrog-review-fallback/raw/action-result.json
 
       - name: Revoke least-privilege Pullfrog review token
         id: revoke_token
         if: always() && steps.review_token.outputs.credential != ''
         continue-on-error: true
-        shell: bash
         env:
           PULLFROG_REVIEW_TOKEN: ${{ steps.review_token.outputs.credential }}
-        run: |
-          set -euo pipefail
-          python "$RUNNER_TEMP/pullfrog_review_fallback.py" revoke-review-token \
-            --repository "$GITHUB_REPOSITORY" \
-            --out artifacts/pullfrog-review-fallback/raw/token-revocation.json
+        run: >-
+          python scripts/github/pullfrog_review_fallback.py revoke-review-token
+          --repository "$GITHUB_REPOSITORY"
+          --out artifacts/pullfrog-review-fallback/raw/token-revocation.json
 
-      - name: Record credential disposal outcome
+      - name: Capture bounded publication evidence
         if: always()
         shell: bash
         env:
+          PUBLISHER_OUTCOME: ${{ steps.publisher.outcome }}
           TOKEN_REVOCATION_OUTCOME: ${{ steps.revoke_token.outcome }}
         run: |
           set -euo pipefail
           mkdir -p artifacts/pullfrog-review-fallback/raw
+          printf '%s\n' "$PUBLISHER_OUTCOME" \
+            > artifacts/pullfrog-review-fallback/raw/action-outcome.txt
           printf '%s\n' "$TOKEN_REVOCATION_OUTCOME" \
             > artifacts/pullfrog-review-fallback/raw/token-revocation-outcome.txt
+          if [[ ! -f artifacts/pullfrog-review-fallback/raw/action-result.json ]]; then
+            printf '{}\n' > artifacts/pullfrog-review-fallback/raw/action-result.json
+          fi
+          if [[ -f "$RUNNER_TEMP/pullfrog-review-token-lease.json" ]]; then
+            install -m 0400 \
+              "$RUNNER_TEMP/pullfrog-review-token-lease.json" \
+              artifacts/pullfrog-review-fallback/raw/token-lease.json
+          else
+            printf '{}\n' > artifacts/pullfrog-review-fallback/raw/token-lease.json
+          fi
+          if [[ ! -f artifacts/pullfrog-review-fallback/raw/token-revocation.json ]]; then
+            printf '{}\n' > artifacts/pullfrog-review-fallback/raw/token-revocation.json
+          fi
 
-      - name: Upload bounded untrusted fallback result
+      - name: Upload bounded publication result
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -348,22 +447,21 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Enforce provider outcome after evidence capture
+      - name: Enforce publication and credential disposal
         if: always()
-        shell: bash
         env:
-          PULLFROG_ACTION_OUTCOME: ${{ steps.pullfrog.outcome }}
+          PUBLISHER_OUTCOME: ${{ steps.publisher.outcome }}
           TOKEN_REVOCATION_OUTCOME: ${{ steps.revoke_token.outcome }}
         run: >-
-          test "$PULLFROG_ACTION_OUTCOME" = 'success' &&
+          test "$PUBLISHER_OUTCOME" = 'success' &&
           test "$TOKEN_REVOCATION_OUTCOME" = 'success'
-
   finalize:
     name: Validate fallback and finalize review gate
     needs:
       - evaluate
       - gate_initial
       - fallback
+      - publish_review
     if: >-
       always() &&
       needs.evaluate.result == 'success' &&

@@ -30,6 +30,13 @@ def pr(head_sha=HEAD_SHA, base_sha=BASE_SHA, head_repo=REPOSITORY, state="open")
     return {
         "number": 95,
         "state": state,
+        "draft": False,
+        "user": {
+            "id": 26621962,
+            "login": "fr-meyer",
+            "type": "User",
+            "node_id": "MDQ6VXNlcjI2NjIxOTYy",
+        },
         "base": {
             "ref": "dev",
             "sha": base_sha,
@@ -322,10 +329,7 @@ class PullfrogReviewFallbackDecisionTests(unittest.TestCase):
     def test_prior_exact_head_gate_blocks_duplicate_fallback(self):
         fixture = snapshot()
         external_id = MODULE._gate_external_id(
-            REPOSITORY,
-            95,
-            HEAD_SHA,
-            BASE_SHA,
+            fixture["expected_identity"],
             MODULE.review_contract.NATIVE_EVIDENCE_PROFILE,
             "a" * 64,
         )
@@ -414,6 +418,18 @@ class PullfrogReviewFallbackDecisionTests(unittest.TestCase):
                 receipt = MODULE.evaluate_snapshot(fixture)
                 self.assertEqual(receipt["status"], "stopped")
                 self.assertIn(blocker, receipt["blockers"])
+
+    def test_draft_pull_request_cannot_authorize_fallback(self):
+        fixture = snapshot()
+        fixture["observed_pull_request"]["draft"] = True
+        fixture["expected_identity"] = MODULE._identity(
+            REPOSITORY,
+            fixture["observed_pull_request"],
+        )
+        receipt = MODULE.evaluate_snapshot(fixture)
+        self.assertEqual(receipt["status"], "stopped")
+        self.assertFalse(receipt["authorized_fallback"])
+        self.assertIn("pull_request_is_draft", receipt["blockers"])
 
     def test_fallback_workflow_check_is_ignored_without_recursive_gate_update(self):
         fixture = snapshot()
@@ -529,6 +545,213 @@ class SupersededReviewClient(FakeClient):
         if path == f"/repos/{REPOSITORY}/pulls/95/reviews":
             return copy.deepcopy(self.reviews)
         return super().paginated(path)
+
+
+class ReviewPublicationClient(FakeClient):
+    def __init__(self):
+        super().__init__()
+        self.reviews = []
+
+    def get(self, path):
+        prefix = f"/repos/{REPOSITORY}/pulls/95/reviews/"
+        if path.startswith(prefix):
+            review_id = int(path.removeprefix(prefix))
+            return copy.deepcopy(
+                next(item for item in self.reviews if item["id"] == review_id)
+            )
+        return super().get(path)
+
+    def paginated(self, path):
+        if path == f"/repos/{REPOSITORY}/pulls/95/reviews":
+            return copy.deepcopy(self.reviews)
+        return super().paginated(path)
+
+    def post(self, path, payload):
+        if path == f"/repos/{REPOSITORY}/pulls/95/reviews":
+            published = review(700, payload["body"], payload["commit_id"])
+            self.reviews.append(published)
+            self.posts.append((path, copy.deepcopy(payload)))
+            return copy.deepcopy(published)
+        return super().post(path, payload)
+
+
+class PullfrogReviewDraftPublicationTests(unittest.TestCase):
+    def identity_preflight(self):
+        return {
+            "schema": "pullfrog-review-fallback-identity.v1",
+            "status": "valid",
+            **MODULE.verify_live_identity(
+                ReviewPublicationClient(), 95, HEAD_SHA, BASE_SHA, 1
+            ),
+        }
+
+    def draft(self, verdict="clean", findings=None):
+        findings = [] if findings is None else findings
+        return {
+            "schema": MODULE.REVIEW_DRAFT_SCHEMA,
+            "status": "review_ready",
+            "repository": REPOSITORY,
+            "pr_number": 95,
+            "base_sha": BASE_SHA,
+            "head_sha": HEAD_SHA,
+            "model": MODULE.FALLBACK_MODEL,
+            "effort": MODULE.EFFORT,
+            "verdict": verdict,
+            "finding_count": len(findings),
+            "summary": "The exact-head diff was reviewed completely.",
+            "findings": findings,
+        }
+
+    def publish(self, client, draft, **overrides):
+        arguments = {
+            "pr_number": 95,
+            "expected_head_sha": HEAD_SHA,
+            "expected_base_sha": BASE_SHA,
+            "identity_preflight": self.identity_preflight(),
+            "model": MODULE.FALLBACK_MODEL,
+            "resolved_model": MODULE.FALLBACK_RESOLVED_MODEL,
+            "effort": MODULE.EFFORT,
+            "result_schema": MODULE.RESULT_SCHEMA,
+            "draft": draft,
+        }
+        arguments.update(overrides)
+        return MODULE.publish_review_draft(client, **arguments)
+
+    def test_clean_draft_is_published_only_by_the_separate_publisher(self):
+        client = ReviewPublicationClient()
+        result = self.publish(client, self.draft())
+        self.assertEqual(result["status"], "review_submitted")
+        self.assertEqual(result["review_id"], 700)
+        self.assertEqual(result["finding_count"], 0)
+        path, payload = client.posts[0]
+        self.assertEqual(path, f"/repos/{REPOSITORY}/pulls/95/reviews")
+        self.assertEqual(payload["event"], "COMMENT")
+        self.assertEqual(payload["comments"], [])
+        self.assertIn("No new issues found", payload["body"])
+        self.assertIn(MODULE.FALLBACK_RESOLVED_MODEL, payload["body"])
+        self.assertIn(MODULE.REVIEW_MARKER, payload["body"])
+
+    def test_findings_are_strictly_bounded_and_published_as_inline_comments(self):
+        client = ReviewPublicationClient()
+        draft = self.draft(
+            "findings",
+            [
+                {
+                    "severity": "high",
+                    "path": "scripts/example.py",
+                    "line": 12,
+                    "body": "Validate the exact identity before publication.",
+                }
+            ],
+        )
+        result = self.publish(client, draft)
+        self.assertEqual(result["verdict"], "findings")
+        self.assertEqual(result["finding_count"], 1)
+        comment = client.posts[0][1]["comments"][0]
+        self.assertEqual(comment["path"], "scripts/example.py")
+        self.assertEqual(comment["line"], 12)
+        self.assertEqual(comment["side"], "RIGHT")
+        self.assertTrue(comment["body"].startswith("**high**:"))
+
+    def test_publication_is_idempotent_for_the_same_draft_digest(self):
+        client = ReviewPublicationClient()
+        draft = self.draft()
+        first = self.publish(client, draft)
+        second = self.publish(client, draft)
+        self.assertEqual(first, second)
+        self.assertEqual(len(client.posts), 1)
+
+    def test_identity_drift_and_malformed_drafts_fail_closed(self):
+        client = ReviewPublicationClient()
+        client.pull["head"]["sha"] = "9" * 40
+        with self.assertRaisesRegex(
+            MODULE.FallbackError, "review_publication_identity_drift"
+        ):
+            self.publish(client, self.draft())
+
+        malformed = self.draft("findings", [])
+        with self.assertRaisesRegex(
+            MODULE.FallbackError, "finding_review_draft_has_no_findings"
+        ):
+            self.publish(ReviewPublicationClient(), malformed)
+
+    def test_full_identity_preflight_is_rechecked_after_token_mint(self):
+        for field, mutate in {
+            "head_ref": lambda pull: pull["head"].update(ref="feat/retargeted"),
+            "base_ref": lambda pull: pull["base"].update(ref="main"),
+            "author": lambda pull: pull["user"].update(id=26621963),
+        }.items():
+            with self.subTest(field=field):
+                client = ReviewPublicationClient()
+                mutate(client.pull)
+                with self.assertRaisesRegex(
+                    MODULE.FallbackError, "review_publication_identity_drift"
+                ):
+                    self.publish(client, self.draft())
+
+    def test_provider_draft_cannot_inject_markers_or_extra_fields(self):
+        draft = self.draft()
+        draft["summary"] = MODULE.REVIEW_MARKER
+        with self.assertRaisesRegex(
+            MODULE.FallbackError, "invalid_review_draft_summary"
+        ):
+            self.publish(ReviewPublicationClient(), draft)
+        draft = self.draft()
+        draft["unexpected"] = True
+        with self.assertRaisesRegex(
+            MODULE.FallbackError, "invalid_review_draft_shape"
+        ):
+            self.publish(ReviewPublicationClient(), draft)
+
+    def test_provider_text_is_published_as_inert_markdown(self):
+        client = ReviewPublicationClient()
+        draft = self.draft(
+            "findings",
+            [
+                {
+                    "severity": "medium",
+                    "path": "scripts/example.py",
+                    "line": 12,
+                    "body": "Ping @octocat and open [proof](https://example.test).",
+                }
+            ],
+        )
+        draft["summary"] = "<img src=x> @security-team # urgent"
+        self.publish(client, draft)
+        payload = client.posts[0][1]
+        self.assertNotIn("<img src=x>", payload["body"])
+        self.assertIn("\\<img src=x\\>", payload["body"])
+        self.assertNotIn("@security-team", payload["body"])
+        self.assertNotIn("[proof](", payload["comments"][0]["body"])
+        self.assertNotIn("@octocat", payload["comments"][0]["body"])
+        self.assertIn("@\u200bsecurity\-team", payload["body"])
+        self.assertIn("@\u200boctocat", payload["comments"][0]["body"])
+
+    def test_provider_text_rejects_directional_and_control_characters(self):
+        for field, value in {
+            "summary": "safe\u202edangerous",
+            "body": "safe\tdangerous",
+        }.items():
+            with self.subTest(field=field):
+                if field == "summary":
+                    draft = self.draft()
+                    draft["summary"] = value
+                    expected = "invalid_review_draft_summary"
+                else:
+                    draft = self.draft(
+                        "findings",
+                        [
+                            {
+                                "severity": "low",
+                                "path": "scripts/example.py",
+                                "line": 12,
+                                "body": value,
+                            }
+                        ],
+                    )
+                    expected = "invalid_review_draft_finding_body"
+                with self.assertRaisesRegex(MODULE.FallbackError, expected):
+                    self.publish(ReviewPublicationClient(), draft)
 
 
 class PullfrogReviewFallbackResultTests(unittest.TestCase):
@@ -1041,8 +1264,8 @@ class PullfrogExactHeadRereviewTests(unittest.TestCase):
         self.assertEqual(publication["conclusion"], "success")
         self.assertTrue(
             publication["external_id"].startswith(
-                f"pullfrog-review-gate:v3:{REPOSITORY}:95:{BASE_SHA}:{HEAD_SHA}:"
-                "review-only:"
+                "pullfrog-review-gate:v4:"
+                f"{receipt['identity_digest']}:review-only:"
             )
         )
 
@@ -1223,6 +1446,7 @@ class PullfrogExactHeadRereviewTests(unittest.TestCase):
             "pr_number": 95,
             "base_sha": BASE_SHA,
             "head_sha": HEAD_SHA,
+            "identity_digest": receipt["identity_digest"],
             "review_id": 700,
             "source_review": MODULE._rereview_source_summary(receipt),
             "resolved_thread_count": 0,
@@ -1280,6 +1504,7 @@ class PullfrogExactHeadRereviewTests(unittest.TestCase):
             "pr_number": 95,
             "base_sha": BASE_SHA,
             "head_sha": HEAD_SHA,
+            "identity_digest": receipt["identity_digest"],
             "review_id": 700,
             "source_review": MODULE._rereview_source_summary(receipt),
             "resolved_thread_count": 0,

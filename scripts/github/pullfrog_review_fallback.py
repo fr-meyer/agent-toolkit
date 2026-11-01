@@ -15,6 +15,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,14 +28,16 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import pullfrog_review_contract as review_contract  # noqa: E402
 
-SNAPSHOT_SCHEMA = "pullfrog-review-fallback-snapshot.v1"
-RECEIPT_SCHEMA = "pullfrog-review-fallback-receipt.v1"
+SNAPSHOT_SCHEMA = "pullfrog-review-fallback-snapshot.v2"
+RECEIPT_SCHEMA = "pullfrog-review-fallback-receipt.v2"
 RESULT_SCHEMA = "pullfrog-review-fallback-result.v1"
-RESULT_RECEIPT_SCHEMA = "pullfrog-review-fallback-result-receipt.v1"
+RESULT_RECEIPT_SCHEMA = "pullfrog-review-fallback-result-receipt.v2"
 REREVIEW_RESULT_SCHEMA = "pullfrog-exact-head-rereview-result.v1"
-REREVIEW_RECEIPT_SCHEMA = "pullfrog-exact-head-rereview-receipt.v1"
-REREVIEW_RECONCILIATION_SCHEMA = "pullfrog-rereview-thread-reconciliation.v1"
-CONTROLLER_HANDOFF_SCHEMA = "pullfrog-controller-handoff.v1"
+REREVIEW_RECEIPT_SCHEMA = "pullfrog-exact-head-rereview-receipt.v2"
+PRIMARY_RESULT_SCHEMA = "pullfrog-primary-review-result.v1"
+REVIEW_DRAFT_SCHEMA = "pullfrog-review-draft.v1"
+REREVIEW_RECONCILIATION_SCHEMA = "pullfrog-rereview-thread-reconciliation.v2"
+CONTROLLER_HANDOFF_SCHEMA = "pullfrog-controller-handoff.v2"
 TOKEN_LEASE_SCHEMA = "pullfrog-review-fallback-token-lease.v1"
 TOKEN_REVOCATION_SCHEMA = "pullfrog-review-fallback-token-revocation.v1"
 PRIMARY_MODEL = "openai/gpt-sol"
@@ -67,6 +70,12 @@ REVIEW_TOKEN_PERMISSIONS = {
     "contents": "read",
     "pull_requests": "write",
 }
+REVIEW_DRAFT_SEVERITIES = {"blocker", "high", "medium", "low"}
+REVIEW_DRAFT_MAX_FINDINGS = 50
+REVIEW_DRAFT_MAX_SUMMARY_CHARS = 12_000
+REVIEW_DRAFT_MAX_BODY_CHARS = 4_000
+REVIEW_DRAFT_DIGEST_MARKER = "PULLFROG_REVIEW_DRAFT_DIGEST"
+REVIEW_MARKDOWN_SPECIALS = frozenset("\\`*_{}[]<>()#+-.!|>~")
 
 RESOLVE_REVIEW_THREAD_MUTATION = """
 mutation ResolvePullfrogReviewThread($threadId: ID!) {
@@ -282,21 +291,23 @@ def revoke_review_token(api_url: str, credential: str, repository_slug: str) -> 
 
 
 def _identity(repository_slug: str, pr: dict[str, Any]) -> dict[str, Any]:
-    head = _mapping(pr.get("head"))
-    base = _mapping(pr.get("base"))
-    head_repo = _mapping(head.get("repo"))
-    base_repo = _mapping(base.get("repo"))
+    try:
+        canonical = review_contract.identity_from_pull_request(repository_slug, pr)
+    except review_contract.trusted_author_policy.TrustedAuthorPolicyError as exc:
+        raise FallbackError(exc.code) from exc
     return {
-        "repository_slug": repository_slug,
-        "pr_number": _integer(pr.get("number")),
+        **canonical,
         "state": _text(pr.get("state")),
-        "base_ref": _text(base.get("ref")),
-        "base_sha": _text(base.get("sha")),
-        "base_repository_slug": _text(base_repo.get("full_name")),
-        "head_ref": _text(head.get("ref")),
-        "head_sha": _text(head.get("sha")),
-        "head_repository_slug": _text(head_repo.get("full_name")),
+        "draft": pr.get("draft"),
+        "identity_digest": review_contract.identity_digest(canonical),
     }
+
+
+def _identity_digest_or_empty(identity: Any) -> str:
+    try:
+        return review_contract.identity_digest(identity)
+    except review_contract.ReviewContractError:
+        return ""
 
 
 def _event_pr(check_run: dict[str, Any]) -> dict[str, Any]:
@@ -307,24 +318,12 @@ def _event_pr(check_run: dict[str, Any]) -> dict[str, Any]:
 
 
 def _gate_external_id(
-    repository_slug: str,
-    pr_number: int,
-    head_sha: str,
-    base_sha: str,
+    identity: dict[str, Any],
     evidence_profile: str,
     evidence_digest: str,
 ) -> str:
     return review_contract.gate_external_id(
-        {
-            "repository_slug": repository_slug,
-            "pr_number": pr_number,
-            "base_ref": "dev",
-            "base_sha": base_sha,
-            "head_ref": "feat/review",
-            "head_sha": head_sha,
-            "head_repository_slug": repository_slug,
-            "base_repository_slug": repository_slug,
-        },
+        identity,
         evidence_profile,
         evidence_digest,
     )
@@ -451,6 +450,8 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         blockers.append("pull_request_identity_drift")
     if _text(observed.get("state")) != "open":
         blockers.append("pull_request_not_open")
+    if observed.get("draft") is not False:
+        blockers.append("pull_request_is_draft")
     if _text(observed.get("head_repository_slug")) != repository_slug:
         blockers.append("fork_head_forbidden")
     if _text(observed.get("base_repository_slug")) != repository_slug:
@@ -497,14 +498,14 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         and _text(_mapping(_mapping(raw).get("user")).get("login")) == PULLFROG_LOGIN
     ]
 
-    external_id = _gate_external_id(
-        repository_slug,
-        pr_number or 0,
-        head_sha,
-        base_sha,
-        _text(contract_receipt.get("evidence_profile")),
-        _text(contract_receipt.get("evidence_digest")),
-    )
+    try:
+        external_id = _gate_external_id(
+            observed,
+            _text(contract_receipt.get("evidence_profile")),
+            _text(contract_receipt.get("evidence_digest")),
+        )
+    except review_contract.ReviewContractError:
+        external_id = ""
     prior_gate = _selected_fallback_attempt_gate(
         _list(snapshot.get("check_runs")),
         observed,
@@ -555,6 +556,8 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "base_sha": base_sha,
         "head_ref": _text(observed.get("head_ref")),
         "head_sha": head_sha,
+        "identity": review_contract.normalize_identity(observed),
+        "identity_digest": review_contract.identity_digest(observed),
         "primary": {
             "model": PRIMARY_MODEL,
             "resolved_model": PRIMARY_RESOLVED_MODEL,
@@ -664,6 +667,277 @@ class GitHubClient:
             if len(items) < 100:
                 return result
         raise FallbackError("github_api_page_limit")
+
+
+def _sanitized_review_text(value: Any, *, maximum: int, error: str) -> str:
+    text = _text(value).replace("\r\n", "\n").replace("\r", "\n").strip()
+    if (
+        not text
+        or len(text) > maximum
+        or REVIEW_MARKER in text
+        or REVIEW_DRAFT_DIGEST_MARKER in text
+        or any(
+            unicodedata.category(character) in {"Cc", "Cf", "Cs"}
+            and character != "\n"
+            for character in text
+        )
+    ):
+        raise FallbackError(error)
+    return text
+
+
+def _render_untrusted_review_text(text: str) -> str:
+    """Render provider text as inert Markdown without mentions or active markup."""
+
+    rendered: list[str] = []
+    for character in text:
+        if character == "@":
+            rendered.append("@\u200b")
+        elif character in REVIEW_MARKDOWN_SPECIALS:
+            rendered.append("\\" + character)
+        else:
+            rendered.append(character)
+    return "".join(rendered)
+
+
+def _validated_review_draft(
+    draft: dict[str, Any],
+    *,
+    repository: str,
+    pr_number: int,
+    base_sha: str,
+    head_sha: str,
+    model: str,
+    effort: str,
+) -> dict[str, Any]:
+    required = {
+        "schema",
+        "status",
+        "repository",
+        "pr_number",
+        "base_sha",
+        "head_sha",
+        "model",
+        "effort",
+        "verdict",
+        "finding_count",
+        "summary",
+        "findings",
+    }
+    if set(draft) != required:
+        raise FallbackError("invalid_review_draft_shape")
+    expected = {
+        "schema": REVIEW_DRAFT_SCHEMA,
+        "status": "review_ready",
+        "repository": repository,
+        "pr_number": pr_number,
+        "base_sha": base_sha,
+        "head_sha": head_sha,
+        "model": model,
+        "effort": effort,
+    }
+    for key, value in expected.items():
+        if draft.get(key) != value:
+            raise FallbackError(f"review_draft_{key}_mismatch")
+
+    summary = _sanitized_review_text(
+        draft.get("summary"),
+        maximum=REVIEW_DRAFT_MAX_SUMMARY_CHARS,
+        error="invalid_review_draft_summary",
+    )
+    verdict = _text(draft.get("verdict"))
+    finding_count = _integer(draft.get("finding_count"))
+    raw_findings = _list(draft.get("findings"))
+    if finding_count is None or finding_count != len(raw_findings):
+        raise FallbackError("review_draft_finding_count_mismatch")
+    if len(raw_findings) > REVIEW_DRAFT_MAX_FINDINGS:
+        raise FallbackError("review_draft_finding_limit")
+    if verdict == "clean" and raw_findings:
+        raise FallbackError("clean_review_draft_has_findings")
+    if verdict == "findings" and not raw_findings:
+        raise FallbackError("finding_review_draft_has_no_findings")
+    if verdict not in {"clean", "findings"}:
+        raise FallbackError("invalid_review_draft_verdict")
+
+    findings: list[dict[str, Any]] = []
+    fingerprints: set[tuple[str, int, str]] = set()
+    for raw in raw_findings:
+        finding = _mapping(raw)
+        if set(finding) != {"severity", "path", "line", "body"}:
+            raise FallbackError("invalid_review_draft_finding_shape")
+        severity = _text(finding.get("severity"))
+        path = _text(finding.get("path"))
+        line = _integer(finding.get("line"))
+        body = _sanitized_review_text(
+            finding.get("body"),
+            maximum=REVIEW_DRAFT_MAX_BODY_CHARS,
+            error="invalid_review_draft_finding_body",
+        )
+        if severity not in REVIEW_DRAFT_SEVERITIES:
+            raise FallbackError("invalid_review_draft_finding_severity")
+        if not review_contract.valid_path(path) or line is None or line < 1:
+            raise FallbackError("invalid_review_draft_finding_location")
+        fingerprint = (path, line, " ".join(body.split()).casefold())
+        if fingerprint in fingerprints:
+            raise FallbackError("duplicate_review_draft_finding")
+        fingerprints.add(fingerprint)
+        findings.append(
+            {"severity": severity, "path": path, "line": line, "body": body}
+        )
+    findings.sort(key=lambda item: (item["path"], item["line"], item["body"]))
+    return {
+        **expected,
+        "verdict": verdict,
+        "finding_count": len(findings),
+        "summary": summary,
+        "findings": findings,
+    }
+
+
+def publish_review_draft(
+    client: GitHubClient,
+    *,
+    pr_number: int,
+    expected_head_sha: str,
+    expected_base_sha: str,
+    identity_preflight: dict[str, Any],
+    model: str,
+    resolved_model: str,
+    effort: str,
+    result_schema: str,
+    draft: dict[str, Any],
+) -> dict[str, Any]:
+    if (
+        pr_number < 1
+        or not SHA_RE.fullmatch(expected_head_sha)
+        or not SHA_RE.fullmatch(expected_base_sha)
+        or effort != EFFORT
+        or model not in {PRIMARY_MODEL, FALLBACK_MODEL}
+        or resolved_model
+        != (FALLBACK_RESOLVED_MODEL if model == FALLBACK_MODEL else PRIMARY_RESOLVED_MODEL)
+        or result_schema
+        not in {PRIMARY_RESULT_SCHEMA, RESULT_SCHEMA, REREVIEW_RESULT_SCHEMA}
+        or (result_schema == RESULT_SCHEMA) != (model == FALLBACK_MODEL)
+    ):
+        raise FallbackError("invalid_review_publication_configuration")
+    normalized = _validated_review_draft(
+        draft,
+        repository=client.repository_slug,
+        pr_number=pr_number,
+        base_sha=expected_base_sha,
+        head_sha=expected_head_sha,
+        model=model,
+        effort=effort,
+    )
+
+    prefix = f"/repos/{client.repository_slug}"
+    pull_request = _mapping(client.get(f"{prefix}/pulls/{pr_number}"))
+    observed_head = _text(_mapping(pull_request.get("head")).get("sha"))
+    observed_base = _text(_mapping(pull_request.get("base")).get("sha"))
+    observed_base_repo = _text(
+        _mapping(_mapping(pull_request.get("base")).get("repo")).get("full_name")
+    )
+    observed_head_repo = _text(
+        _mapping(_mapping(pull_request.get("head")).get("repo")).get("full_name")
+    )
+    current_identity = _identity(client.repository_slug, pull_request)
+    expected_preflight = {
+        "schema": "pullfrog-review-fallback-identity.v1",
+        "status": "valid",
+        **current_identity,
+    }
+    if (
+        _integer(pull_request.get("number")) != pr_number
+        or _text(pull_request.get("state")) != "open"
+        or pull_request.get("draft") is not False
+        or observed_head != expected_head_sha
+        or observed_base != expected_base_sha
+        or observed_base_repo != client.repository_slug
+        or observed_head_repo != client.repository_slug
+        or identity_preflight != expected_preflight
+    ):
+        raise FallbackError("review_publication_identity_drift")
+
+    draft_digest = _digest(normalized)
+    digest_marker = f"<!-- {REVIEW_DRAFT_DIGEST_MARKER}:{draft_digest} -->"
+    reviews = client.paginated(f"{prefix}/pulls/{pr_number}/reviews")
+    matching = [
+        item
+        for item in (_mapping(raw) for raw in reviews)
+        if _text(item.get("commit_id")) == expected_head_sha
+        and _text(_mapping(item.get("user")).get("login")).casefold()
+        == PULLFROG_LOGIN
+        and digest_marker in _text(item.get("body"))
+    ]
+    other_complete = [
+        item
+        for item in (_mapping(raw) for raw in reviews)
+        if _valid_complete_review(item, expected_head_sha) and item not in matching
+    ]
+    if len(matching) > 1 or other_complete:
+        raise FallbackError("review_publication_conflict")
+
+    if normalized["verdict"] == "clean":
+        opener = "> ✅ No new issues found."
+    else:
+        opener = (
+            "> [!IMPORTANT]\n"
+            f"> Pullfrog found {normalized['finding_count']} issue(s) requiring attention."
+        )
+    body = (
+        f"{opener}\n\n{_render_untrusted_review_text(normalized['summary'])}\n\n"
+        f"Using `{resolved_model}` with `{effort}`.\n\n"
+        f"<!-- {REVIEW_MARKER} -->\n{digest_marker}"
+    )
+    comments = [
+        {
+            "path": item["path"],
+            "line": item["line"],
+            "side": "RIGHT",
+            "body": (
+                f"**{item['severity']}**: "
+                f"{_render_untrusted_review_text(item['body'])}"
+            ),
+        }
+        for item in normalized["findings"]
+    ]
+    if matching:
+        review = matching[0]
+    else:
+        review = _mapping(
+            client.post(
+                f"{prefix}/pulls/{pr_number}/reviews",
+                {
+                    "commit_id": expected_head_sha,
+                    "event": "COMMENT",
+                    "body": body,
+                    "comments": comments,
+                },
+            )
+        )
+        review_id = _integer(review.get("id"))
+        if review_id:
+            review = _mapping(
+                client.get(f"{prefix}/pulls/{pr_number}/reviews/{review_id}")
+            )
+    review_id = _integer(review.get("id"))
+    if not review_id or not _valid_complete_review(review, expected_head_sha):
+        raise FallbackError("invalid_published_review")
+    if digest_marker not in _text(review.get("body")):
+        raise FallbackError("published_review_digest_mismatch")
+    return {
+        "schema": result_schema,
+        "status": "review_submitted",
+        "repository": client.repository_slug,
+        "pr_number": pr_number,
+        "base_sha": expected_base_sha,
+        "head_sha": expected_head_sha,
+        "model": model,
+        "effort": effort,
+        "review_id": review_id,
+        "verdict": normalized["verdict"],
+        "finding_count": normalized["finding_count"],
+    }
 
 
 def _resolve_primary_check_for_event(
@@ -917,6 +1191,12 @@ def verify_fallback_result(
         expected = coordinator.get("repository") if key == "repository_slug" else coordinator.get(key)
         if identity.get(key) != expected:
             blockers.append(f"live_{key}_drift")
+    if (
+        review_contract.normalize_identity(coordinator.get("identity"))
+        != review_contract.normalize_identity(identity)
+        or coordinator.get("identity_digest") != identity.get("identity_digest")
+    ):
+        blockers.append("live_author_or_policy_drift")
 
     review: dict[str, Any] = {}
     comments: list[Any] = []
@@ -980,6 +1260,7 @@ def verify_fallback_result(
         "pr_number": coordinator.get("pr_number"),
         "base_sha": coordinator.get("base_sha"),
         "head_sha": coordinator.get("head_sha"),
+        "identity_digest": identity.get("identity_digest", ""),
         "model": FALLBACK_MODEL,
         "resolved_model": FALLBACK_RESOLVED_MODEL,
         "effort": EFFORT,
@@ -1188,6 +1469,7 @@ def verify_exact_head_rereview_result(
         "pr_number": expected_pr_number,
         "base_sha": expected_base_sha,
         "head_sha": expected_head_sha,
+        "identity_digest": identity.get("identity_digest", ""),
         "model": PRIMARY_MODEL,
         "resolved_model": PRIMARY_RESOLVED_MODEL,
         "effort": EFFORT,
@@ -1217,6 +1499,7 @@ def _rereview_source_summary(receipt: dict[str, Any]) -> dict[str, Any]:
         and (_integer(receipt.get("review_id")) or 0) > 0
         and receipt.get("blockers") == []
         and receipt.get("raw_text_included") is False
+        and re.fullmatch(r"[0-9a-f]{64}", _text(receipt.get("identity_digest")))
         and re.fullmatch(r"[0-9a-f]{64}", contract_digest)
         and (
             (
@@ -1237,6 +1520,7 @@ def _rereview_source_summary(receipt: dict[str, Any]) -> dict[str, Any]:
         "finding_count": finding_count if finding_count is not None else -1,
         "contract_status": contract_status,
         "contract_digest": contract_digest,
+        "identity_digest": _text(receipt.get("identity_digest")),
     }
 
 
@@ -1288,6 +1572,8 @@ def reconcile_rereview_threads(
     for key, expected in expected_identity.items():
         if identity.get(key) != expected:
             blockers.append(f"live_{key}_drift")
+    if identity.get("identity_digest") != rereview_receipt.get("identity_digest"):
+        blockers.append("live_author_or_policy_drift")
     if identity.get("state") != "open":
         blockers.append("pull_request_not_open")
     if identity.get("head_repository_slug") != client.repository_slug:
@@ -1381,6 +1667,8 @@ def reconcile_rereview_threads(
         for key, expected in expected_identity.items():
             if identity_after.get(key) != expected:
                 blockers.append(f"post_reconciliation_{key}_drift")
+        if identity_after.get("identity_digest") != identity.get("identity_digest"):
+            blockers.append("post_reconciliation_author_or_policy_drift")
         reviews_after = client.paginated(f"{prefix}/pulls/{pr_number}/reviews")
         comments_after = client.paginated(f"{prefix}/pulls/{pr_number}/comments")
         checks_after_payload = _mapping(
@@ -1425,6 +1713,7 @@ def reconcile_rereview_threads(
         "pr_number": pr_number,
         "base_sha": base_sha,
         "head_sha": head_sha,
+        "identity_digest": identity.get("identity_digest", ""),
         "review_id": review_id,
         "source_review": source_review,
         "resolved_thread_count": resolved_count,
@@ -1550,6 +1839,7 @@ def publish_rereview_gate(
         "pr_number",
         "base_sha",
         "head_sha",
+        "identity_digest",
         "review_id",
         "source_review",
         "resolved_thread_count",
@@ -1586,6 +1876,7 @@ def publish_rereview_gate(
         "finding_count",
         "contract_status",
         "contract_digest",
+        "identity_digest",
     }
     clean = (
         source_shape_valid
@@ -1595,6 +1886,7 @@ def publish_rereview_gate(
         and source_review.get("contract_status")
         in {"clean", "reconciliation_required"}
         and source_review.get("contract_digest") == before_digest
+        and source_review.get("identity_digest") == receipt.get("identity_digest")
         and receipt.get("status") == "clean"
         and receipt.get("after_contract_status") == "clean"
         and receipt.get("blockers") == []
@@ -1619,12 +1911,15 @@ def publish_rereview_gate(
     except FallbackError:
         clean = False
     live_digest = _text(live_contract.get("evidence_digest"))
+    live_identity = _mapping(live_contract.get("identity"))
+    live_identity_digest = _identity_digest_or_empty(live_identity)
     if (
         live_contract.get("status") != "clean"
         or live_contract.get("blockers") != []
         or _integer(_mapping(live_contract.get("review")).get("review_id"))
         != _integer(receipt.get("review_id"))
         or live_digest != after_digest
+        or live_identity_digest != receipt.get("identity_digest")
     ):
         clean = False
     findings_authorized = bool(
@@ -1634,6 +1929,8 @@ def publish_rereview_gate(
         and (_integer(source_review.get("finding_count")) or 0) > 0
         and source_review.get("contract_status") == "findings"
         and source_review.get("contract_digest") == live_digest
+        and source_review.get("identity_digest") == live_identity_digest
+        and live_identity_digest == receipt.get("identity_digest")
         and live_contract.get("status") == "findings"
         and live_contract.get("blockers") == []
         and _integer(_mapping(live_contract.get("review")).get("review_id"))
@@ -1688,16 +1985,17 @@ def publish_gate(
     if coordinator.get("schema") != RECEIPT_SCHEMA:
         raise FallbackError("invalid_gate_coordinator_receipt")
     status = _text(coordinator.get("status"))
-    identity = {
-        "repository_slug": coordinator.get("repository"),
-        "pr_number": coordinator.get("pr_number"),
-        "base_ref": coordinator.get("base_ref"),
-        "base_sha": coordinator.get("base_sha"),
-        "head_ref": coordinator.get("head_ref"),
-        "head_sha": coordinator.get("head_sha"),
-        "head_repository_slug": coordinator.get("repository"),
-        "base_repository_slug": coordinator.get("repository"),
-    }
+    identity = review_contract.normalize_identity(coordinator.get("identity"))
+    if (
+        _identity_digest_or_empty(identity) != coordinator.get("identity_digest")
+        or identity.get("repository_slug") != coordinator.get("repository")
+        or identity.get("pr_number") != coordinator.get("pr_number")
+        or identity.get("base_ref") != coordinator.get("base_ref")
+        or identity.get("base_sha") != coordinator.get("base_sha")
+        or identity.get("head_ref") != coordinator.get("head_ref")
+        or identity.get("head_sha") != coordinator.get("head_sha")
+    ):
+        raise FallbackError("invalid_gate_coordinator_identity")
     evidence_profile = review_contract.NATIVE_EVIDENCE_PROFILE
     evidence_digest = _text(
         _mapping(coordinator.get("primary")).get("review_contract_digest")
@@ -1712,7 +2010,11 @@ def publish_gate(
     require_live_clean = False
     live_contract: dict[str, Any] = {}
     if result_receipt is not None:
-        if result_receipt.get("schema") != RESULT_RECEIPT_SCHEMA:
+        if (
+            result_receipt.get("schema") != RESULT_RECEIPT_SCHEMA
+            or result_receipt.get("identity_digest")
+            != coordinator.get("identity_digest")
+        ):
             raise FallbackError("invalid_gate_result_receipt")
         evidence_profile = review_contract.REVIEW_ONLY_EVIDENCE_PROFILE
         authoritative_review_id = _integer(result_receipt.get("review_id"))
@@ -1869,6 +2171,7 @@ def dispatch_controller_after_gate(
         or identity.get("head_sha") != head_sha
         or identity.get("base_repository_slug") != repository_slug
         or identity.get("head_repository_slug") != repository_slug
+        or identity.get("identity_digest") != source_receipt.get("identity_digest")
     ):
         raise FallbackError("controller_handoff_identity_drift")
 
@@ -1949,6 +2252,7 @@ def dispatch_controller_after_gate(
         "pr_number": pr_number,
         "base_sha": base_sha,
         "head_sha": head_sha,
+        "identity_digest": identity.get("identity_digest", ""),
         "gate_check_run_id": check_run_id,
         "gate_external_id": external_id,
         "contract_status": contract_status,
@@ -2013,6 +2317,29 @@ def main() -> int:
     revoke.add_argument("--repository", required=True)
     revoke.add_argument("--token-env", default="PULLFROG_REVIEW_TOKEN")
     revoke.add_argument("--out", required=True)
+
+    publish_draft = sub.add_parser("publish-review-draft")
+    publish_draft.add_argument(
+        "--api-url", default=os.environ.get("GITHUB_API_URL", "https://api.github.com")
+    )
+    publish_draft.add_argument(
+        "--token", default=os.environ.get("PULLFROG_REVIEW_TOKEN", "")
+    )
+    publish_draft.add_argument("--repository", required=True)
+    publish_draft.add_argument("--pr-number", required=True, type=int)
+    publish_draft.add_argument("--expected-head-sha", required=True)
+    publish_draft.add_argument("--expected-base-sha", required=True)
+    publish_draft.add_argument("--identity-preflight", required=True)
+    publish_draft.add_argument("--model", required=True)
+    publish_draft.add_argument("--resolved-model", required=True)
+    publish_draft.add_argument("--effort", required=True)
+    publish_draft.add_argument(
+        "--result-schema",
+        choices=(PRIMARY_RESULT_SCHEMA, RESULT_SCHEMA, REREVIEW_RESULT_SCHEMA),
+        required=True,
+    )
+    publish_draft.add_argument("--draft", required=True)
+    publish_draft.add_argument("--out", required=True)
 
     verify = sub.add_parser("verify-fallback-result")
     verify.add_argument("--api-url", default=os.environ.get("GITHUB_API_URL", "https://api.github.com"))
@@ -2137,6 +2464,22 @@ def main() -> int:
             credential = os.environ.get(args.token_env, "")
             receipt = revoke_review_token(args.api_url, credential, args.repository)
             _write_object(Path(args.out), receipt)
+            return 0
+        if args.command == "publish-review-draft":
+            client = GitHubClient(args.api_url, args.token, args.repository)
+            result = publish_review_draft(
+                client,
+                pr_number=args.pr_number,
+                expected_head_sha=args.expected_head_sha,
+                expected_base_sha=args.expected_base_sha,
+                identity_preflight=_load_object(Path(args.identity_preflight)),
+                model=args.model,
+                resolved_model=args.resolved_model,
+                effort=args.effort,
+                result_schema=args.result_schema,
+                draft=_load_object(Path(args.draft)),
+            )
+            _write_object(Path(args.out), result)
             return 0
         if args.command == "verify-fallback-result":
             coordinator = _load_object(Path(args.coordinator))

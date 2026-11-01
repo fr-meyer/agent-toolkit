@@ -1,0 +1,21 @@
+{
+  "schema": "pullfrog-trusted-author-policy.v1",
+  "repository_slug": "fr-meyer/agent-toolkit",
+  "trusted_authors": [
+    {
+      "account_id": 26621962,
+      "login": "fr-meyer",
+      "type": "User"
+    },
+    {
+      "account_id": 285669409,
+      "login": "mergeguez[bot]",
+      "type": "Bot"
+    },
+    {
+      "account_id": 325213916,
+      "login": "le-commis[bot]",
+      "type": "Bot"
+    }
+  ]
+}

@@ -42,7 +42,8 @@ Automatic remediation cannot alter automation or governance authority. The guard
 - `.github/dependabot.yml`
 - `templates/repo-workflow-materialization-manifest.json`
 - `templates/workflow-ref-sync-manifest.json`
-- the repository-owned Pullfrog coordinator, cycle, destination, remediation, review-fallback, and auto-merge scripts under `scripts/github/`
+- the repository-owned Pullfrog coordinator, cycle, destination, remediation, review-fallback, review-contract, trusted-author-policy, and auto-merge scripts under `scripts/github/`
+- `scripts/github/pullfrog_trusted_author_policy.json`
 - `scripts/github/speculoos_pr_contract.py`
 - `scripts/github/validate_pullfrog_workflow.sh`
 - the Pullfrog workflow-policy and review-fallback authority tests executed by that validator or its focused fallback suite

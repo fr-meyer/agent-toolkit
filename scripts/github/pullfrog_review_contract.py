@@ -24,8 +24,14 @@ import urllib.request
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-CONTRACT_SCHEMA = "pullfrog-review-contract.v2"
-GATE_SCHEMA = "pullfrog-review-gate-publication.v3"
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import pullfrog_trusted_author_policy as trusted_author_policy  # noqa: E402
+
+CONTRACT_SCHEMA = "pullfrog-review-contract.v3"
+GATE_SCHEMA = "pullfrog-review-gate-publication.v4"
 SNAPSHOT_SCHEMA = "pullfrog-review-contract-snapshot.v1"
 REVIEW_MARKER = "PULLFROG_DIVIDER_DO_NOT_REMOVE_PLZ"
 PULLFROG_LOGIN = "pullfrog[bot]"
@@ -39,6 +45,7 @@ REVIEW_ONLY_EVIDENCE_PROFILE = "review-only"
 EVIDENCE_PROFILES = frozenset(
     {NATIVE_EVIDENCE_PROFILE, REVIEW_ONLY_EVIDENCE_PROFILE}
 )
+REVIEW_BASE_REFS = frozenset({"dev", "main"})
 CLEAN_REVIEW_RE = re.compile(
     r"^\s*(?:>\s*)?(?:✅\s*)?no new issues found\.?\s*$",
     re.IGNORECASE | re.MULTILINE,
@@ -47,6 +54,7 @@ MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 MAX_PAGES = 5
 MAX_ITEMS = 500
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 OWNER_RE = re.compile(r"^(?=.{1,39}$)(?!-)(?!.*--)[A-Za-z0-9-]+(?<!-)$")
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
@@ -138,7 +146,10 @@ def normalize_identity(value: Any) -> dict[str, Any]:
     slug = canonical_slug(_text(item.get("repository_slug") or item.get("slug")))
     head_repository_slug = canonical_slug(_text(item.get("head_repository_slug")))
     base_repository_slug = canonical_slug(
-        _text(item.get("base_repository_slug") or item.get("repository_slug") or item.get("slug"))
+        _text(item.get("base_repository_slug"))
+    )
+    author_login = trusted_author_policy.canonical_login(
+        _text(item.get("author_login"))
     )
     return {
         "repository_slug": slug,
@@ -149,38 +160,82 @@ def normalize_identity(value: Any) -> dict[str, Any]:
         "head_sha": _text(item.get("head_sha")),
         "head_repository_slug": head_repository_slug,
         "base_repository_slug": base_repository_slug,
+        "author_login": author_login,
+        "author_account_id": _integer(item.get("author_account_id")),
+        "author_type": _text(item.get("author_type")),
+        "trusted_author_policy_schema": _text(
+            item.get("trusted_author_policy_schema")
+        ),
+        "trusted_author_policy_digest": _text(
+            item.get("trusted_author_policy_digest")
+        ),
     }
 
 
-def identity_from_pull_request(repository_slug: str, pr: dict[str, Any]) -> dict[str, Any]:
-    head = _mapping(pr.get("head"))
-    base = _mapping(pr.get("base"))
+def identity_from_pull_request(
+    repository_slug: str,
+    pr: dict[str, Any],
+    policy: Any | None = None,
+) -> dict[str, Any]:
+    normalized_policy = trusted_author_policy.parse_policy(
+        trusted_author_policy.load_policy(repository_slug)
+        if policy is None
+        else policy,
+        repository_slug,
+    )
+    pull_request_identity = trusted_author_policy.normalize_pull_request_identity(
+        repository_slug,
+        pr,
+    )
+    author = _mapping(pull_request_identity.get("author"))
     return normalize_identity(
         {
-            "repository_slug": repository_slug,
-            "pr_number": _integer(pr.get("number")),
-            "base_ref": _text(base.get("ref")),
-            "base_sha": _text(base.get("sha")),
-            "head_ref": _text(head.get("ref")),
-            "head_sha": _text(head.get("sha")),
-            "head_repository_slug": _text(_mapping(head.get("repo")).get("full_name")),
-            "base_repository_slug": _text(_mapping(base.get("repo")).get("full_name"))
-            or repository_slug,
+            **pull_request_identity,
+            "author_login": author["login"],
+            "author_account_id": author["account_id"],
+            "author_type": author["type"],
+            "trusted_author_policy_schema": normalized_policy["schema"],
+            "trusted_author_policy_digest": trusted_author_policy.policy_digest(
+                normalized_policy
+            ),
         }
     )
 
 
-def _valid_identity(identity: dict[str, Any]) -> bool:
+def _valid_review_identity(identity: dict[str, Any]) -> bool:
     return bool(
         identity["repository_slug"]
-        and identity["head_repository_slug"] == identity["repository_slug"]
+        and identity["head_repository_slug"]
         and identity["base_repository_slug"] == identity["repository_slug"]
+        and bool(identity["author_login"])
+        and (_integer(identity.get("author_account_id")) or 0) > 0
+        and identity["author_type"] in trusted_author_policy.ALLOWED_ACCOUNT_TYPES
+        and (identity["author_type"] == "Bot")
+        == identity["author_login"].endswith("[bot]")
+        and identity["trusted_author_policy_schema"]
+        == trusted_author_policy.POLICY_SCHEMA
+        and bool(DIGEST_RE.fullmatch(identity["trusted_author_policy_digest"]))
+        and identity["base_ref"] in REVIEW_BASE_REFS
         and (_integer(identity.get("pr_number")) or 0) > 0
         and valid_branch(_text(identity.get("base_ref")))
         and valid_branch(_text(identity.get("head_ref")))
         and SHA_RE.fullmatch(_text(identity.get("base_sha")))
         and SHA_RE.fullmatch(_text(identity.get("head_sha")))
     )
+
+
+def _valid_gate_identity(identity: dict[str, Any]) -> bool:
+    return bool(
+        _valid_review_identity(identity)
+        and identity["head_repository_slug"] == identity["repository_slug"]
+    )
+
+
+def identity_digest(identity: Any) -> str:
+    item = normalize_identity(identity)
+    if not _valid_review_identity(item):
+        raise ReviewContractError("invalid_review_identity")
+    return _digest(item)
 
 
 def safe_status(status: str, conclusion: str) -> str:
@@ -263,25 +318,22 @@ def gate_external_id(
 ) -> str:
     item = normalize_identity(identity)
     if (
-        not _valid_identity(item)
+        not _valid_gate_identity(item)
         or evidence_profile not in EVIDENCE_PROFILES
         or not re.fullmatch(r"[0-9a-f]{64}", evidence_digest)
     ):
         raise ReviewContractError("invalid_review_gate_identity")
     return (
-        f"pullfrog-review-gate:v3:{item['repository_slug']}:{item['pr_number']}:"
-        f"{item['base_sha']}:{item['head_sha']}:{evidence_profile}:{evidence_digest}"
+        f"pullfrog-review-gate:v4:{identity_digest(item)}:"
+        f"{evidence_profile}:{evidence_digest}"
     )
 
 
 def gate_identity_prefix(identity: Any) -> str:
     item = normalize_identity(identity)
-    if not _valid_identity(item):
+    if not _valid_gate_identity(item):
         raise ReviewContractError("invalid_review_gate_identity")
-    return (
-        f"pullfrog-review-gate:v3:{item['repository_slug']}:{item['pr_number']}:"
-        f"{item['base_sha']}:{item['head_sha']}:"
-    )
+    return f"pullfrog-review-gate:v4:{identity_digest(item)}:"
 
 
 def select_gate(
@@ -292,6 +344,7 @@ def select_gate(
     item = normalize_identity(identity)
     selected = select_check(check_runs, item["head_sha"], GATE_NAME, GATE_APP)
     candidates: dict[str, dict[str, str]] = {}
+    gate_identity_valid = _valid_gate_identity(item)
     for raw in contracts:
         contract = _mapping(raw)
         contract_status = _text(contract.get("status"))
@@ -304,6 +357,7 @@ def select_gate(
             or normalize_identity(contract.get("identity")) != item
             or profile not in EVIDENCE_PROFILES
             or not re.fullmatch(r"[0-9a-f]{64}", digest)
+            or not gate_identity_valid
         ):
             continue
         external_id = gate_external_id(item, profile, digest)
@@ -480,9 +534,9 @@ def evaluate_contract(
         blockers.append("invalid_review_contract_snapshot")
     expected = normalize_identity(snapshot.get("expected_identity"))
     observed = normalize_identity(snapshot.get("observed_identity"))
-    if not _valid_identity(expected):
+    if not _valid_review_identity(expected):
         blockers.append("invalid_expected_review_identity")
-    if not _valid_identity(observed):
+    if not _valid_review_identity(observed):
         blockers.append("invalid_observed_review_identity")
     if expected != observed:
         blockers.append("review_identity_drift")
@@ -572,7 +626,7 @@ def evaluate_contract(
     )
     gate_id = (
         gate_external_id(observed, evidence_profile, evidence_digest)
-        if _valid_identity(observed)
+        if _valid_gate_identity(observed)
         else ""
     )
     return {
