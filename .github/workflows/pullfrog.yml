@@ -32,6 +32,12 @@ jobs:
           persist-credentials: false
 
       - name: Run review-only agent
+        env:
+          # The pinned action bootstrap otherwise resolves pullfrog@^0.1.102,
+          # which can float to a newer npm package. Force the checked-out
+          # action source and reuse only this job's read-only GitHub token.
+          GH_TOKEN: ${{ github.token }}
+          PULLFROG_FORCE_LOCAL_CLI: '1'
         uses: pullfrog/pullfrog@25a837a2b078177c3acdce790506d1fd1acedd82 # v0.1.102
         with:
           prompt: ${{ inputs.prompt }}

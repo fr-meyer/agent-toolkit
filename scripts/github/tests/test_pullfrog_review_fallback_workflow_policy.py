@@ -83,14 +83,32 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
             self.template,
             r"(?s)  fallback:.*?    permissions:\n      id-token: write\n      contents: read\n      pull-requests: read\n",
         )
-        fallback_section = self.template.split("  fallback:\n", 1)[1].split("  finalize:\n", 1)[0]
+        fallback_section = self.template.split("  fallback:\n", 1)[1].split(
+            "  publish_review:\n", 1
+        )[0]
+        publisher_section = self.template.split("  publish_review:\n", 1)[1].split(
+            "  finalize:\n", 1
+        )[0]
         self.assertNotIn("checks: write", fallback_section)
         self.assertNotIn("contents: write", fallback_section)
         self.assertNotIn("actions: write", fallback_section)
         self.assertNotRegex(fallback_section, r"\$\{\{\s*secrets\.")
         self.assertNotIn("PULLFROG_REMEDIATION_PUBLISH_TOKEN", self.template)
-        self.assertIn("          GH_TOKEN: ${{ steps.review_token.outputs.credential }}\n", fallback_section)
-        self.assertNotIn("          GH_TOKEN: ${{ github.token }}\n", fallback_section)
+        self.assertIn("          GH_TOKEN: ${{ github.token }}\n", fallback_section)
+        self.assertIn("          PULLFROG_FORCE_LOCAL_CLI: '1'\n", fallback_section)
+        self.assertNotIn("steps.review_token.outputs.credential", fallback_section)
+        self.assertNotIn("mint-review-token", fallback_section)
+        self.assertIn("mint-review-token", publisher_section)
+        self.assertIn("publish-review-draft", publisher_section)
+        self.assertIn(
+            "--identity-preflight artifacts/pullfrog-review-fallback/evaluate/publisher-preflight.json",
+            publisher_section,
+        )
+        self.assertIn(
+            "          PULLFROG_REVIEW_TOKEN: ${{ steps.review_token.outputs.credential }}\n",
+            publisher_section,
+        )
+        self.assertNotIn("uses: pullfrog/pullfrog@", publisher_section)
         finalize_section = self.template.split("  finalize:\n", 1)[1]
         self.assertIn("      actions: write\n", finalize_section)
         self.assertIn("      checks: write\n", finalize_section)
@@ -98,11 +116,19 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         self.assertNotIn("id-token: write", finalize_section)
 
     def test_single_fallback_is_astra_xhigh_with_structured_output(self):
+        fallback_section = self.template.split("  fallback:\n", 1)[1].split(
+            "  publish_review:\n", 1
+        )[0]
         self.assertEqual(self.template.count("uses: pullfrog/pullfrog@"), 1)
         self.assertIn("          model: openai/gpt-astra\n", self.template)
         self.assertIn("          effort: xhigh\n", self.template)
         self.assertIn("          push: disabled\n", self.template)
         self.assertIn("          shell: restricted\n", self.template)
+        self.assertEqual(
+            fallback_section.count("          PULLFROG_FORCE_LOCAL_CLI: '1'\n"),
+            1,
+        )
+        self.assertIn("pullfrog-review-draft.v1", self.template)
         self.assertIn("pullfrog-review-fallback-result.v1", self.template)
         self.assertIn("          cwd: source\n", self.template)
         self.assertIn("Seal trusted preflight outside candidate workspace", self.template)
@@ -116,20 +142,28 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         self.assertIn('            --run-attempt "$GITHUB_RUN_ATTEMPT" \\\n', self.template)
 
     def test_provider_uses_one_scoped_pullfrog_app_lease_and_revokes_it(self):
-        fallback_section = self.template.split("  fallback:\n", 1)[1].split("  finalize:\n", 1)[0]
-        self.assertIn("Mint least-privilege Pullfrog review token", fallback_section)
-        self.assertIn("mint-review-token", fallback_section)
-        self.assertIn("Revoke least-privilege Pullfrog review token", fallback_section)
-        self.assertIn("revoke-review-token", fallback_section)
-        self.assertIn("TOKEN_REVOCATION_OUTCOME", fallback_section)
-        self.assertIn("token-revocation-outcome.txt", fallback_section)
-        self.assertIn("token-lease.json", fallback_section)
-        self.assertNotIn("checks: write", fallback_section)
-        self.assertNotIn("actions: write", fallback_section)
-        self.assertNotIn("contents: write", fallback_section)
+        fallback_section = self.template.split("  fallback:\n", 1)[1].split(
+            "  publish_review:\n", 1
+        )[0]
+        publisher_section = self.template.split("  publish_review:\n", 1)[1].split(
+            "  finalize:\n", 1
+        )[0]
+        self.assertNotIn("review_token", fallback_section)
+        self.assertIn("Mint least-privilege Pullfrog review token", publisher_section)
+        self.assertIn("mint-review-token", publisher_section)
+        self.assertIn("Revoke least-privilege Pullfrog review token", publisher_section)
+        self.assertIn("revoke-review-token", publisher_section)
+        self.assertIn("TOKEN_REVOCATION_OUTCOME", publisher_section)
+        self.assertIn("token-revocation-outcome.txt", publisher_section)
+        self.assertIn("token-lease.json", publisher_section)
+        self.assertNotIn("checks: write", publisher_section)
+        self.assertNotIn("actions: write", publisher_section)
+        self.assertNotIn("contents: write", publisher_section)
 
     def test_failed_job_rerun_recovers_only_with_active_authorization(self):
-        fallback_section = self.template.split("  fallback:\n", 1)[1].split("  finalize:\n", 1)[0]
+        fallback_section = self.template.split("  fallback:\n", 1)[1].split(
+            "  publish_review:\n", 1
+        )[0]
         finalize_section = self.template.split("  finalize:\n", 1)[1]
         self.assertIn("github.run_attempt == 1", fallback_section)
         self.assertIn("needs.gate_initial.result == 'success'", finalize_section)
@@ -147,6 +181,7 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
             finalize_section,
         )
         self.assertIn("token-revocation-outcome-file", finalize_section)
+        self.assertIn("      - publish_review\n", self.template)
 
     def test_custom_gate_is_exact_head_and_not_the_raw_primary_check(self):
         self.assertIn("pullfrog-review-gate", self.template)
@@ -186,6 +221,8 @@ class PullfrogReviewFallbackWorkflowPolicyTests(unittest.TestCase):
         )
 
     def test_only_bounded_results_cross_provider_boundary(self):
+        self.assertIn("provider/review-draft.json", self.template)
+        self.assertIn("pullfrog-review-fallback-provider-${{ github.run_id }}", self.template)
         self.assertIn("action-outcome.txt", self.template)
         self.assertIn("action-result.json", self.template)
         self.assertIn("retention-days: 7", self.template)

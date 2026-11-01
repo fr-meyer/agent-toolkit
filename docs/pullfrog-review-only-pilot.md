@@ -26,13 +26,15 @@ The committed workflow enforces:
 - top-level `contents: read`
 - job-level `id-token: write` and `contents: read`
 - no provider-key or other secret environment mapping
+- job-scoped read token reused as `GH_TOKEN`, preventing broader MCP token minting
+- `PULLFROG_FORCE_LOCAL_CLI: '1'`, preventing the pinned action bootstrap from floating from `pullfrog@^0.1.102` to a newer npm CLI
 - checkout credentials not persisted
 - Pullfrog `push: disabled`
 - Pullfrog `shell: restricted`
 - action timeout of 15 minutes inside a 20-minute job timeout
 - live progress updates disabled
 
-The provider-free dogfood check runs `scripts/github/validate_pullfrog_workflow.sh`. It verifies the actionlint archive before execution, validates both workflow copies with actionlint, and runs deterministic assertions for the trigger, permissions, immutable action refs, checkout credentials, timeouts, disabled push, restricted shell, disabled progress comments, and absence of secret environment mappings.
+The provider-free dogfood check runs `scripts/github/validate_pullfrog_workflow.sh`. It verifies the actionlint archive before execution, validates both workflow copies with actionlint, and runs deterministic assertions for the trigger, permissions, immutable action refs, exact local CLI execution, read-only external GitHub token, checkout credentials, timeouts, disabled push, restricted shell, disabled progress comments, and absence of secret environment mappings.
 
 Repository-side Pullfrog settings must additionally keep approval, auto-merge, review remediation, CI autofix, non-collaborator mentions, issue automation, and label automation disabled for the pilot. The environment allowlist stays empty. Those service settings are deliberately not represented as secrets or machine-local state in this public repository.
 

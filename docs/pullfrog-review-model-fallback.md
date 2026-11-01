@@ -42,6 +42,14 @@ The repository remains pinned to
 (`v0.1.102`). That action exposes per-run `model`, `effort`, `push`, `shell`,
 `progress_comments`, and `output_schema` inputs.
 
+The action bootstrap at that revision normally resolves `pullfrog@^0.1.102`,
+so an immutable action ref alone does not pin the executed npm CLI. Every
+repository-owned Pullfrog action step therefore sets
+`PULLFROG_FORCE_LOCAL_CLI: '1'`. The action runs the checked-out `v0.1.102`
+source and its frozen lockfile instead of floating to a later `0.1.x` package.
+Every provider step also maps the job-scoped read token as `GH_TOKEN`, which
+prevents the runtime from minting its broader default MCP token.
+
 At the pinned revision:
 
 - `openai/gpt-sol` resolves to `openai/gpt-6.1-sol`;
@@ -107,11 +115,12 @@ A native complete verdict requires an exact-head Pullfrog review with a
 nonempty body and Pullfrog's completion marker, trusted exact-head `pullfrog`
 and `pullfrog-approval` checks from the Pullfrog App in one check suite, and no
 unresolved Pullfrog review thread. A scoped fallback or Sol re-review instead
-uses the `review-only` evidence profile because its short-lived token has no
-check-write authority. The separate trusted publisher supplies the composite
-gate only after it re-reads and matches the authoritative review ID and current
-evidence digest. Inline comments attached to an empty-body, failed review remain
-evidence to reconcile, but do not manufacture a complete verdict.
+uses the `review-only` evidence profile because the separate publisher's
+short-lived review token has no check-write authority. The gate finalizer
+supplies the composite gate only after it re-reads and matches the authoritative
+review ID and current evidence digest. Inline comments attached to an empty-body,
+failed review remain evidence to reconcile, but do not manufacture a complete
+verdict.
 
 Every fallback result receipt, exact-head re-review receipt, reconciliation
 record, gate publication, and controller handoff carries the same identity
@@ -143,20 +152,24 @@ Its jobs separate authority:
 1. **Evaluate** has only Actions/check/content/PR read access.
 2. **Publish initial gate** has check-write authority but no provider identity
    or content/PR write authority.
-3. **Run fallback** has Pullfrog OIDC plus content/PR read access. Immediately
-   before provider execution, the sealed trusted controller exchanges the runner
-   OIDC assertion for one short-lived Pullfrog App installation token scoped
-   exactly to `contents: read` and `pull_requests: write`. That lease is forced
-   through the action's documented external `GH_TOKEN` route, so Pullfrog can
-   publish its bot-authored review without minting its normal MCP token with
-   content, issue, check, and action-dispatch write scopes. The provider still
-   has no check, action-dispatch, content-write, approval, merge, or publication
-   credential beyond the narrow review authority. Pullfrog is forced to
-   `push: disabled`, `shell: restricted`, and a strict structured output schema.
-   The lease is revoked after result capture, and both its exact scope receipt
-   and successful revocation are required for a valid verdict.
-4. **Finalize** has check-write plus read access, no provider identity, and no
-   publication or merge credential. It accepts only a structured result whose
+3. **Run fallback analysis** has Pullfrog OIDC plus content/PR read access. It
+   receives only the job-scoped read token as `GH_TOKEN`, forces the immutable
+   checked-out CLI, runs Astra with `push: disabled`, `shell: restricted`, and a
+   strict structured-output schema, and uploads only a bounded untrusted review
+   draft. It cannot publish a review or obtain content, issue, check,
+   action-dispatch, approval, merge, or branch-write authority.
+4. **Publish review** has no model or provider process. It re-reads the live
+   exact PR identity before minting one short-lived Pullfrog App installation
+   token scoped exactly to `contents: read` and `pull_requests: write`. Its
+   trusted publisher validates the bounded draft, neutralizes provider
+   mentions, HTML, and active Markdown, rejects control and bidirectional
+   characters, re-fetches and compares the
+   complete repository/PR/base/head/ref/author/policy identity with that
+   preflight after the token exists, rejects marker injection, duplicate
+   findings, conflicting complete reviews, and identity drift,
+   publishes at most one exact-head comment review, and revokes the token.
+5. **Finalize** has check-write plus read access, no provider identity, and no
+   review-publication or merge credential. It accepts only a structured result whose
    repository, PR, head, base, model, effort, review ID, verdict, and finding
    count validate against fresh GitHub state and an exact-head Pullfrog review
    footer showing `gpt-6-astra`. Every associated finding comment must belong to
@@ -164,10 +177,11 @@ Its jobs separate authority:
    the canonical contract count, including a summary-only finding; a clean
    verdict must have zero canonical findings.
 
-Only bounded action outcome/result files and sanitized lease/revocation receipts
-cross from the provider job to the trusted finalizer. No token value, patch,
-provider credential, prompt, raw log, or content/check/action-dispatch write
-token crosses the provider boundary. Failed-job reruns skip the entire provider
+Only the bounded review draft and provider outcome cross from the provider job
+to the trusted publisher. Only bounded publication results and sanitized
+lease/revocation receipts then cross to the trusted finalizer. No token value,
+patch, provider credential, prompt, raw log, or content/check/action-dispatch
+write token crosses the provider boundary. Failed-job reruns skip the provider
 job via `github.run_attempt == 1`; when an explicitly authorized or globally
 enabled first attempt already persisted its bounded artifact, a later attempt
 may rerun only the fresh validator and gate finalizer while that authorization
@@ -177,6 +191,17 @@ workflow-dispatch authority. After publishing, it re-reads the live open PR,
 gate, contract status, evidence profile/digest, and expected conclusion before
 one exact-PR/head controller handoff; in-progress, invalid, stale, drifted, or
 digest-mismatched gates do not dispatch.
+
+The pinned runtime can still maintain its selected OpenAI subscription
+credential. When `CODEX_AUTH_JSON` rotates, the action's always-run post-hook
+PUTs the refreshed chain back to Pullfrog. For a credential loaded from the
+runtime pool, the main step first persists the opaque selection receipt and the
+post-hook can use only `/api/runtime/credentials` with that receipt; this is a
+provider-credential maintenance write, not GitHub authority. These workflows do
+not map a provider credential from workflow secrets, so the receipt-less generic
+`/api/runtime/secret` branch is not expected. The first hosted pilot must verify
+the selected repository binding and post-hook behavior and stop if the runtime
+uses a receipt-less credential route.
 
 ## Composite required check
 
@@ -225,10 +250,11 @@ or merge. Activation requires separate approval for each of these stages:
 1. publish the implementation through the approved App/Mergeguez lane;
 2. place the trusted controller on the serving default branch without enabling
    the fallback variable;
-3. confirm the scoped Pullfrog App lease can run Astra, authors the review as
-   `pullfrog[bot]`, carries only `contents: read` plus `pull_requests: write`,
-   revokes successfully, and exposes no content/check/action-dispatch or
-   publication/merge credential;
+3. confirm the read-only, exact-version Astra analysis completes without
+   minting a broader MCP token, then confirm the separate publisher lease authors
+   the review as `pullfrog[bot]`, carries only `contents: read` plus
+   `pull_requests: write`, revokes successfully, and exposes no content/check,
+   action-dispatch, approval, merge, or branch-write credential;
 4. manually pilot one exact PR/head/base with `authorize_fallback: true`;
 5. prove Astra behavior, exact-head structured output, partial-comment
    reconciliation, one-attempt idempotency, fail-closed second refusal, and the

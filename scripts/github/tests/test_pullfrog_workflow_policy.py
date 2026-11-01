@@ -149,7 +149,9 @@ class PullfrogWorkflowPolicyTests(unittest.TestCase):
             ],
         )
         self.assertNotIn("${{ secrets.", self.template)
-        self.assertNotRegex(self.template, r"(?m)^\s+env:\s*$")
+        self.assertIn("          GH_TOKEN: ${{ github.token }}\n", self.template)
+        self.assertIn("          PULLFROG_FORCE_LOCAL_CLI: '1'\n", self.template)
+        self.assertEqual(self.template.count("        env:\n"), 1)
 
 
 if __name__ == "__main__":

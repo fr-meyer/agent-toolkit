@@ -83,11 +83,16 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
 
     def test_provider_publish_and_auto_merge_permissions_are_separated(self):
         self.assertEqual(top_level_section(self.template, "permissions"), "  contents: read\n")
-        self.assertEqual(self.template.count("      id-token: write\n"), 2)
+        self.assertEqual(self.template.count("      id-token: write\n"), 3)
         remediate = self.template.split("  remediate:\n", 1)[1].split("  validate:\n", 1)[0]
         validate = self.template.split("  validate:\n", 1)[1].split("  publish:\n", 1)[0]
         publish = self.template.split("  publish:\n", 1)[1].split("  rereview:\n", 1)[0]
-        rereview = self.template.split("  rereview:\n", 1)[1].split("  validate_rereview:\n", 1)[0]
+        rereview = self.template.split("  rereview:\n", 1)[1].split(
+            "  publish_rereview:\n", 1
+        )[0]
+        publish_rereview = self.template.split("  publish_rereview:\n", 1)[1].split(
+            "  validate_rereview:\n", 1
+        )[0]
         validate_rereview = self.template.split("  validate_rereview:\n", 1)[1].split("  reconcile_threads:\n", 1)[0]
         reconcile = self.template.split("  reconcile_threads:\n", 1)[1].split("  rereview_gate:\n", 1)[0]
         rereview_gate = self.template.split("  rereview_gate:\n", 1)[1].split("  auto_merge_eligible:\n", 1)[0]
@@ -96,6 +101,7 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("      contents: read\n", remediate)
         self.assertNotIn("contents: write", remediate)
         self.assertIn("          GH_TOKEN: ${{ github.token }}\n", remediate)
+        self.assertIn("          PULLFROG_FORCE_LOCAL_CLI: '1'\n", remediate)
         self.assertIn("      contents: read\n", validate)
         self.assertNotIn("id-token: write", validate)
         self.assertNotIn("contents: write", validate)
@@ -105,6 +111,20 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("      checks: read\n", rereview)
         self.assertNotIn("contents: write", rereview)
         self.assertNotIn("checks: write", rereview)
+        self.assertIn("          GH_TOKEN: ${{ github.token }}\n", rereview)
+        self.assertIn("          PULLFROG_FORCE_LOCAL_CLI: '1'\n", rereview)
+        self.assertNotIn("steps.review_token.outputs.credential", rereview)
+        self.assertNotIn("mint-review-token", rereview)
+        self.assertIn("      id-token: write\n", publish_rereview)
+        self.assertIn("mint-review-token", publish_rereview)
+        self.assertIn("publish-review-draft", publish_rereview)
+        self.assertIn(
+            "--identity-preflight artifacts/pullfrog-rereview/publisher-preflight.json",
+            publish_rereview,
+        )
+        self.assertIn("revoke-review-token", publish_rereview)
+        self.assertNotIn("pullfrog/pullfrog@", publish_rereview)
+        self.assertNotIn("contents: write", publish_rereview)
         self.assertIn("      checks: read\n", validate_rereview)
         self.assertIn("      pull-requests: read\n", validate_rereview)
         self.assertNotIn("id-token: write", validate_rereview)
@@ -137,16 +157,26 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
             self.template,
         )
         remediate = self.template.split("  remediate:\n", 1)[1].split("  validate:\n", 1)[0]
-        rereview = self.template.split("  rereview:\n", 1)[1].split("  validate_rereview:\n", 1)[0]
+        rereview = self.template.split("  rereview:\n", 1)[1].split(
+            "  publish_rereview:\n", 1
+        )[0]
+        publish_rereview = self.template.split("  publish_rereview:\n", 1)[1].split(
+            "  validate_rereview:\n", 1
+        )[0]
         reconcile = self.template.split("  reconcile_threads:\n", 1)[1].split("  rereview_gate:\n", 1)[0]
         self.assertEqual(remediate.count("pullfrog/pullfrog@"), 1)
         self.assertEqual(rereview.count("pullfrog/pullfrog@"), 1)
+        self.assertNotIn("pullfrog/pullfrog@", publish_rereview)
         self.assertNotIn("pullfrog/pullfrog@", reconcile)
         self.assertEqual(self.template.count("pullfrog/pullfrog@"), 2)
         self.assertIn("          push: disabled\n", self.template)
         self.assertIn("          shell: restricted\n", self.template)
         self.assertIn("          progress_comments: disabled\n", self.template)
         self.assertIn("          GH_TOKEN: ${{ github.token }}\n", self.template)
+        self.assertEqual(
+            self.template.count("          PULLFROG_FORCE_LOCAL_CLI: '1'\n"),
+            2,
+        )
         self.assertIn("output_schema:", self.template)
         self.assertIn("build-payload", self.template)
         self.assertIn("          prompt: ${{ steps.dispatch.outputs.payload }}\n", self.template)
@@ -176,6 +206,9 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
     def test_published_fix_gets_one_scoped_exact_head_sol_rereview_and_gate(self):
         publish = self.template.split("  publish:\n", 1)[1].split("  rereview:\n", 1)[0]
         rereview = self.template.split("  rereview:\n", 1)[1].split(
+            "  publish_rereview:\n", 1
+        )[0]
+        publish_rereview = self.template.split("  publish_rereview:\n", 1)[1].split(
             "  validate_rereview:\n", 1
         )[0]
         validate_rereview = self.template.split("  validate_rereview:\n", 1)[1].split(
@@ -191,17 +224,26 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
         self.assertIn("github.run_attempt == 1", rereview)
         self.assertIn("needs.publish.outputs.result_head_sha", rereview)
         self.assertIn("needs.evaluate.outputs.base_sha", rereview)
-        self.assertIn("Mint least-privilege Pullfrog re-review token", rereview)
-        self.assertIn("mint-review-token", rereview)
-        self.assertIn("Revoke least-privilege Pullfrog re-review token", rereview)
-        self.assertIn("revoke-review-token", rereview)
+        self.assertNotIn("review_token", rereview)
+        self.assertIn("Mint least-privilege Pullfrog re-review token", publish_rereview)
+        self.assertIn("mint-review-token", publish_rereview)
+        self.assertIn("Revoke least-privilege Pullfrog re-review token", publish_rereview)
+        self.assertIn("revoke-review-token", publish_rereview)
+        self.assertIn("publish-review-draft", publish_rereview)
         self.assertNotIn("verify-rereview-result", rereview)
         self.assertIn("          model: openai/gpt-sol\n", rereview)
         self.assertIn("          effort: xhigh\n", rereview)
         self.assertIn("          push: disabled\n", rereview)
         self.assertIn("          shell: restricted\n", rereview)
-        self.assertIn("pullfrog-exact-head-rereview-result.v1", rereview)
-        self.assertIn("pullfrog-exact-head-rereview-raw-${{ github.run_id }}", rereview)
+        self.assertIn("pullfrog-review-draft.v1", rereview)
+        self.assertIn("pullfrog-exact-head-rereview-result.v1", publish_rereview)
+        self.assertIn(
+            "pullfrog-exact-head-rereview-provider-${{ github.run_id }}", rereview
+        )
+        self.assertIn(
+            "pullfrog-exact-head-rereview-raw-${{ github.run_id }}",
+            publish_rereview,
+        )
         self.assertNotIn("openai/gpt-astra", rereview)
         self.assertIn("verify-rereview-result", validate_rereview)
         self.assertIn("github.run_attempt > 1", validate_rereview)
@@ -274,7 +316,7 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
     def test_claim_precedes_provider_and_terminal_receipt_follows_publish(self):
         claim_upload = self.template.index("Persist claim before provider invocation")
         dispatch_upload = self.template.index("Persist transient sealed dispatch")
-        provider = self.template.index("Run Pullfrog without remote write authority")
+        provider = self.template.index("Run Pullfrog without remote GitHub write authority")
         validator = self.template.index("Re-read exact head and seal trusted candidate")
         publish = self.template.index("Push one fast-forward commit to the exact PR branch")
         terminal = self.template.index("Persist terminal receipt")

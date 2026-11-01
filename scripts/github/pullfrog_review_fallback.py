@@ -15,6 +15,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -33,6 +34,8 @@ RESULT_SCHEMA = "pullfrog-review-fallback-result.v1"
 RESULT_RECEIPT_SCHEMA = "pullfrog-review-fallback-result-receipt.v2"
 REREVIEW_RESULT_SCHEMA = "pullfrog-exact-head-rereview-result.v1"
 REREVIEW_RECEIPT_SCHEMA = "pullfrog-exact-head-rereview-receipt.v2"
+PRIMARY_RESULT_SCHEMA = "pullfrog-primary-review-result.v1"
+REVIEW_DRAFT_SCHEMA = "pullfrog-review-draft.v1"
 REREVIEW_RECONCILIATION_SCHEMA = "pullfrog-rereview-thread-reconciliation.v2"
 CONTROLLER_HANDOFF_SCHEMA = "pullfrog-controller-handoff.v2"
 TOKEN_LEASE_SCHEMA = "pullfrog-review-fallback-token-lease.v1"
@@ -67,6 +70,12 @@ REVIEW_TOKEN_PERMISSIONS = {
     "contents": "read",
     "pull_requests": "write",
 }
+REVIEW_DRAFT_SEVERITIES = {"blocker", "high", "medium", "low"}
+REVIEW_DRAFT_MAX_FINDINGS = 50
+REVIEW_DRAFT_MAX_SUMMARY_CHARS = 12_000
+REVIEW_DRAFT_MAX_BODY_CHARS = 4_000
+REVIEW_DRAFT_DIGEST_MARKER = "PULLFROG_REVIEW_DRAFT_DIGEST"
+REVIEW_MARKDOWN_SPECIALS = frozenset("\\`*_{}[]<>()#+-.!|>~")
 
 RESOLVE_REVIEW_THREAD_MUTATION = """
 mutation ResolvePullfrogReviewThread($threadId: ID!) {
@@ -658,6 +667,277 @@ class GitHubClient:
             if len(items) < 100:
                 return result
         raise FallbackError("github_api_page_limit")
+
+
+def _sanitized_review_text(value: Any, *, maximum: int, error: str) -> str:
+    text = _text(value).replace("\r\n", "\n").replace("\r", "\n").strip()
+    if (
+        not text
+        or len(text) > maximum
+        or REVIEW_MARKER in text
+        or REVIEW_DRAFT_DIGEST_MARKER in text
+        or any(
+            unicodedata.category(character) in {"Cc", "Cf", "Cs"}
+            and character != "\n"
+            for character in text
+        )
+    ):
+        raise FallbackError(error)
+    return text
+
+
+def _render_untrusted_review_text(text: str) -> str:
+    """Render provider text as inert Markdown without mentions or active markup."""
+
+    rendered: list[str] = []
+    for character in text:
+        if character == "@":
+            rendered.append("@\u200b")
+        elif character in REVIEW_MARKDOWN_SPECIALS:
+            rendered.append("\\" + character)
+        else:
+            rendered.append(character)
+    return "".join(rendered)
+
+
+def _validated_review_draft(
+    draft: dict[str, Any],
+    *,
+    repository: str,
+    pr_number: int,
+    base_sha: str,
+    head_sha: str,
+    model: str,
+    effort: str,
+) -> dict[str, Any]:
+    required = {
+        "schema",
+        "status",
+        "repository",
+        "pr_number",
+        "base_sha",
+        "head_sha",
+        "model",
+        "effort",
+        "verdict",
+        "finding_count",
+        "summary",
+        "findings",
+    }
+    if set(draft) != required:
+        raise FallbackError("invalid_review_draft_shape")
+    expected = {
+        "schema": REVIEW_DRAFT_SCHEMA,
+        "status": "review_ready",
+        "repository": repository,
+        "pr_number": pr_number,
+        "base_sha": base_sha,
+        "head_sha": head_sha,
+        "model": model,
+        "effort": effort,
+    }
+    for key, value in expected.items():
+        if draft.get(key) != value:
+            raise FallbackError(f"review_draft_{key}_mismatch")
+
+    summary = _sanitized_review_text(
+        draft.get("summary"),
+        maximum=REVIEW_DRAFT_MAX_SUMMARY_CHARS,
+        error="invalid_review_draft_summary",
+    )
+    verdict = _text(draft.get("verdict"))
+    finding_count = _integer(draft.get("finding_count"))
+    raw_findings = _list(draft.get("findings"))
+    if finding_count is None or finding_count != len(raw_findings):
+        raise FallbackError("review_draft_finding_count_mismatch")
+    if len(raw_findings) > REVIEW_DRAFT_MAX_FINDINGS:
+        raise FallbackError("review_draft_finding_limit")
+    if verdict == "clean" and raw_findings:
+        raise FallbackError("clean_review_draft_has_findings")
+    if verdict == "findings" and not raw_findings:
+        raise FallbackError("finding_review_draft_has_no_findings")
+    if verdict not in {"clean", "findings"}:
+        raise FallbackError("invalid_review_draft_verdict")
+
+    findings: list[dict[str, Any]] = []
+    fingerprints: set[tuple[str, int, str]] = set()
+    for raw in raw_findings:
+        finding = _mapping(raw)
+        if set(finding) != {"severity", "path", "line", "body"}:
+            raise FallbackError("invalid_review_draft_finding_shape")
+        severity = _text(finding.get("severity"))
+        path = _text(finding.get("path"))
+        line = _integer(finding.get("line"))
+        body = _sanitized_review_text(
+            finding.get("body"),
+            maximum=REVIEW_DRAFT_MAX_BODY_CHARS,
+            error="invalid_review_draft_finding_body",
+        )
+        if severity not in REVIEW_DRAFT_SEVERITIES:
+            raise FallbackError("invalid_review_draft_finding_severity")
+        if not review_contract.valid_path(path) or line is None or line < 1:
+            raise FallbackError("invalid_review_draft_finding_location")
+        fingerprint = (path, line, " ".join(body.split()).casefold())
+        if fingerprint in fingerprints:
+            raise FallbackError("duplicate_review_draft_finding")
+        fingerprints.add(fingerprint)
+        findings.append(
+            {"severity": severity, "path": path, "line": line, "body": body}
+        )
+    findings.sort(key=lambda item: (item["path"], item["line"], item["body"]))
+    return {
+        **expected,
+        "verdict": verdict,
+        "finding_count": len(findings),
+        "summary": summary,
+        "findings": findings,
+    }
+
+
+def publish_review_draft(
+    client: GitHubClient,
+    *,
+    pr_number: int,
+    expected_head_sha: str,
+    expected_base_sha: str,
+    identity_preflight: dict[str, Any],
+    model: str,
+    resolved_model: str,
+    effort: str,
+    result_schema: str,
+    draft: dict[str, Any],
+) -> dict[str, Any]:
+    if (
+        pr_number < 1
+        or not SHA_RE.fullmatch(expected_head_sha)
+        or not SHA_RE.fullmatch(expected_base_sha)
+        or effort != EFFORT
+        or model not in {PRIMARY_MODEL, FALLBACK_MODEL}
+        or resolved_model
+        != (FALLBACK_RESOLVED_MODEL if model == FALLBACK_MODEL else PRIMARY_RESOLVED_MODEL)
+        or result_schema
+        not in {PRIMARY_RESULT_SCHEMA, RESULT_SCHEMA, REREVIEW_RESULT_SCHEMA}
+        or (result_schema == RESULT_SCHEMA) != (model == FALLBACK_MODEL)
+    ):
+        raise FallbackError("invalid_review_publication_configuration")
+    normalized = _validated_review_draft(
+        draft,
+        repository=client.repository_slug,
+        pr_number=pr_number,
+        base_sha=expected_base_sha,
+        head_sha=expected_head_sha,
+        model=model,
+        effort=effort,
+    )
+
+    prefix = f"/repos/{client.repository_slug}"
+    pull_request = _mapping(client.get(f"{prefix}/pulls/{pr_number}"))
+    observed_head = _text(_mapping(pull_request.get("head")).get("sha"))
+    observed_base = _text(_mapping(pull_request.get("base")).get("sha"))
+    observed_base_repo = _text(
+        _mapping(_mapping(pull_request.get("base")).get("repo")).get("full_name")
+    )
+    observed_head_repo = _text(
+        _mapping(_mapping(pull_request.get("head")).get("repo")).get("full_name")
+    )
+    current_identity = _identity(client.repository_slug, pull_request)
+    expected_preflight = {
+        "schema": "pullfrog-review-fallback-identity.v1",
+        "status": "valid",
+        **current_identity,
+    }
+    if (
+        _integer(pull_request.get("number")) != pr_number
+        or _text(pull_request.get("state")) != "open"
+        or pull_request.get("draft") is not False
+        or observed_head != expected_head_sha
+        or observed_base != expected_base_sha
+        or observed_base_repo != client.repository_slug
+        or observed_head_repo != client.repository_slug
+        or identity_preflight != expected_preflight
+    ):
+        raise FallbackError("review_publication_identity_drift")
+
+    draft_digest = _digest(normalized)
+    digest_marker = f"<!-- {REVIEW_DRAFT_DIGEST_MARKER}:{draft_digest} -->"
+    reviews = client.paginated(f"{prefix}/pulls/{pr_number}/reviews")
+    matching = [
+        item
+        for item in (_mapping(raw) for raw in reviews)
+        if _text(item.get("commit_id")) == expected_head_sha
+        and _text(_mapping(item.get("user")).get("login")).casefold()
+        == PULLFROG_LOGIN
+        and digest_marker in _text(item.get("body"))
+    ]
+    other_complete = [
+        item
+        for item in (_mapping(raw) for raw in reviews)
+        if _valid_complete_review(item, expected_head_sha) and item not in matching
+    ]
+    if len(matching) > 1 or other_complete:
+        raise FallbackError("review_publication_conflict")
+
+    if normalized["verdict"] == "clean":
+        opener = "> ✅ No new issues found."
+    else:
+        opener = (
+            "> [!IMPORTANT]\n"
+            f"> Pullfrog found {normalized['finding_count']} issue(s) requiring attention."
+        )
+    body = (
+        f"{opener}\n\n{_render_untrusted_review_text(normalized['summary'])}\n\n"
+        f"Using `{resolved_model}` with `{effort}`.\n\n"
+        f"<!-- {REVIEW_MARKER} -->\n{digest_marker}"
+    )
+    comments = [
+        {
+            "path": item["path"],
+            "line": item["line"],
+            "side": "RIGHT",
+            "body": (
+                f"**{item['severity']}**: "
+                f"{_render_untrusted_review_text(item['body'])}"
+            ),
+        }
+        for item in normalized["findings"]
+    ]
+    if matching:
+        review = matching[0]
+    else:
+        review = _mapping(
+            client.post(
+                f"{prefix}/pulls/{pr_number}/reviews",
+                {
+                    "commit_id": expected_head_sha,
+                    "event": "COMMENT",
+                    "body": body,
+                    "comments": comments,
+                },
+            )
+        )
+        review_id = _integer(review.get("id"))
+        if review_id:
+            review = _mapping(
+                client.get(f"{prefix}/pulls/{pr_number}/reviews/{review_id}")
+            )
+    review_id = _integer(review.get("id"))
+    if not review_id or not _valid_complete_review(review, expected_head_sha):
+        raise FallbackError("invalid_published_review")
+    if digest_marker not in _text(review.get("body")):
+        raise FallbackError("published_review_digest_mismatch")
+    return {
+        "schema": result_schema,
+        "status": "review_submitted",
+        "repository": client.repository_slug,
+        "pr_number": pr_number,
+        "base_sha": expected_base_sha,
+        "head_sha": expected_head_sha,
+        "model": model,
+        "effort": effort,
+        "review_id": review_id,
+        "verdict": normalized["verdict"],
+        "finding_count": normalized["finding_count"],
+    }
 
 
 def _resolve_primary_check_for_event(
@@ -2038,6 +2318,29 @@ def main() -> int:
     revoke.add_argument("--token-env", default="PULLFROG_REVIEW_TOKEN")
     revoke.add_argument("--out", required=True)
 
+    publish_draft = sub.add_parser("publish-review-draft")
+    publish_draft.add_argument(
+        "--api-url", default=os.environ.get("GITHUB_API_URL", "https://api.github.com")
+    )
+    publish_draft.add_argument(
+        "--token", default=os.environ.get("PULLFROG_REVIEW_TOKEN", "")
+    )
+    publish_draft.add_argument("--repository", required=True)
+    publish_draft.add_argument("--pr-number", required=True, type=int)
+    publish_draft.add_argument("--expected-head-sha", required=True)
+    publish_draft.add_argument("--expected-base-sha", required=True)
+    publish_draft.add_argument("--identity-preflight", required=True)
+    publish_draft.add_argument("--model", required=True)
+    publish_draft.add_argument("--resolved-model", required=True)
+    publish_draft.add_argument("--effort", required=True)
+    publish_draft.add_argument(
+        "--result-schema",
+        choices=(PRIMARY_RESULT_SCHEMA, RESULT_SCHEMA, REREVIEW_RESULT_SCHEMA),
+        required=True,
+    )
+    publish_draft.add_argument("--draft", required=True)
+    publish_draft.add_argument("--out", required=True)
+
     verify = sub.add_parser("verify-fallback-result")
     verify.add_argument("--api-url", default=os.environ.get("GITHUB_API_URL", "https://api.github.com"))
     verify.add_argument("--token", default=os.environ.get("GITHUB_TOKEN", ""))
@@ -2161,6 +2464,22 @@ def main() -> int:
             credential = os.environ.get(args.token_env, "")
             receipt = revoke_review_token(args.api_url, credential, args.repository)
             _write_object(Path(args.out), receipt)
+            return 0
+        if args.command == "publish-review-draft":
+            client = GitHubClient(args.api_url, args.token, args.repository)
+            result = publish_review_draft(
+                client,
+                pr_number=args.pr_number,
+                expected_head_sha=args.expected_head_sha,
+                expected_base_sha=args.expected_base_sha,
+                identity_preflight=_load_object(Path(args.identity_preflight)),
+                model=args.model,
+                resolved_model=args.resolved_model,
+                effort=args.effort,
+                result_schema=args.result_schema,
+                draft=_load_object(Path(args.draft)),
+            )
+            _write_object(Path(args.out), result)
             return 0
         if args.command == "verify-fallback-result":
             coordinator = _load_object(Path(args.coordinator))
