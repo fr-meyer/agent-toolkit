@@ -11,7 +11,7 @@ Feature PRs target `dev`. Release/promotion PRs target `main`.
 - use Automations only for exact time/event wakes and low-frequency recovery
 - distinguish persistent session context from exact external conversation destinations
 - require native preview/confirm or compare-and-swap receipts for non-idempotent effects and block ambiguous replay
-- retain a bounded optional controller extension only for fenced exactly-once effects beyond native guarantees
+- retain a bounded optional controller extension for fail-closed intent tracking and fenced metadata, without claiming exactly-once external effects
 - merge current `dev` into the existing PR branch without rewriting its history
 - bind PR #75 to the current repository-owned Speculoos exact-head contract
 

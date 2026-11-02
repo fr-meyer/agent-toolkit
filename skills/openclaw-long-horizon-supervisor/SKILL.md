@@ -37,7 +37,7 @@ If a safety-critical value is missing, stop at a gate. Never invent paths, appro
 
 ### Workboard owns execution state
 
-Use one idempotent Workboard card per durable task. Use a board for a related project set and parent links for dependencies. Store the objective, acceptance criteria, workspace, skills, runtime/retry budget, and exact next safe action on the card.
+Use one idempotent Workboard card per durable task and a board for a related project set. A Workboard parent is a prerequisite of the dependent card. Complete planning/decomposition cards before dispatching dependents. Model final fan-in as an aggregation card whose parents are the work it awaits; never leave a prerequisite open waiting for a dependent. Store objective, acceptance criteria, workspace, skills, budgets, and the next safe action on the card.
 
 Before work, reuse the idempotency key, specify rough cards, claim with a bounded TTL, read context, heartbeat, and end with `complete`, `block`, or `release`.
 
@@ -83,13 +83,14 @@ A persistent visible session is optional. Discover its exact key and preserve th
 
 Prefer event-driven continuation:
 
-- link child cards to parent cards for durable dependency ordering;
+- link each prerequisite as a parent of the card that must wait;
+- for fan-out, complete planning before dispatching dependents; for fan-in, make an aggregation card depend on the awaited work;
 - subscribe to Workboard events for completion, failure, or staleness;
 - use an event-conditioned intent when the trigger is a future message;
 - use an Automation trigger for a cheap external condition when available;
 - use a one-shot Automation for a known time.
 
-Do not busy-poll, sleep-loop, or create repeated retry jobs. When a dependency completes, revalidate it and continue the parent; child completion alone does not prove the user goal is complete.
+Do not busy-poll, sleep-loop, or create repeated retry jobs. After a prerequisite completes, revalidate it and dispatch or resume dependents. Never wait for a dependent from its prerequisite; one card completing does not prove the user goal complete.
 
 ### Missed one-shot recovery
 
@@ -120,7 +121,7 @@ Ask in the owning interactive conversation before irreversible, external, destru
 - Resume active work after compaction or dependency completion; a checkpoint is not terminal.
 - If the card cannot safely continue, block it with the missing input rather than leaving it `running`.
 
-Use the optional controller extension in `references/controller-contract.md` only when the task requires fenced exactly-once effects that Workboard plus the native service API cannot provide.
+Use the optional controller extension in `references/controller-contract.md` only for fail-closed intent tracking and fenced metadata. It does not make external effects exactly once. Require service-side idempotency, deduplication, or fencing with conclusive reconciliation for that guarantee; otherwise block it as unsupported.
 
 ## Completion and cleanup
 
@@ -128,7 +129,7 @@ Complete only when every acceptance condition has live evidence and no in-scope 
 
 1. attach final proof and artifacts;
 2. complete the claimed card with a concise summary and created-card manifest;
-3. advance dependent cards and verify the parent outcome;
+3. advance dependent cards and verify any final aggregation card and project outcome;
 4. remove the canonical recovery Automation after exact identity and run-state checks;
 5. remove pending one-shots only when they are no longer needed;
 6. preserve final card, runs, comments, and proof as audit evidence;
@@ -155,7 +156,7 @@ Never expose claim tokens, secrets, credentials, private source content, or raw 
 
 Read only when needed:
 
-- `references/controller-contract.md` — optional extension for fenced exactly-once effects beyond native Workboard/service guarantees.
+- `references/controller-contract.md` — optional fail-closed intent and fenced-metadata extension; not an exactly-once effect mechanism.
 - `references/eval-prompts.json` — trigger and near-miss evaluation prompts.
 
 ## Portability notes

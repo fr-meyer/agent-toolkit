@@ -1,13 +1,13 @@
 # Optional controller extension contract
 
-Use this reference only when a task needs fenced exactly-once effects that Workboard plus the native service preview/confirm or compare-and-swap API cannot provide. Workboard remains the durable task ledger; the controller only strengthens one effect boundary.
+Use this reference only when a task needs fail-closed intent tracking and fenced effect metadata beyond Workboard plus the native service preview/confirm or compare-and-swap API. Workboard remains the durable task ledger. This controller does not make external effects exactly once because it does not own the provider call. If exactly-once external effects are required, proceed only when the effect boundary supplies service-side idempotency, deduplication, or fencing plus conclusive receipt reconciliation; otherwise stop at the unsupported guarantee.
 
 The environment-provided controller should support equivalent operations for:
 
 - initialize without overwrite and validate its descriptor/state;
 - claim, renew, and release a fenced operation lease;
 - record a stable non-idempotent intent before execution;
-- record a conclusive receipt as `succeeded`, `failed`, or `ambiguous`;
+- record an outcome receipt as `succeeded`, `failed`, or `ambiguous`;
 - bind an exact manual gate to action, mutable identifiers, approver, reference, revision, and expiry;
 - expire and consume approvals;
 - repair interrupted state/event-journal writes;
