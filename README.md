@@ -126,10 +126,13 @@ remains the guarded publication and merge broker.
 - **Architecture note:** `docs/workflow-asset-library-layout.md`
 - **Workflow catalog:** `docs/github-actions-template-catalog.md`
 
-The retained ref-sync and distribution assets are deterministic maintenance
-plumbing only. Pullfrog review and separately gated remediation assets remain
-independent, while Speculoos validates their exact-head contract. No retained
-workflow invokes Mergeguez or grants merge authority.
+The retained ref-sync and distribution workflows are deterministic maintenance
+plumbing only; those maintenance workflows neither invoke Mergeguez nor grant
+merge authority. Pullfrog review and separately gated remediation assets remain
+independent, while Speculoos validates their exact-head contract. The retained
+cloud remediation loop has a separate policy-gated exact-head non-stable
+auto-merge controller; Pullfrog-native and stable-branch auto-merge remain
+disabled.
 
 ## Shared-content boundary
 
