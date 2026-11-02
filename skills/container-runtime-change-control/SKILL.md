@@ -123,10 +123,10 @@ docker compose build <service>
 CANDIDATE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
 [ -n "$CANDIDATE_IMAGE_ID" ] || { echo 'candidate image ID is empty' >&2; exit 1; }
 docker run --rm --entrypoint sh "$CANDIDATE_IMAGE_ID" -lc '<service> --version'
-docker compose up -d --no-build <service>
+docker compose up -d --no-build --pull never <service>
 ```
 
-Require one non-empty, inspectable image ID before invoking the candidate. Because the same effective Compose config names the candidate tag, `up --no-build` deploys the image that was inspected instead of an untagged or previous service image. Run the final recreate only when the candidate version matches the intended target. If the explicit candidate tag, image ID, or version cannot be checked, stop and classify the operation as `read-only-only` or `version-drift-blocker` based on the evidence.
+Require one non-empty, inspectable image ID before invoking the candidate. Because the same effective Compose config names the candidate tag and `--pull never` forbids replacing it from a registry, the final `up --no-build` deploys the local image that was inspected instead of an untagged, previous, or newly pulled image. Run the final recreate only when the candidate version matches the intended target. If the explicit candidate tag, image ID, or version cannot be checked, stop and classify the operation as `read-only-only` or `version-drift-blocker` based on the evidence.
 
 ### 3. Classify the State
 

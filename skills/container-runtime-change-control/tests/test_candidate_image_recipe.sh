@@ -22,7 +22,7 @@ required = (
     "docker compose build <service>",
     "docker image inspect --format '{{.Id}}'",
     'docker run --rm --entrypoint sh "$CANDIDATE_IMAGE_ID"',
-    "docker compose up -d --no-build <service>",
+    "docker compose up -d --no-build --pull never <service>",
 )
 for marker in required:
     if marker not in recipe:
@@ -32,7 +32,7 @@ if not (
     < recipe.index("docker compose build <service>")
     < recipe.index("CANDIDATE_IMAGE_ID=")
     < recipe.index('docker run --rm --entrypoint sh "$CANDIDATE_IMAGE_ID"')
-    < recipe.index("docker compose up -d --no-build <service>")
+    < recipe.index("docker compose up -d --no-build --pull never <service>")
 ):
     raise SystemExit("candidate recipe ordering is unsafe")
 print("candidate image recipe: ok")

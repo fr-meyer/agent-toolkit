@@ -40,7 +40,7 @@ This bootstrap does not publish a check itself. GitHub Actions must execute the 
 ## Validation
 
 - canonical/materialized dogfood workflow byte identity
-- candidate-image recipe regression for rollback ordering and explicit-tag image-ID resolution
+- candidate-image recipe regression for rollback ordering, explicit-tag image-ID resolution, and no-pull recreate
 - focused workflow policy tests
 - Pullfrog workflow validator
 - repository-bound Speculoos exact-head contract

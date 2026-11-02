@@ -31,7 +31,7 @@ acceptance:
   - the Speculoos publication packet exactly lists the final PR diff against dev and passes the repository-bound exact-head contract
   - hosted dogfood and Speculoos checks are produced by GitHub Actions for the exact current PR head, never synthesized through the Checks API
   - the protected manual remediation implements only Pullfrog's findings after the cloud fixer refuses the PR's expired evidence window
-  - the candidate-image recipe regression rejects quiet-build stdout as an image-ID source and enforces explicit-tag resolution after build
+  - the candidate-image recipe regression rejects quiet-build stdout as an image-ID source, enforces explicit-tag resolution after build, and forbids a registry pull before recreate
   - Pullfrog remains the sole AI reviewer and must re-review the final exact head
 delivery_policy:
   mode: inherit_branch_policy
