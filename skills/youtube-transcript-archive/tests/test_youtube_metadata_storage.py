@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "youtube_metadata_storage.py"
 SPEC = importlib.util.spec_from_file_location("youtube_metadata_storage", MODULE_PATH)
@@ -61,6 +62,11 @@ class MetadataStorageTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         self.assertEqual(raw, storage.read_metadata_bytes(video, manifest))
         self.assertEqual("abcdefghijk", storage.read_metadata_json(video, manifest)["id"])
+
+    def test_read_flags_include_binary_mode_when_available(self):
+        synthetic_binary_flag = 1 << 29
+        with mock.patch.object(storage.os, "O_BINARY", synthetic_binary_flag, create=True):
+            self.assertEqual(synthetic_binary_flag, storage._read_only_flags() & synthetic_binary_flag)
 
     def test_short_writes_are_completed(self):
         sink = bytearray()

@@ -250,13 +250,22 @@ def _regular_file_stat(path: Path) -> os.stat_result:
     return value
 
 
+def _read_only_flags() -> int:
+    return (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+
+
 def read_regular_bytes(path: Path, *, max_bytes: int) -> bytes:
     if max_bytes < 0:
         raise MetadataLimitError("max_bytes must be non-negative")
     before = _regular_file_stat(path)
     if before.st_size > max_bytes:
         raise MetadataLimitError(f"file exceeds configured byte limit: {path.name}")
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = _read_only_flags()
     try:
         fd = os.open(path, flags)
     except FileNotFoundError as exc:
