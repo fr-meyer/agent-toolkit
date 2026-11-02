@@ -4,21 +4,27 @@
     "commit_actor": "human_approved_agent_assisted",
     "push_actor": "franck_user_pr_author",
     "pr_actor": "franck_user_pr_author",
-    "review_actor": "mergeguez_review",
+    "review_actor": "pullfrog_review",
     "merge_actor": "user_api"
   },
   "branch_policies": [
     {
-      "name": "feature_to_dev",
+      "name": "feature_to_non_stable",
       "base_refs": ["dev"],
+      "base_policy": "any_valid_branch_except_forbidden",
+      "forbidden_base_refs": ["main", "master"],
       "head_patterns": ["feat/*", "fix/*", "docs/*", "test/*", "chore/*"],
       "pr_actor": "franck_user_pr_author",
-      "review_actor": "mergeguez_review",
-      "merge_actor": "mergeguez_dev_merge",
+      "review_actor": "pullfrog_review",
+      "merge_actor": "github_actions_non_stable_auto_merge",
       "native_review_requires_distinct_author": true,
       "exact_pr_base_head_sha_required": true,
       "auto_merge": {
-        "enabled": false,
+        "enabled": true,
+        "actor": "github_actions_non_stable_auto_merge",
+        "base_policy": "any_valid_branch_except_forbidden",
+        "forbidden_base_refs": ["main", "master"],
+        "required_evidence": ["pullfrog", "pullfrog-approval", "ci", "speculoos", "destination-guard"],
         "delete_branch_after_merge": false
       }
     },
@@ -27,7 +33,7 @@
       "base_refs": ["main", "master"],
       "head_refs": ["dev"],
       "pr_actor": "franck_user_pr_author",
-      "review_actor": "mergeguez_review",
+      "review_actor": "pullfrog_review",
       "merge_actor": "user_api",
       "native_review_requires_distinct_author": true,
       "exact_pr_base_head_sha_required": true,
@@ -66,10 +72,9 @@
     },
     "mergeguez_review": {
       "kind": "github_app_installation_broker",
-      "roles": ["review_actor"],
-      "status": "available_host_broker",
+      "roles": [],
+      "status": "disabled_historical_reviewer",
       "bot_login": "mergeguez[bot]",
-      "forbidden_pr_author_logins_for_native_review": ["mergeguez[bot]"],
       "credential_location": "host_broker",
       "requires_explicit_approval": false,
       "secrets_in_repo": false
@@ -85,6 +90,23 @@
       "exact_pr_base_head_sha_required": true,
       "secrets_in_repo": false
     },
+    "github_actions_non_stable_auto_merge": {
+      "kind": "github_actions_builtin_token",
+      "roles": ["merge_actor"],
+      "status": "enabled_policy_gated_exact_head_non_stable_auto_merge",
+      "bot_login": "github-actions[bot]",
+      "base_policy": "any_valid_branch_except_forbidden",
+      "forbidden_base_refs": ["main", "master"],
+      "credential_location": "github_actions_job_token",
+      "requires_explicit_approval": false,
+      "exact_pr_base_head_sha_required": true,
+      "same_repository_required": true,
+      "fresh_app_bound_evidence_required": true,
+      "mutation_transport": "normal_exact_base_fast_forward_merge_commit",
+      "force_push_allowed": false,
+      "replays_suppressed_dev_push_automation_for_dev_merges_only": true,
+      "secrets_in_repo": false
+    },
     "user_api": {
       "kind": "github_app_user_access_token",
       "roles": ["merge_actor"],
@@ -94,15 +116,20 @@
       "requires_explicit_approval": true,
       "secrets_in_repo": false
     },
-    "pullfrog_optional": {
+    "pullfrog_review": {
       "kind": "review_service",
       "roles": ["review_actor"],
-      "status": "bounded_review_only_pilot",
+      "status": "primary_exact_head_reviewer",
       "credential_location": "external_pullfrog_service",
-      "requires_explicit_approval": true,
+      "requires_explicit_approval": false,
       "secrets_in_repo": false,
-      "required_for_merge": false,
+      "required_for_merge": true,
       "push_enabled": false,
+      "remediation_mode": "native_fix_review_local_candidate_only",
+      "candidate_validation": "fresh_read_only_job",
+      "trusted_publisher_status": "implemented_local_not_activated",
+      "trusted_publisher_credential": "PULLFROG_REMEDIATION_PUBLISH_TOKEN",
+      "trusted_publisher_credential_requires_separate_approval": true,
       "review_approval_enabled": false,
       "auto_merge_enabled": false
     },
@@ -117,7 +144,7 @@
     "self_managed_reviewer": {
       "kind": "review_service",
       "roles": ["review_actor"],
-      "status": "available_emergency_fallback",
+      "status": "disabled_historical_reviewer",
       "credential_location": "private_byok_runtime",
       "requires_explicit_approval": false,
       "secrets_in_repo": false

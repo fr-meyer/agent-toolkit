@@ -1,12 +1,13 @@
 # Provider-free PR automation dogfood harness
 
-This harness is the first non-merge acceptance surface for the Pullfrog, Mergeguez, and Speculoos PR-automation architecture. It deliberately calls no coding provider and receives no secrets. Its job is to prove the deterministic boundaries before any live agent or automatic remediation is enabled.
+This harness is the first non-merge acceptance surface for the Pullfrog and Speculoos PR-automation architecture. It deliberately calls no coding provider and receives no secrets. Its job is to prove the deterministic boundaries before any automatic remediation is enabled.
 
 ## Roles represented by the fixture
 
-- Pullfrog is represented as the PR authoring worker.
-- Mergeguez is represented as the distinct exact-head reviewer and PR-lifecycle orchestrator.
-- Speculoos policy is represented by the fail-closed receipt conditions.
+- Pullfrog is represented as the sole AI reviewer and intended remediation worker.
+- The provider-free coordinator is represented by exact-head, claim, evidence, and cycle decisions.
+- Speculoos policy is represented by the independent fail-closed receipt conditions.
+- Mergeguez may publish an approved branch or execute a separately authorized merge, but it is not represented as a reviewer.
 - The merge mode remains human-only.
 
 The fixture identities are public GitHub login labels, not credentials.
@@ -45,6 +46,7 @@ A successful receipt is only `ready_for_human_merge`. It never performs or autho
 
 ```bash
 python3 -m unittest discover -s scripts/github/tests -p 'test_pr_automation_dogfood.py' -v
+python3 -m unittest discover -s scripts/github/tests -p 'test_pullfrog_*.py' -v
 
 rm -rf artifacts/pr-automation-dogfood
 mkdir -p artifacts/pr-automation-dogfood
@@ -65,3 +67,5 @@ The workflow uses `contents: read`, disables checkout credential persistence, an
 ## Workflow-library treatment
 
 Both live workflows are materialized from canonical `templates/` sources through `templates/repo-workflow-materialization-manifest.json`. The repo-local trigger calls the materialized reusable workflow through a relative path, so no reusable-workflow SHA diffusion mapping is needed for this dogfood pair.
+
+The trigger includes all pull-request base branches, including nested names, then excludes exactly `main` and `master`. This lets every non-stable base eligible for the repository-owned auto-merge gate produce the required dogfood evidence without extending automatic merge authority to stable branches.
