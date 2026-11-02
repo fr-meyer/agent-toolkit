@@ -513,17 +513,18 @@ def write_plaintext_metadata(
     return verified
 
 
-def prepare_dual_generation(
+def prepare_gzip_generation(
     video_dir: Path,
     raw: bytes,
     *,
+    state: str,
     max_raw_bytes: int = DEFAULT_MAX_RAW_BYTES,
 ) -> dict[str, Any]:
-    """Write and fully verify an immutable dual generation without a manifest switch."""
+    """Write and fully verify an immutable gzip generation without a manifest switch."""
     if len(raw) > max_raw_bytes:
         raise MetadataLimitError("plaintext metadata exceeds configured byte limit")
     parse_metadata_json(raw)
-    filename, stored, descriptor = build_gzip_generation(raw, state="dual")
+    filename, stored, descriptor = build_gzip_generation(raw, state=state)
     write_immutable_generation(video_dir, filename, stored)
     recovered = read_metadata_bytes(
         video_dir,
@@ -533,6 +534,26 @@ def prepare_dual_generation(
     if recovered != raw:
         raise MetadataIntegrityError("compressed metadata generation did not round-trip exact bytes")
     return descriptor
+
+
+def prepare_dual_generation(
+    video_dir: Path,
+    raw: bytes,
+    *,
+    max_raw_bytes: int = DEFAULT_MAX_RAW_BYTES,
+) -> dict[str, Any]:
+    """Write and fully verify an immutable dual generation without a manifest switch."""
+    return prepare_gzip_generation(video_dir, raw, state="dual", max_raw_bytes=max_raw_bytes)
+
+
+def prepare_compressed_generation(
+    video_dir: Path,
+    raw: bytes,
+    *,
+    max_raw_bytes: int = DEFAULT_MAX_RAW_BYTES,
+) -> dict[str, Any]:
+    """Write and fully verify compressed-canonical metadata without requiring a plaintext twin."""
+    return prepare_gzip_generation(video_dir, raw, state="compressed", max_raw_bytes=max_raw_bytes)
 
 
 def prepare_manifest_with_storage(manifest: Mapping[str, Any], descriptor: Mapping[str, Any]) -> dict[str, Any]:

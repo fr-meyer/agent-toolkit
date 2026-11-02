@@ -741,6 +741,73 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
             self.assertEqual("dual", dual["metadata_storage"]["state"])
             self.assertTrue((root / "dual" / "abc123" / dual["metadata_storage"]["canonical_filename"]).is_file())
 
+    def test_compressed_mode_creates_no_plaintext_twin(self) -> None:
+        info = {"id": "abc123", "title": "Compressed only"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "none\n",
+                refresh=False,
+                metadata_storage_mode="compressed",
+            )
+            self.assertEqual("compressed", descriptor["state"])
+            self.assertFalse((video_dir / "metadata.json").exists())
+            manifest = self.module.write_metadata_only_archive(
+                video_dir,
+                info,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+                metadata_descriptor=descriptor,
+            )
+            self.assertNotIn("metadata.json", manifest["files"])
+            self.assertEqual(
+                json.dumps(info, indent=2, ensure_ascii=False, sort_keys=True).encode("utf-8"),
+                self.module.metadata_storage.read_metadata_bytes(video_dir, manifest),
+            )
+
+    def test_compressed_cutover_preserves_existing_plaintext(self) -> None:
+        original = {"id": "abc123", "title": "Dual source"}
+        changed = {"id": "abc123", "title": "Compressed refresh"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            dual = self.module.write_base_artifacts(
+                video_dir,
+                original,
+                "none\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            self.module.write_metadata_only_archive(
+                video_dir,
+                original,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+                metadata_descriptor=dual,
+            )
+            plaintext = (video_dir / "metadata.json").read_bytes()
+            compressed = self.module.write_base_artifacts(
+                video_dir,
+                changed,
+                "none\n",
+                refresh=True,
+                metadata_storage_mode="compressed",
+            )
+            manifest = self.module.write_metadata_only_archive(
+                video_dir,
+                changed,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="refresh",
+                metadata_descriptor=compressed,
+            )
+            self.assertEqual("compressed", manifest["metadata_storage"]["state"])
+            self.assertEqual(plaintext, (video_dir / "metadata.json").read_bytes())
+            self.assertEqual(
+                json.dumps(changed, indent=2, ensure_ascii=False, sort_keys=True).encode("utf-8"),
+                self.module.metadata_storage.read_metadata_bytes(video_dir, manifest),
+            )
+
     def test_cli_accepts_queue_owned_carrier_context_without_mutating_it(self) -> None:
         info = {"id": "abc123", "title": "Queue carrier", "subtitles": {}, "automatic_captions": {}}
         with tempfile.TemporaryDirectory() as tmp_s:

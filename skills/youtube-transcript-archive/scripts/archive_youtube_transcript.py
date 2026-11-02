@@ -434,9 +434,9 @@ def resolve_existing_archive(
     existing_lang = manifest.get("language")
     if requested_lang != "best" and existing_lang != requested_lang:
         return None
-    if metadata_storage_mode == "dual":
+    if metadata_storage_mode in {"dual", "compressed"}:
         descriptor = manifest.get("metadata_storage")
-        if not isinstance(descriptor, dict) or descriptor.get("state") != "dual":
+        if not isinstance(descriptor, dict) or descriptor.get("state") != metadata_storage_mode:
             return None
 
     declared_storage = manifest.get("metadata_storage") is not None
@@ -541,19 +541,20 @@ def write_base_artifacts(
         existing_manifest = metadata_storage.read_manifest(video_dir)
     existing_storage = existing_manifest.get("metadata_storage") if existing_manifest else None
     if existing_storage is not None:
-        # Switching either half of a dual pair before the other would leave a
-        # crash window where the old canonical manifest cannot validate. Keep
-        # exact bytes on same-content runs and refuse non-atomic changes.
-        if metadata_storage_mode != "dual":
+        if metadata_storage_mode == "legacy":
             raise metadata_storage.MetadataIntegrityError(
-                "refusing to downgrade an existing dual archive through the legacy writer"
+                "refusing to downgrade an existing compressed archive through the legacy writer"
             )
         existing_raw = metadata_storage.read_metadata_bytes(video_dir, existing_manifest)
-        if existing_raw != requested_raw:
+        if metadata_storage_mode == "dual" and existing_raw != requested_raw:
             raise metadata_storage.MetadataIntegrityError(
                 "refusing non-atomic dual refresh/reuse with changed metadata bytes"
             )
-        raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
+        if metadata_storage_mode == "dual":
+            raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
+        else:
+            raw = requested_raw
+            metadata_storage.parse_metadata_json(raw)
     elif existing_manifest is not None and metadata_storage_mode == "dual":
         # G2 can opt an unchanged legacy archive into dual storage, but changed
         # legacy metadata needs the separate migration lane: replacing the
@@ -565,6 +566,12 @@ def write_base_artifacts(
                 "refusing non-atomic legacy-to-dual refresh with changed metadata bytes"
             )
         raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
+    elif existing_manifest is not None and metadata_storage_mode == "compressed":
+        # A compressed-canonical commit may preserve a legacy plaintext file as
+        # rollback evidence while selecting fresh compressed bytes atomically in
+        # the manifest. The plaintext is never replaced here.
+        raw = requested_raw
+        metadata_storage.parse_metadata_json(raw)
     else:
         plaintext = video_dir / "metadata.json"
         if plaintext.exists() or plaintext.is_symlink():
@@ -577,9 +584,16 @@ def write_base_artifacts(
                 raise metadata_storage.MetadataIntegrityError(
                     "refusing orphaned plaintext metadata mismatch without a canonical manifest"
                 )
-            raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
+            if metadata_storage_mode == "compressed":
+                raw = requested_raw
+            else:
+                raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
         else:
-            raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=refresh)
+            if metadata_storage_mode == "compressed":
+                raw = requested_raw
+                metadata_storage.parse_metadata_json(raw)
+            else:
+                raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=refresh)
     if raw != requested_raw:
         raise metadata_storage.MetadataIntegrityError(
             "metadata bytes changed during non-replacing archive creation"
@@ -588,7 +602,9 @@ def write_base_artifacts(
         safe_write(subtitles_path, subtitles_list)
     if metadata_storage_mode == "legacy":
         return None
-    return metadata_storage.prepare_dual_generation(video_dir, raw)
+    if metadata_storage_mode == "dual":
+        return metadata_storage.prepare_dual_generation(video_dir, raw)
+    return metadata_storage.prepare_compressed_generation(video_dir, raw)
 
 
 def write_metadata_only_archive(
@@ -613,7 +629,7 @@ def write_metadata_only_archive(
         "yt_dlp_version": yt_dlp_version_text,
         "files": [
             "manifest.json",
-            "metadata.json",
+            *(["metadata.json"] if (video_dir / "metadata.json").is_file() else []),
             "subtitles-list.txt",
             "report.md",
         ],
@@ -655,9 +671,9 @@ def main() -> int:
     )
     parser.add_argument(
         "--metadata-storage",
-        choices=["legacy", "dual"],
+        choices=["legacy", "dual", "compressed"],
         default="legacy",
-        help="Metadata storage mode. dual is explicit opt-in; default keeps legacy plaintext output.",
+        help="Metadata storage mode. compressed selects deterministic gzip without requiring a plaintext twin.",
     )
     # The canonical queue owns the writer lock and projection refresh. Accept
     # its explicit carrier context so this sibling script can be deployed as a
@@ -769,7 +785,7 @@ def main() -> int:
     lang_report = reports_dir / f"{lang}.md"
     rel_files = [
         "manifest.json",
-        "metadata.json",
+        *(["metadata.json"] if (video_dir / "metadata.json").is_file() else []),
         "subtitles-list.txt",
         str(lang_manifest.relative_to(video_dir)),
         str(raw_vtt.relative_to(video_dir)),

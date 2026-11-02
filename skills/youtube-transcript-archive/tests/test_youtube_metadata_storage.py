@@ -280,6 +280,15 @@ class MetadataStorageTests(unittest.TestCase):
         self.assertEqual("dual", descriptor["state"])
         self.assertEqual(raw, storage.read_metadata_bytes(video, {"metadata_storage": descriptor}))
 
+    def test_prepare_compressed_generation_does_not_require_plaintext(self):
+        temp, video, _manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        (video / "metadata.json").unlink()
+        descriptor = storage.prepare_compressed_generation(video, raw)
+        self.assertEqual("compressed", descriptor["state"])
+        self.assertFalse((video / "metadata.json").exists())
+        self.assertEqual(raw, storage.read_metadata_bytes(video, {"metadata_storage": descriptor}))
+
     def test_atomic_write_refuses_target_that_appears_mid_write(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)

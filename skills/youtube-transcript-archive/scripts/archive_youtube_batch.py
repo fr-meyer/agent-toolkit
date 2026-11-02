@@ -459,9 +459,9 @@ def main() -> int:
     parser.add_argument("--yt-dlp-bin", default=os.environ.get("YT_DLP", "yt-dlp"), help="yt-dlp binary path")
     parser.add_argument(
         "--metadata-storage",
-        choices=["legacy", "dual"],
+        choices=["legacy", "dual", "compressed"],
         default="legacy",
-        help="Metadata storage mode passed to the single-video helper; default keeps legacy plaintext output.",
+        help="Metadata storage mode passed to the single-video helper.",
     )
     parser.add_argument("--no-caption-fallback", action="store_true", help="Disable alternate caption retry in best mode")
     parser.add_argument(
