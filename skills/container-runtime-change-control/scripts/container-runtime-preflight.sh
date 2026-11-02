@@ -12,6 +12,7 @@ restart, recreate, rebuild, upgrade, rollback, or repair work.
 Options:
   --live-version-command CMD  Command that prints the live service version.
                               Run with "sh -c"; quote it carefully.
+                              Must exit zero; failed output is not evidence.
   --deployment-image REF      Durable deployment image reference to compare.
   --deployment-env PATH       Dotenv file containing an image variable.
   --image-var NAME            Image variable name in --deployment-env.
@@ -178,10 +179,14 @@ add_warning() {
 live_output=""
 live_version=""
 if [ -n "$live_version_command" ]; then
-  live_output="$(sh -c "$live_version_command" 2>&1 || true)"
-  live_version="$(extract_version "$live_output")"
-  if [ -z "$live_version" ]; then
-    add_warning "Live version command ran but no version could be parsed."
+  if live_output="$(sh -c "$live_version_command" 2>&1)"; then
+    live_version="$(extract_version "$live_output")"
+    if [ -z "$live_version" ]; then
+      add_warning "Live version command ran but no version could be parsed."
+    fi
+  else
+    live_status=$?
+    add_warning "Live version command failed (exit $live_status); output is not accepted as version evidence."
   fi
 elif [ "$operation" != "inspect" ]; then
   add_warning "No --live-version-command was provided for a mutating operation."
