@@ -22,6 +22,9 @@ This skill is intentionally generic. Service-specific commands, image variable n
   - rollback path, such as previous image tag, image archive, registry copy, manifest backup, VM snapshot, or explicit `rollback unavailable`.
 - Before touching a container image through pull, build, tag replacement, upgrade, rollback, or recreate from a changed spec, preserve or identify a known-good rollback image first. Prefer both a fast rollback tag and a durable copy when practical.
 - If the live version and the image/spec used for recreate disagree, stop before any recreate/rebuild/restart that could switch versions.
+- Treat image tags, Compose env values, and mutable registry tags as labels, not proof of binary version. If a service exposes a version command, verify the version inside any pulled or built candidate image before using it to recreate the live service.
+- For tool-only runtime changes, such as adding shell, media, network, or validation utilities, prefer a derived image built from the current official/runtime image. Do not rebuild the application from a source checkout unless source rebuild is the explicit approved goal.
+- A source-checkout build is allowed only when preflight proves the source checkout version, intended target version, durable deployment image/spec, running image, and live service version are reconciled. If any of those disagree in a way that could change the service version unexpectedly, classify the state as `version-drift-blocker`.
 - Do not treat package installs or source edits inside a running container as durable deployment state unless they are baked into the image or explicitly recorded as temporary hotfixes.
 - Prefer orchestrator-level changes over in-container process kills. Use ad-hoc process kills only for emergency recovery, and record them as such.
 - Preserve unrelated user/parallel-agent work and runtime config. Never use destructive cleanup as a shortcut to make a deployment proceed.
@@ -81,6 +84,8 @@ systemctl cat <unit>
 
 Keep the operation read-only until the comparison is understood.
 
+For source-based Docker or Compose rebuilds, also collect the source version from the service's native metadata before mutation, such as `package.json`, `pyproject.toml`, `Cargo.toml`, image labels, a release manifest, or an equivalent version file.
+
 ### 2.5 Capture or Verify the Rollback Image
 
 For Docker-style image mutation, do this before any build, pull, tag switch, recreate from a changed spec, upgrade, or rollback:
@@ -106,6 +111,22 @@ sha256sum <backup-dir>/<service>-image-YYYYMMDD-HHMM.tar.zst > <backup-dir>/<ser
 Use an available compression tool such as `zstd` or `gzip`; do not install packages as part of the backup step unless that package change is itself approved.
 
 If a local archive is too large, use the strongest available substitute: a registry copy, cloud snapshot, or documented previous image tag plus manifest backup. If no rollback artifact can be created, classify the operation as `read-only-only` or explicitly report `rollback unavailable` and ask before continuing.
+
+### 2.6 Build and Verify the Candidate
+
+Only after the rollback image is preserved and verified, split build from recreate and verify the candidate image version first. Before building, make the durable Compose service declare a unique candidate `image:` tag; reject build-only services whose effective config still omits that tag. Then resolve the tag's immutable local image ID after the build:
+
+```bash
+set -euo pipefail
+CANDIDATE_IMAGE="$(docker compose config --format json | jq -er '.services["<service>"].image | select(type == "string" and length > 0)')"
+docker compose build <service>
+CANDIDATE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
+[ -n "$CANDIDATE_IMAGE_ID" ] || { echo 'candidate image ID is empty' >&2; exit 1; }
+docker run --rm --entrypoint sh "$CANDIDATE_IMAGE_ID" -lc '<service> --version'
+docker compose up -d --no-build --pull never <service>
+```
+
+Require one non-empty, inspectable image ID before invoking the candidate. Because the same effective Compose config names the candidate tag and `--pull never` forbids replacing it from a registry, the final `up --no-build` deploys the local image that was inspected instead of an untagged, previous, or newly pulled image. Run the final recreate only when the candidate version matches the intended target. If the explicit candidate tag, image ID, or version cannot be checked, stop and classify the operation as `read-only-only` or `version-drift-blocker` based on the evidence.
 
 ### 3. Classify the State
 
@@ -170,3 +191,15 @@ result: container comes back from version A
 ```
 
 The fix is to refuse mutation until the live service, durable image/spec, running container, target version, and rollback path are reconciled.
+
+Another dangerous state is a disguised rollback:
+
+```text
+live service says: version B
+image tag/env says: version B
+source checkout actually builds: version A
+agent runs: docker compose up -d --build
+result: service comes back from version A while the tag still looks like B
+```
+
+The fix is to stop on source/version drift. For tool-only additions, build a derived runtime image instead of rebuilding the application from source.
