@@ -31,7 +31,7 @@ acceptance:
 delivery_policy:
   mode: inherit_branch_policy
 publication_boundary:
-  statement: The user explicitly authorized finishing PR #77 through guarded feature-to-dev merge and cleanup. Stable promotion, release, deployment, fallback activation, settings, billing, credentials, and force-push remain excluded.
+  statement: 'The user explicitly authorized finishing PR #77 through guarded feature-to-dev merge and cleanup. Stable promotion, release, deployment, fallback activation, settings, billing, credentials, and force-push remain excluded.'
 documentation_impact:
   status: skill-only
   rationale: The reusable procedure is fully documented in its SKILL.md; no top-level README or docs page change is required.
@@ -41,7 +41,7 @@ validation:
   - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task pr-077-context-aware-message-formatting --expected-head-ref skill/context-aware-message-formatting --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha "$(git rev-parse origin/dev)"
   - git diff --check origin/dev...HEAD
 private_data_scan: required
-publish_authority: User-authorized PR #77 feature-to-dev completion through the protected Mergeguez lane, with exact-head review and hosted gates required before merge and exact-SHA cleanup afterward.
+publish_authority: 'User-authorized PR #77 feature-to-dev completion through the protected Mergeguez lane, with exact-head review and hosted gates required before merge and exact-SHA cleanup afterward.'
 publication_route:
   strategy: merge_current_dev_then_fast_forward_publish
   selected_push_actor: mergeguez_branch_broker
