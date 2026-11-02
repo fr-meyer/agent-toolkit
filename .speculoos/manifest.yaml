@@ -96,5 +96,5 @@ gates:
     - hosted-review-fallback-pilot-separate-approval
     - composite-review-gate-consumers-validated
     - required-check-migration-separate-approval
-current_task: fix-container-preflight-failed-version-evidence
-current_task_metadata: .speculoos/tasks/fix-container-preflight-failed-version-evidence.yaml
+current_task: youtube-metadata-g5-cutover
+current_task_metadata: .speculoos/tasks/youtube-metadata-g5-cutover.yaml
