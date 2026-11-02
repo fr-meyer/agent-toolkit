@@ -33,7 +33,7 @@ acceptance:
 delivery_policy:
   mode: inherit_branch_policy
 publication_boundary:
-  statement: The user explicitly authorized finishing PR #88 through guarded feature-to-dev merge and cleanup. Stable promotion, release, deployment, fallback activation, settings, billing, credentials, and force-push remain excluded.
+  statement: 'The user explicitly authorized finishing PR #88 through guarded feature-to-dev merge and cleanup. Stable promotion, release, deployment, fallback activation, settings, billing, credentials, and force-push remain excluded.'
 documentation_impact:
   status: task-packet-only
   rationale: The behavior is covered by the helper tests and this PR-specific Speculoos packet; no top-level README or docs page changes are required.
@@ -45,7 +45,7 @@ validation:
   - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task fix-container-preflight-failed-version-evidence --expected-head-ref fix/container-preflight-failed-version-evidence --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha "$(git rev-parse origin/dev)"
   - git diff --check origin/dev...HEAD
 private_data_scan: required
-publish_authority: User-authorized PR #88 feature-to-dev completion through the protected Mergeguez lane, with exact-head review and hosted gates required before merge and exact-SHA cleanup afterward.
+publish_authority: 'User-authorized PR #88 feature-to-dev completion through the protected Mergeguez lane, with exact-head review and hosted gates required before merge and exact-SHA cleanup afterward.'
 functional_review:
   patch_sha256: 78c86d971215c7b5fd3815e434662cae8e1a6c50a94568fcd37a897a12435f31
   author_cases_passed: 21
