@@ -712,7 +712,7 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
                     self.module.main()
             self.assertFalse((root / "outside-created").exists())
 
-    def test_cli_default_is_legacy_and_dual_requires_explicit_opt_in(self) -> None:
+    def test_cli_default_is_compressed_and_dual_requires_explicit_opt_in(self) -> None:
         info = {"id": "abc123", "title": "Storage mode", "subtitles": {}, "automatic_captions": {}}
         with tempfile.TemporaryDirectory() as tmp_s:
             root = Path(tmp_s)
@@ -722,12 +722,14 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
                 mock.patch.object(self.module, "load_json_from_yt_dlp", return_value=info),
                 mock.patch.object(self.module, "list_subs", return_value="none\n"),
                 mock.patch.object(self.module, "yt_dlp_version", return_value="fixture"),
-                mock.patch.object(sys, "argv", common + ["--archive-root", str(root / "legacy")]),
+                mock.patch.object(sys, "argv", common + ["--archive-root", str(root / "compressed")]),
             ):
                 self.assertEqual(0, self.module.main())
-            legacy = json.loads((root / "legacy" / "abc123" / "manifest.json").read_text(encoding="utf-8"))
-            self.assertNotIn("metadata_storage", legacy)
-            self.assertEqual([], list((root / "legacy" / "abc123").glob("metadata.*.json.gz")))
+            compressed = json.loads((root / "compressed" / "abc123" / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("compressed", compressed["metadata_storage"]["state"])
+            self.assertNotIn("metadata.json", compressed["files"])
+            self.assertFalse((root / "compressed" / "abc123" / "metadata.json").exists())
+            self.assertTrue((root / "compressed" / "abc123" / compressed["metadata_storage"]["canonical_filename"]).is_file())
 
             with (
                 mock.patch.object(self.module.shutil, "which", return_value="/fixture/yt-dlp"),

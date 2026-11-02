@@ -460,8 +460,8 @@ def main() -> int:
     parser.add_argument(
         "--metadata-storage",
         choices=["legacy", "dual", "compressed"],
-        default="legacy",
-        help="Metadata storage mode passed to the single-video helper.",
+        default="compressed",
+        help="Metadata storage mode passed to the single-video helper; compressed is the canonical default.",
     )
     parser.add_argument("--no-caption-fallback", action="store_true", help="Disable alternate caption retry in best mode")
     parser.add_argument(

@@ -410,7 +410,7 @@ def resolve_existing_archive(
     video_dir: Path,
     requested_lang: str,
     *,
-    metadata_storage_mode: str = "legacy",
+    metadata_storage_mode: str = "compressed",
 ) -> dict[str, Any] | None:
     manifest_path = manifest_path_for(video_dir, requested_lang)
     canonical_path = video_dir / "manifest.json"
@@ -672,8 +672,8 @@ def main() -> int:
     parser.add_argument(
         "--metadata-storage",
         choices=["legacy", "dual", "compressed"],
-        default="legacy",
-        help="Metadata storage mode. compressed selects deterministic gzip without requiring a plaintext twin.",
+        default="compressed",
+        help="Metadata storage mode. compressed is the canonical deterministic-gzip default and never removes an existing plaintext rollback twin.",
     )
     # The canonical queue owns the writer lock and projection refresh. Accept
     # its explicit carrier context so this sibling script can be deployed as a
