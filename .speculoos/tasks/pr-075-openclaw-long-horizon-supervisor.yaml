@@ -1,0 +1,58 @@
+id: pr-075-openclaw-long-horizon-supervisor
+title: Add current-architecture OpenClaw long-horizon supervisor skill
+status: preparing_publication
+owner: fr-meyer
+branch: feat/openclaw-long-horizon-supervisor
+base_branch: dev
+base_sha: 49c1ebbab1c539c9532bd1356c883f61e9e28a09
+github:
+  issue: null
+  pull_request: 75
+  url: https://github.com/fr-meyer/agent-toolkit/pull/75
+scope:
+  - skills/openclaw-long-horizon-supervisor/SKILL.md
+  - skills/openclaw-long-horizon-supervisor/references/controller-contract.md
+  - skills/openclaw-long-horizon-supervisor/references/eval-prompts.json
+  - .speculoos/manifest.yaml
+  - .speculoos/tasks/pr-075-openclaw-long-horizon-supervisor.yaml
+  - specs/pr-075-openclaw-long-horizon-supervisor/commit-message.txt
+  - specs/pr-075-openclaw-long-horizon-supervisor/pr-body.md
+non_goals:
+  - implementing a host-specific controller or changing Workboard/Automation configuration
+  - granting card metadata, sessions, or Automation payloads authority to approve effects
+  - hardcoding personal paths, private repositories, model ids, job ids, or session keys
+  - enabling fallback, force-push, auto-merge, release, deployment, settings, or billing changes
+acceptance:
+  - Workboard is the durable execution ledger and every claimed attempt ends complete, blocked, or released
+  - Automations are limited to time/event wakes and recovery; job admission or running state is not completion evidence
+  - sessions are context identities, not external delivery addresses or approval authority
+  - non-idempotent effects require native preview/confirm or compare-and-swap receipts, with ambiguous intents blocked rather than replayed
+  - the optional controller extension provides fail-closed intent tracking and fenced metadata only; exactly-once effects require an enforcing service-side primitive
+  - the skill stays self-contained and below 10000 characters, with valid JSON evaluation prompts
+  - current dev is merged without rewriting the existing PR branch
+  - the exact final head receives fresh Pullfrog review and all required exact-head hosted gates before merge
+  - Mergeguez merges only the exact reviewed head into dev and cleanup follows verified merge
+delivery_policy:
+  mode: inherit_branch_policy
+publication_boundary:
+  statement: 'The user explicitly authorized finishing PR #75 through guarded feature-to-dev merge and cleanup. This skill defines procedures only; it does not create cards, jobs, sessions, controllers, or external effects during publication.'
+documentation_impact:
+  status: skill-only
+  rationale: The reusable workflow and its optional controller extension are fully documented inside the new skill directory; no top-level README or docs page change is required.
+validation:
+  - python3 validates frontmatter, reference presence, size below 10000 characters, and forbidden obsolete terminology absence
+  - python3 -m json.tool skills/openclaw-long-horizon-supervisor/references/eval-prompts.json
+  - scripts/github/validate_pullfrog_workflow.sh
+  - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task pr-075-openclaw-long-horizon-supervisor --expected-head-ref feat/openclaw-long-horizon-supervisor --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha "$(git rev-parse origin/dev)"
+  - git diff --check origin/dev...HEAD
+private_data_scan: required
+publish_authority: 'User-authorized PR #75 feature-to-dev completion through the protected Mergeguez lane, with exact-head review and hosted gates required before merge and exact-SHA cleanup afterward.'
+publication_route:
+  strategy: merge_current_dev_then_fast_forward_publish
+  selected_push_actor: mergeguez_branch_broker
+  selected_push_login: mergeguez[bot]
+  selected_pr_actor: existing_pr_author
+  selected_pr_login: mergeguez[bot]
+  selected_merge_actor: mergeguez_dev_merge
+  force_push_allowed: false
+  status: ready_for_local_validation

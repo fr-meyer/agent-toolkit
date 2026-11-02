@@ -4,7 +4,7 @@ status: preparing_publication
 owner: fr-meyer
 branch: skill/context-aware-message-formatting
 base_branch: dev
-base_sha: 49c1ebbab1c539c9532bd1356c883f61e9e28a09
+base_sha: 38d17965593841ffe91450fdf92480d6155e5792
 github:
   issue: null
   pull_request: 77

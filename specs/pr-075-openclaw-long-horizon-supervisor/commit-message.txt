@@ -1,0 +1,5 @@
+feat(skill): align long-horizon supervision with Workboard
+
+Merge current dev without rewriting PR #75 and make Workboard, Automations, sessions, receipts, and exact gates the portable supervision contract.
+
+Feature PRs target `dev`. Release/promotion PRs target `main`.
