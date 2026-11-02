@@ -233,6 +233,11 @@ def sanitize_caption_error(detail: str) -> str:
         r"\1?[redacted query]\2",
         detail,
     )
+    detail = re.sub(
+        r"""(?im)\b((?:header:\s*)?location:\s*[^?\s\"'<>]*)\?[^ \t\r\n\"'<>]+""",
+        r"\1?[redacted query]",
+        detail,
+    )
     detail = re.sub(r"(?i)https?://[^\s\"'<>]+", lambda match: match.group(0).split("?")[0].split("#")[0] + ("?[redacted query]" if "?" in match.group(0) else ""), detail)
     detail = re.sub(r"(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,})", "[redacted credential]", detail)
     detail = re.sub(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b", "[redacted JWT]", detail)

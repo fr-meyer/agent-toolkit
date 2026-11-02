@@ -145,6 +145,21 @@ class ProcessInterruptionTests(unittest.TestCase):
         self.assertIn('/api/timedtext?[redacted query]', public)
         self.assertIn('0xC000026B', public)
 
+    def test_fatal_relative_location_query_is_redacted_before_publication(self):
+        secret = 'synthetic-relative-redirect-value'
+        response_header = f'header: Location: /api/timedtext?sig={secret}&expire=999'
+        error = subprocess.CalledProcessError(3221226091, ['synthetic'], output=response_header)
+        with patch.object(archive.subprocess, 'run', side_effect=error):
+            try:
+                archive.load_json_from_yt_dlp('synthetic', 'https://example.invalid/')
+            except archive.YtDlpProcessInterrupted:
+                public = traceback.format_exc()
+            else:
+                self.fail('fatal process did not stop')
+        self.assertNotIn(secret, public)
+        self.assertIn('Location: /api/timedtext?[redacted query]', public)
+        self.assertIn('0xC000026B', public)
+
     def test_long_sensitive_field_is_redacted_before_diagnostic_bound(self):
         error = subprocess.CalledProcessError(3221226091, ['synthetic'], stderr='Cookie: ' + 'synthetic-cookie-secret' * 4000)
         summary = archive.caption_error_summary(error)
