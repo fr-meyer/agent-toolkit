@@ -47,8 +47,11 @@ so an immutable action ref alone does not pin the executed npm CLI. Every
 repository-owned Pullfrog action step therefore sets
 `PULLFROG_FORCE_LOCAL_CLI: '1'`. The action runs the checked-out `v0.1.102`
 source and its frozen lockfile instead of floating to a later `0.1.x` package.
-Every provider step also maps the job-scoped read token as `GH_TOKEN`, which
-prevents the runtime from minting its broader default MCP token.
+Fallback and remediation-analysis provider steps map the job-scoped read token
+as `GH_TOKEN`, which prevents those non-publisher phases from minting a broader
+MCP token. The primary native review intentionally does not override `GH_TOKEN`:
+it must exchange its OIDC identity for the scoped GitHub App token used to
+publish the review.
 
 At the pinned revision:
 

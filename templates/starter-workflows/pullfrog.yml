@@ -35,8 +35,8 @@ jobs:
         env:
           # The pinned action bootstrap otherwise resolves pullfrog@^0.1.102,
           # which can float to a newer npm package. Force the checked-out
-          # action source and reuse only this job's read-only GitHub token.
-          GH_TOKEN: ${{ github.token }}
+          # action source. Do not set GH_TOKEN; Pullfrog must exchange
+          # the job's OIDC identity for its scoped GitHub App review token.
           PULLFROG_FORCE_LOCAL_CLI: '1'
         uses: pullfrog/pullfrog@25a837a2b078177c3acdce790506d1fd1acedd82 # v0.1.102
         with:
