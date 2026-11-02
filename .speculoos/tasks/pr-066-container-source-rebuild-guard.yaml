@@ -1,5 +1,5 @@
 id: pr-066-container-source-rebuild-guard
-title: Bootstrap guarded remediation for container source rebuild safety
+title: Bootstrap and recover guarded PR 66 container rebuild remediation
 status: implementation
 branch: feat/container-source-rebuild-guard
 base_branch: dev
@@ -16,11 +16,12 @@ scope:
   - preserve the original container runtime change-control guard against disguised source rebuild rollbacks
   - make the provider-free dogfood workflow manually dispatchable on an exact selected ref without changing its pull-request path filters
   - bind PR 66 to the repository-owned Speculoos exact-head contract
-  - leave the two existing review findings for the guarded Pullfrog remediation loop to repair
+  - preserve the cloud remediation loop's 90-day fail-closed history boundary for this older pull request
+  - apply Pullfrog's two existing findings through the protected manual publication lane, then require a fresh exact-head Pullfrog re-review
 non_goals:
   - changing or broadening the dogfood pull-request path filters
   - fabricating, copying, renaming, or manually publishing a successful check
-  - weakening exact-head, app identity, review, CI, Speculoos, destination, or merge gates
+  - weakening or bypassing the cloud remediation history-retention, exact-head, app identity, review, CI, Speculoos, destination, or merge gates
   - enabling Astra, fallback variables, provider write authority, force-push, approval, auto-merge, release, deployment, settings changes, billing changes, or branch deletion
 acceptance:
   - the canonical and materialized dogfood trigger remain byte-identical and gain only a bounded workflow_dispatch event in addition to the existing pull_request event
@@ -28,7 +29,8 @@ acceptance:
   - the policy test requires the manual trigger and the existing non-stable base coverage
   - the Speculoos publication packet exactly lists the final PR diff against dev and passes the repository-bound exact-head contract
   - hosted dogfood and Speculoos checks are produced by GitHub Actions for the exact current PR head, never synthesized through the Checks API
-  - Pullfrog remains the sole reviewer and fixer for remediation and re-review
+  - the protected manual remediation implements only Pullfrog's two existing findings after the cloud fixer refuses the PR's expired evidence window
+  - Pullfrog remains the sole AI reviewer and must re-review the final exact head
 delivery_policy:
   mode: inherit_branch_policy
 documentation_impact:

@@ -86,17 +86,6 @@ Keep the operation read-only until the comparison is understood.
 
 For source-based Docker or Compose rebuilds, also collect the source version from the service's native metadata before mutation, such as `package.json`, `pyproject.toml`, `Cargo.toml`, image labels, a release manifest, or an equivalent version file.
 
-If a source rebuild is approved, split build from recreate and verify the candidate image version first:
-
-```bash
-docker compose build <service>
-CANDIDATE_IMAGE="$(docker compose config --format json | jq -r '.services["<service>"].image')"
-docker run --rm --entrypoint sh "$CANDIDATE_IMAGE" -lc '<service> --version'
-docker compose up -d --no-build <service>
-```
-
-Run the final recreate only when the candidate image version matches the intended target. If the candidate version cannot be checked, stop and classify the operation as `read-only-only` or `version-drift-blocker` based on the evidence.
-
 ### 2.5 Capture or Verify the Rollback Image
 
 For Docker-style image mutation, do this before any build, pull, tag switch, recreate from a changed spec, upgrade, or rollback:
@@ -122,6 +111,20 @@ sha256sum <backup-dir>/<service>-image-YYYYMMDD-HHMM.tar.zst > <backup-dir>/<ser
 Use an available compression tool such as `zstd` or `gzip`; do not install packages as part of the backup step unless that package change is itself approved.
 
 If a local archive is too large, use the strongest available substitute: a registry copy, cloud snapshot, or documented previous image tag plus manifest backup. If no rollback artifact can be created, classify the operation as `read-only-only` or explicitly report `rollback unavailable` and ask before continuing.
+
+### 2.6 Build and Verify the Candidate
+
+Only after the rollback image is preserved and verified, split build from recreate and verify the candidate image version first. Resolve the image ID emitted by the build rather than assuming the Compose service declares an `image:` field:
+
+```bash
+CANDIDATE_IMAGE_ID="$(docker compose build --quiet <service>)"
+[ -n "$CANDIDATE_IMAGE_ID" ] || { echo 'candidate image ID is empty' >&2; exit 1; }
+docker image inspect "$CANDIDATE_IMAGE_ID" >/dev/null
+docker run --rm --entrypoint sh "$CANDIDATE_IMAGE_ID" -lc '<service> --version'
+docker compose up -d --no-build <service>
+```
+
+Require one non-empty, inspectable image ID before invoking the candidate. Run the final recreate only when the candidate version matches the intended target. If the candidate image or version cannot be checked, stop and classify the operation as `read-only-only` or `version-drift-blocker` based on the evidence.
 
 ### 3. Classify the State
 

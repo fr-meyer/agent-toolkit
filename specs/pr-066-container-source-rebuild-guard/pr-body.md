@@ -11,8 +11,10 @@ Feature PRs target `dev`. Release/promotion PRs target `main`.
 - add a general manual `workflow_dispatch` event to the canonical and materialized provider-free dogfood trigger
 - keep all existing pull-request branch and path filters unchanged
 - bind PR #66 to a dedicated Speculoos task and exact publication packet
+- preserve the guarded cloud fixer's 90-day fail-closed evidence boundary for this older PR
+- apply only Pullfrog's two existing findings through the protected manual publication lane, then require a fresh exact-head Pullfrog re-review
 
-This bootstrap does not publish a check itself. GitHub Actions must execute the reviewed workflow on the exact selected ref and attach the resulting job check to that exact commit.
+This bootstrap does not publish a check itself. GitHub Actions must execute the reviewed workflow on the exact selected ref and attach the resulting job check to that exact commit. The cloud remediation run correctly stopped with `history_retention_window_exceeded`; this packet does not weaken or bypass that guard.
 
 ## Changed Files For Publish
 
@@ -31,7 +33,8 @@ This bootstrap does not publish a check itself. GitHub Actions must execute the 
 - no check is copied, renamed, synthesized, or published through the Checks API
 - no provider receives repository write authority
 - no fallback, Astra run, force-push, approval, merge, release, deployment, settings change, billing change, or branch deletion is authorized by this packet
-- the guarded Pullfrog loop may proceed only after fresh GitHub-hosted dogfood and Speculoos checks succeed on the exact current PR head
+- no cloud-remediation retention or history guard is weakened or bypassed
+- the protected manual remediation may proceed only from Pullfrog's exact findings and after fresh GitHub-hosted dogfood and Speculoos checks succeed on the exact current PR head
 
 ## Validation
 
