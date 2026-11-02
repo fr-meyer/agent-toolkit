@@ -96,5 +96,5 @@ gates:
     - hosted-review-fallback-pilot-separate-approval
     - composite-review-gate-consumers-validated
     - required-check-migration-separate-approval
-current_task: pr-066-container-source-rebuild-guard
-current_task_metadata: .speculoos/tasks/pr-066-container-source-rebuild-guard.yaml
+current_task: pr-075-openclaw-long-horizon-supervisor
+current_task_metadata: .speculoos/tasks/pr-075-openclaw-long-horizon-supervisor.yaml
