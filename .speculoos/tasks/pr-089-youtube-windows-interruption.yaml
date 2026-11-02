@@ -40,12 +40,12 @@ documentation_impact:
 validation:
   - python3 -m unittest -v skills/youtube-transcript-archive/tests/test_archive_youtube_transcript.py skills/youtube-transcript-archive/tests/test_process_interruption.py
   - python3 -m py_compile skills/youtube-transcript-archive/scripts/archive_youtube_transcript.py skills/youtube-transcript-archive/tests/test_archive_youtube_transcript.py skills/youtube-transcript-archive/tests/test_process_interruption.py
-  - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task pr-089-youtube-windows-interruption --expected-head-ref fix/youtube-windows-archiver-20261006 --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha b54c2f06d7e72fadf405ed38aae92e198d19da65
+  - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task pr-089-youtube-windows-interruption --expected-head-ref fix/youtube-windows-archiver-20261102 --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha b54c2f06d7e72fadf405ed38aae92e198d19da65
   - git diff --check
 private_data_scan: required
 publish_authority: 'User-authorized PR #89 feature-to-dev completion through the protected Mergeguez lane, with exact-head review and hosted gates required before merge and exact-SHA cleanup afterward.'
 functional_review:
-  author_cases_passed: 38
+  author_cases_passed: 39
   windows_native_cases_passed: not_run_source_only_merge
   findings: 0
   named_hosted_review_satisfied: false

@@ -21,6 +21,8 @@ class ProcessInterruptionTests(unittest.TestCase):
             ('bot_check', 'ERROR: CAPTCHA required after unusual traffic'),
             ('rate_limited', 'ERROR: HTTP Error 429: Too Many Requests'),
             ('auth_required', 'ERROR: Authentication required; login required'),
+            ('auth_required', 'ERROR: Sign in to confirm your age'),
+            ('auth_required', 'ERROR: Private video. Sign in if you have been granted access to this video'),
         )
         for failure_class, diagnostic in cases:
             with self.subTest(failure_class=failure_class, diagnostic=diagnostic):
@@ -55,6 +57,8 @@ class ProcessInterruptionTests(unittest.TestCase):
             ('bot_check', "ERROR: confirm you’re not a bot"),
             ('rate_limited', 'ERROR: HTTP Error 429'),
             ('auth_required', 'ERROR: login required'),
+            ('auth_required', 'ERROR: Sign in to confirm your age'),
+            ('auth_required', "ERROR: Private video. Sign in if you've been granted access to this video"),
         ):
             for helper, args in helpers:
                 with self.subTest(failure_class=failure_class, helper=helper.__name__):
@@ -125,6 +129,21 @@ class ProcessInterruptionTests(unittest.TestCase):
         for secret in secrets:
             self.assertNotIn(secret, sanitized)
         self.assertIn('example.invalid/caption', sanitized)
+
+    def test_fatal_origin_form_request_query_is_redacted_before_publication(self):
+        secret = 'synthetic-relative-signed-value'
+        request = f"send: b'GET /api/timedtext?sig={secret}&expire=999 HTTP/1.1\\r\\n'"
+        error = subprocess.CalledProcessError(3221226091, ['synthetic'], output=request)
+        with patch.object(archive.subprocess, 'run', side_effect=error):
+            try:
+                archive.load_json_from_yt_dlp('synthetic', 'https://example.invalid/')
+            except archive.YtDlpProcessInterrupted:
+                public = traceback.format_exc()
+            else:
+                self.fail('fatal process did not stop')
+        self.assertNotIn(secret, public)
+        self.assertIn('/api/timedtext?[redacted query]', public)
+        self.assertIn('0xC000026B', public)
 
     def test_long_sensitive_field_is_redacted_before_diagnostic_bound(self):
         error = subprocess.CalledProcessError(3221226091, ['synthetic'], stderr='Cookie: ' + 'synthetic-cookie-secret' * 4000)

@@ -23,7 +23,13 @@ WS_RE = re.compile(r"\s+")
 CAPTION_CIRCUIT_MARKERS = {
     "bot_check": ("confirm you’re not a bot", "confirm you're not a bot", "captcha", "unusual traffic"),
     "rate_limited": ("http error 429", "too many requests", "rate limit"),
-    "auth_required": ("login required", "authentication required"),
+    "auth_required": (
+        "login required",
+        "authentication required",
+        "sign in to confirm your age",
+        "sign in if you have been granted access",
+        "sign in if you've been granted access",
+    ),
 }
 CAPTION_CIRCUIT_DIAGNOSTICS = {
     "bot_check": "bot_check; CAPTCHA or sign in to confirm you're not a bot",
@@ -222,6 +228,11 @@ def sanitize_caption_error(detail: str) -> str:
     detail = re.sub(r"(?i)(--(?:password|username|video-password|cookies(?:-from-browser)?|netrc(?:-location|-cmd)?|add-header|proxy))(?:\s+|=)(?:\"[^\"]*\"|'[^']*'|\S+)", r"\1 [redacted]", detail)
     detail = re.sub(r"""(?im)\b([A-Za-z0-9_]*(?:token|secret|password|credential|api[_-]?key)[A-Za-z0-9_]*)(["']?\s*[:=]\s*)[^\r\n]+""", r"\1\2[redacted]", detail)
     detail = re.sub(r"(?i)(https?://)[^\s/@]+:[^\s/@]+@", r"\1[redacted]@", detail)
+    detail = re.sub(
+        r"""(?i)\b((?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)\s+[^?\s\"'<>]*)\?[^ \t\r\n\"'<>]+(\s+HTTP/\d(?:\.\d)?)""",
+        r"\1?[redacted query]\2",
+        detail,
+    )
     detail = re.sub(r"(?i)https?://[^\s\"'<>]+", lambda match: match.group(0).split("?")[0].split("#")[0] + ("?[redacted query]" if "?" in match.group(0) else ""), detail)
     detail = re.sub(r"(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,})", "[redacted credential]", detail)
     detail = re.sub(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b", "[redacted JWT]", detail)

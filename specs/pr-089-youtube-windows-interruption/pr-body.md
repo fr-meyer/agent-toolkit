@@ -23,7 +23,7 @@ This protected replacement supersedes draft PR #89 because the legacy branch was
 
 ## Validation
 
-- 38 focused Linux/Python regressions on the reconciled source
+- 39 focused Linux/Python regressions on the reconciled source
 - Python compilation and diff whitespace checks
 - native Windows regression remains a source-only acceptance probe and is not an activation or deployment gate
 - exact-head Speculoos contract and hosted Pullfrog review required after protected publication
