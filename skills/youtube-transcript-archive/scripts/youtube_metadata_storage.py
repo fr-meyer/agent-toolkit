@@ -410,6 +410,8 @@ def _write_all(fd: int, data: bytes, *, write_fn: Callable[[int, bytes], int] = 
 
 
 def _fsync_directory(directory: Path) -> None:
+    if os.name == "nt":
+        return
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
     fd = os.open(directory, flags)
     try:
@@ -418,8 +420,16 @@ def _fsync_directory(directory: Path) -> None:
         os.close(fd)
 
 
+def _set_temp_mode(fd: int, path: Path, mode: int) -> None:
+    fchmod = getattr(os, "fchmod", None)
+    if fchmod is not None:
+        fchmod(fd, mode)
+    else:
+        os.chmod(path, mode)
+
+
 def durable_atomic_write(path: Path, data: bytes, *, mode: int = 0o600) -> None:
-    """Write bytes through a same-directory temp, fsync, replace, and dir fsync.
+    """Write through a same-directory temp, fsync, replace, and sync the directory where supported.
 
     The target identity is rechecked immediately before replacement so a
     concurrent writer cannot be overwritten silently.
@@ -436,7 +446,7 @@ def durable_atomic_write(path: Path, data: bytes, *, mode: int = 0o600) -> None:
     fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.tmp-", dir=parent)
     temp = Path(temp_name)
     try:
-        os.fchmod(fd, mode)
+        _set_temp_mode(fd, temp, mode)
         _write_all(fd, data)
         os.fsync(fd)
         os.close(fd)

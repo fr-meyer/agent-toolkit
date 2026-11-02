@@ -68,6 +68,26 @@ class MetadataStorageTests(unittest.TestCase):
         with mock.patch.object(storage.os, "O_BINARY", synthetic_binary_flag, create=True):
             self.assertEqual(synthetic_binary_flag, storage._read_only_flags() & synthetic_binary_flag)
 
+    def test_temp_mode_falls_back_when_fchmod_is_unavailable(self):
+        temp, video, _manifest, _raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        fd, name = tempfile.mkstemp(dir=video)
+        path = Path(name)
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+        self.addCleanup(lambda: os.close(fd))
+        real_chmod = os.chmod
+        with mock.patch.object(storage.os, "fchmod", None, create=True):
+            with mock.patch.object(storage.os, "chmod", wraps=real_chmod) as chmod:
+                storage._set_temp_mode(fd, path, 0o600)
+                chmod.assert_called_once_with(path, 0o600)
+
+    def test_directory_fsync_is_skipped_on_windows(self):
+        temp, video, _manifest, _raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        with mock.patch.object(storage.os, "name", "nt"):
+            with mock.patch.object(storage.os, "open", side_effect=AssertionError("directory open attempted")):
+                storage._fsync_directory(video)
+
     def test_short_writes_are_completed(self):
         sink = bytearray()
 
