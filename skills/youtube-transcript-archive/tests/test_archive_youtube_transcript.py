@@ -182,6 +182,48 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
             self.assertIn("Metadata-only archive", report)
             self.assertIn("No transcript available.", report)
 
+    def test_default_compressed_mode_reuses_complete_legacy_archive_without_writes(self) -> None:
+        info = {
+            "id": "abc123",
+            "title": "Complete legacy archive",
+            "subtitles": {},
+            "automatic_captions": {},
+        }
+        with tempfile.TemporaryDirectory() as tmp_s:
+            archive_root = Path(tmp_s) / "archive"
+            archive_root.mkdir()
+            video_dir = archive_root / "abc123"
+            self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "no captions listed\n",
+                refresh=False,
+                metadata_storage_mode="legacy",
+            )
+            self.module.write_metadata_only_archive(
+                video_dir,
+                info,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+            )
+            before = {path.relative_to(video_dir): path.read_bytes() for path in video_dir.rglob("*") if path.is_file()}
+
+            with (
+                mock.patch.object(self.module.shutil, "which", return_value="/fixture/yt-dlp"),
+                mock.patch.object(self.module, "load_json_from_yt_dlp", return_value=info),
+                mock.patch.object(self.module, "archive_resolved_video") as archive_resolved_video,
+                mock.patch.object(
+                    sys,
+                    "argv",
+                    ["archive", "https://www.youtube.com/watch?v=abc123", "--archive-root", str(archive_root)],
+                ),
+            ):
+                self.assertEqual(0, self.module.main())
+
+            archive_resolved_video.assert_not_called()
+            after = {path.relative_to(video_dir): path.read_bytes() for path in video_dir.rglob("*") if path.is_file()}
+            self.assertEqual(before, after)
+
     def test_dual_metadata_only_archive_is_exact_and_manifest_selected(self) -> None:
         info = {
             "id": "abc123",
@@ -517,6 +559,47 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
             self.assertIsNone(
                 self.module.resolve_existing_archive(video_dir, "best", metadata_storage_mode="dual")
             )
+
+    def test_language_completion_markers_allow_alternating_archived_languages(self) -> None:
+        info = {"id": "abc123", "title": "Two languages"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "captions\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            self.assertIsNotNone(descriptor)
+            manifests_dir = self.module.ensure_real_subdirectories(video_dir, "manifests")
+
+            def publish(language: str) -> dict:
+                alias = manifests_dir / f"{language}.json"
+                manifest = self.module.metadata_storage.prepare_manifest_with_storage(
+                    {
+                        "language": language,
+                        "files": [
+                            "manifest.json",
+                            "metadata.json",
+                            "subtitles-list.txt",
+                            f"manifests/{language}.json",
+                        ],
+                    },
+                    descriptor,
+                )
+                self.module.commit_archive_manifests(video_dir, alias, manifest, descriptor)
+                return manifest
+
+            english = publish("en")
+            french = publish("fr")
+
+            self.assertEqual(english, self.module.resolve_existing_archive(video_dir, "en", metadata_storage_mode="dual"))
+            self.assertEqual(french, self.module.resolve_existing_archive(video_dir, "fr", metadata_storage_mode="dual"))
+            self.assertEqual(english, self.module.resolve_existing_archive(video_dir, "en", metadata_storage_mode="dual"))
+            self.assertEqual("fr", json.loads((video_dir / "manifest.json").read_text(encoding="utf-8"))["language"])
+            self.assertTrue((manifests_dir / "en.complete").is_file())
+            self.assertTrue((manifests_dir / "fr.complete").is_file())
 
     def test_non_replacing_creation_rejects_concurrent_metadata_appearance(self) -> None:
         info = {"id": "abc123", "title": "First writer"}

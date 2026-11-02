@@ -396,13 +396,56 @@ def commit_archive_manifests(
     manifest: dict[str, Any],
     metadata_descriptor: dict[str, Any] | None,
 ) -> None:
-    """Publish an identical language alias before the canonical completion marker."""
+    """Publish a language alias, canonical marker, then durable language completion."""
+    _mark_current_language_complete(video_dir)
     serialized = metadata_storage.manifest_bytes(manifest)
     metadata_storage.durable_atomic_write(language_manifest, serialized)
     if metadata_descriptor is not None:
         metadata_storage.commit_manifest(video_dir, manifest)
     else:
         metadata_storage.durable_atomic_write(video_dir / "manifest.json", serialized)
+    metadata_storage.durable_atomic_write(
+        language_completion_marker_path(language_manifest),
+        language_completion_marker_bytes(serialized),
+    )
+
+
+def language_completion_marker_path(language_manifest: Path) -> Path:
+    return language_manifest.with_suffix(".complete")
+
+
+def language_completion_marker_bytes(serialized_manifest: bytes) -> bytes:
+    return f"{metadata_storage.sha256_bytes(serialized_manifest)}\n".encode("ascii")
+
+
+def _mark_current_language_complete(video_dir: Path) -> None:
+    """Backfill a marker while the current canonical manifest still proves completion."""
+    canonical_path = video_dir / "manifest.json"
+    if not canonical_path.exists():
+        return
+    try:
+        canonical_raw = metadata_storage.read_regular_bytes(canonical_path, max_bytes=4 * 1024 * 1024)
+        canonical = json.loads(canonical_raw.decode("utf-8"))
+        if not isinstance(canonical, dict):
+            return
+        language = canonical.get("language")
+        if not isinstance(language, str):
+            return
+        alias_name = validate_language_token(language)
+        alias_path = video_dir / "manifests" / f"{alias_name}.json"
+        if f"manifests/{alias_name}.json" not in canonical.get("files", []):
+            return
+        alias_raw = metadata_storage.read_regular_bytes(alias_path, max_bytes=4 * 1024 * 1024)
+        if alias_raw != canonical_raw:
+            return
+        metadata_storage.validate_manifest_files(video_dir, canonical)
+        metadata_storage.read_metadata_json(video_dir, canonical)
+        metadata_storage.durable_atomic_write(
+            language_completion_marker_path(alias_path),
+            language_completion_marker_bytes(alias_raw),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, metadata_storage.MetadataStorageError):
+        return
 
 
 def manifest_path_for(video_dir: Path, lang: str | None) -> Path:
@@ -427,9 +470,13 @@ def resolve_existing_archive(
             if not canonical_path.exists():
                 return None
             canonical_raw = metadata_storage.read_regular_bytes(canonical_path, max_bytes=4 * 1024 * 1024)
-            if canonical_raw != raw_manifest:
+            marker_path = language_completion_marker_path(manifest_path)
+            if marker_path.exists():
+                marker_raw = metadata_storage.read_regular_bytes(marker_path, max_bytes=128)
+                if marker_raw != language_completion_marker_bytes(raw_manifest):
+                    return None
+            elif canonical_raw != raw_manifest:
                 return None
-            raw_manifest = canonical_raw
         manifest = json.loads(raw_manifest.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         return None
@@ -454,7 +501,9 @@ def resolve_existing_archive(
                 return None
     if metadata_storage_mode in {"dual", "compressed"}:
         descriptor = manifest.get("metadata_storage")
-        if not isinstance(descriptor, dict) or descriptor.get("state") != metadata_storage_mode:
+        if descriptor is not None and (
+            not isinstance(descriptor, dict) or descriptor.get("state") != metadata_storage_mode
+        ):
             return None
 
     declared_storage = manifest.get("metadata_storage") is not None

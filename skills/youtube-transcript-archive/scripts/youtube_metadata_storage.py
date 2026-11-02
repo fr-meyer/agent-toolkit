@@ -17,6 +17,7 @@ import os
 import re
 import stat
 import tempfile
+import zlib
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Callable, Mapping
 
@@ -324,7 +325,7 @@ def _bounded_gunzip(stored: bytes, *, expected_bytes: int, max_raw_bytes: int) -
                     raise MetadataLimitError("decompressed metadata exceeds declared or configured limit")
     except MetadataStorageError:
         raise
-    except (EOFError, OSError, gzip.BadGzipFile) as exc:
+    except (EOFError, OSError, gzip.BadGzipFile, zlib.error) as exc:
         raise MetadataIntegrityError("invalid or truncated gzip metadata") from exc
     return bytes(output)
 

@@ -184,6 +184,19 @@ class MetadataStorageTests(unittest.TestCase):
         with self.assertRaises(storage.MetadataIntegrityError):
             storage.read_metadata_bytes(video, updated)
 
+    def test_invalid_deflate_is_rejected_after_matching_stored_hash(self):
+        temp, video, manifest, raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        _filename, _compressed, descriptor = self.write_generation(video, raw)
+        invalid_deflate = b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x07" + b"\x00" * 8
+        selected = video / descriptor["canonical_filename"]
+        selected.write_bytes(invalid_deflate)
+        descriptor["stored_bytes"] = len(invalid_deflate)
+        descriptor["stored_sha256"] = storage.sha256_bytes(invalid_deflate)
+        updated = storage.prepare_manifest_with_storage(manifest, descriptor)
+        with self.assertRaises(storage.MetadataIntegrityError):
+            storage.read_metadata_bytes(video, updated)
+
     def test_stored_checksum_mismatch_is_rejected(self):
         temp, video, manifest, raw = self.make_video()
         self.addCleanup(temp.cleanup)
