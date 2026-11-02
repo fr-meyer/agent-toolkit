@@ -25,8 +25,8 @@ The committed workflow enforces:
 
 - top-level `contents: read`
 - job-level `id-token: write` and `contents: read`
-- no provider-key or other secret environment mapping
-- job-scoped read token reused as `GH_TOKEN`, preventing broader MCP token minting
+- no provider-key, `GH_TOKEN`, or other credential environment mapping
+- Pullfrog OIDC token exchange left intact so the GitHub App can obtain the scoped review-publication token required by its native MCP review tool
 - `PULLFROG_FORCE_LOCAL_CLI: '1'`, preventing the pinned action bootstrap from floating from `pullfrog@^0.1.102` to a newer npm CLI
 - checkout credentials not persisted
 - Pullfrog `push: disabled`
@@ -34,7 +34,7 @@ The committed workflow enforces:
 - action timeout of 15 minutes inside a 20-minute job timeout
 - live progress updates disabled
 
-The provider-free dogfood check runs `scripts/github/validate_pullfrog_workflow.sh`. It verifies the actionlint archive before execution, validates both workflow copies with actionlint, and runs deterministic assertions for the trigger, permissions, immutable action refs, exact local CLI execution, read-only external GitHub token, checkout credentials, timeouts, disabled push, restricted shell, disabled progress comments, and absence of secret environment mappings.
+The provider-free dogfood check runs `scripts/github/validate_pullfrog_workflow.sh`. It verifies the actionlint archive before execution, validates both workflow copies with actionlint, and runs deterministic assertions for the trigger, permissions, immutable action refs, exact local CLI execution, absence of an external `GH_TOKEN` override, checkout credentials, timeouts, disabled push, restricted shell, disabled progress comments, and absence of secret environment mappings. The separate Astra fallback and remediation-analysis jobs retain their explicit job-scoped read-only `GH_TOKEN`; they cannot publish reviews directly.
 
 Repository-side Pullfrog settings must additionally keep approval, auto-merge, review remediation, CI autofix, non-collaborator mentions, issue automation, and label automation disabled for the pilot. The environment allowlist stays empty. Those service settings are deliberately not represented as secrets or machine-local state in this public repository.
 
