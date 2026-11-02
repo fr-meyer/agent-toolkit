@@ -9,6 +9,7 @@ write_paths:
   - .speculoos/tasks/pr-066-container-source-rebuild-guard.yaml
   - scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py
   - skills/container-runtime-change-control/SKILL.md
+  - skills/container-runtime-change-control/tests/test_candidate_image_recipe.sh
   - specs/pr-066-container-source-rebuild-guard/commit-message.txt
   - specs/pr-066-container-source-rebuild-guard/pr-body.md
   - templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml
@@ -29,7 +30,8 @@ acceptance:
   - the policy test requires the manual trigger and the existing non-stable base coverage
   - the Speculoos publication packet exactly lists the final PR diff against dev and passes the repository-bound exact-head contract
   - hosted dogfood and Speculoos checks are produced by GitHub Actions for the exact current PR head, never synthesized through the Checks API
-  - the protected manual remediation implements only Pullfrog's two existing findings after the cloud fixer refuses the PR's expired evidence window
+  - the protected manual remediation implements only Pullfrog's findings after the cloud fixer refuses the PR's expired evidence window
+  - the candidate-image recipe regression rejects quiet-build stdout as an image-ID source and enforces explicit-tag resolution after build
   - Pullfrog remains the sole AI reviewer and must re-review the final exact head
 delivery_policy:
   mode: inherit_branch_policy
@@ -37,6 +39,7 @@ documentation_impact:
   status: task-packet-only
   rationale: The workflow capability and PR-specific safety boundary are recorded in the repository-owned Speculoos task and publication packet; no top-level README or docs page changes are needed.
 validation:
+  - skills/container-runtime-change-control/tests/test_candidate_image_recipe.sh
   - python3 -I scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py -v
   - scripts/github/validate_pullfrog_workflow.sh
   - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task pr-066-container-source-rebuild-guard --expected-head-ref feat/container-source-rebuild-guard --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha "$(git rev-parse origin/dev)"

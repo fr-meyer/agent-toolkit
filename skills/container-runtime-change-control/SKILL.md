@@ -114,17 +114,19 @@ If a local archive is too large, use the strongest available substitute: a regis
 
 ### 2.6 Build and Verify the Candidate
 
-Only after the rollback image is preserved and verified, split build from recreate and verify the candidate image version first. Resolve the image ID emitted by the build rather than assuming the Compose service declares an `image:` field:
+Only after the rollback image is preserved and verified, split build from recreate and verify the candidate image version first. Before building, make the durable Compose service declare a unique candidate `image:` tag; reject build-only services whose effective config still omits that tag. Then resolve the tag's immutable local image ID after the build:
 
 ```bash
-CANDIDATE_IMAGE_ID="$(docker compose build --quiet <service>)"
+set -euo pipefail
+CANDIDATE_IMAGE="$(docker compose config --format json | jq -er '.services["<service>"].image | select(type == "string" and length > 0)')"
+docker compose build <service>
+CANDIDATE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
 [ -n "$CANDIDATE_IMAGE_ID" ] || { echo 'candidate image ID is empty' >&2; exit 1; }
-docker image inspect "$CANDIDATE_IMAGE_ID" >/dev/null
 docker run --rm --entrypoint sh "$CANDIDATE_IMAGE_ID" -lc '<service> --version'
 docker compose up -d --no-build <service>
 ```
 
-Require one non-empty, inspectable image ID before invoking the candidate. Run the final recreate only when the candidate version matches the intended target. If the candidate image or version cannot be checked, stop and classify the operation as `read-only-only` or `version-drift-blocker` based on the evidence.
+Require one non-empty, inspectable image ID before invoking the candidate. Because the same effective Compose config names the candidate tag, `up --no-build` deploys the image that was inspected instead of an untagged or previous service image. Run the final recreate only when the candidate version matches the intended target. If the explicit candidate tag, image ID, or version cannot be checked, stop and classify the operation as `read-only-only` or `version-drift-blocker` based on the evidence.
 
 ### 3. Classify the State
 

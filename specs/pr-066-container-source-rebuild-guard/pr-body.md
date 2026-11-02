@@ -23,6 +23,7 @@ This bootstrap does not publish a check itself. GitHub Actions must execute the 
 - `.speculoos/tasks/pr-066-container-source-rebuild-guard.yaml`
 - `scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py`
 - `skills/container-runtime-change-control/SKILL.md`
+- `skills/container-runtime-change-control/tests/test_candidate_image_recipe.sh`
 - `specs/pr-066-container-source-rebuild-guard/commit-message.txt`
 - `specs/pr-066-container-source-rebuild-guard/pr-body.md`
 - `templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml`
@@ -39,6 +40,7 @@ This bootstrap does not publish a check itself. GitHub Actions must execute the 
 ## Validation
 
 - canonical/materialized dogfood workflow byte identity
+- candidate-image recipe regression for rollback ordering and explicit-tag image-ID resolution
 - focused workflow policy tests
 - Pullfrog workflow validator
 - repository-bound Speculoos exact-head contract
