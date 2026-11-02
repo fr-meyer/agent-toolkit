@@ -1,6 +1,7 @@
 name: PR automation dogfood
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - '**'

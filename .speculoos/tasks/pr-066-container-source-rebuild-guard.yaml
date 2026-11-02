@@ -1,0 +1,43 @@
+id: pr-066-container-source-rebuild-guard
+title: Bootstrap guarded remediation for container source rebuild safety
+status: implementation
+branch: feat/container-source-rebuild-guard
+base_branch: dev
+write_paths:
+  - .github/workflows/pr-automation-dogfood-pr-trigger.yml
+  - .speculoos/manifest.yaml
+  - .speculoos/tasks/pr-066-container-source-rebuild-guard.yaml
+  - scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py
+  - skills/container-runtime-change-control/SKILL.md
+  - specs/pr-066-container-source-rebuild-guard/commit-message.txt
+  - specs/pr-066-container-source-rebuild-guard/pr-body.md
+  - templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml
+scope:
+  - preserve the original container runtime change-control guard against disguised source rebuild rollbacks
+  - make the provider-free dogfood workflow manually dispatchable on an exact selected ref without changing its pull-request path filters
+  - bind PR 66 to the repository-owned Speculoos exact-head contract
+  - leave the two existing review findings for the guarded Pullfrog remediation loop to repair
+non_goals:
+  - changing or broadening the dogfood pull-request path filters
+  - fabricating, copying, renaming, or manually publishing a successful check
+  - weakening exact-head, app identity, review, CI, Speculoos, destination, or merge gates
+  - enabling Astra, fallback variables, provider write authority, force-push, approval, auto-merge, release, deployment, settings changes, billing changes, or branch deletion
+acceptance:
+  - the canonical and materialized dogfood trigger remain byte-identical and gain only a bounded workflow_dispatch event in addition to the existing pull_request event
+  - pull-request path filters remain byte-for-byte unchanged
+  - the policy test requires the manual trigger and the existing non-stable base coverage
+  - the Speculoos publication packet exactly lists the final PR diff against dev and passes the repository-bound exact-head contract
+  - hosted dogfood and Speculoos checks are produced by GitHub Actions for the exact current PR head, never synthesized through the Checks API
+  - Pullfrog remains the sole reviewer and fixer for remediation and re-review
+delivery_policy:
+  mode: inherit_branch_policy
+documentation_impact:
+  status: task-packet-only
+  rationale: The workflow capability and PR-specific safety boundary are recorded in the repository-owned Speculoos task and publication packet; no top-level README or docs page changes are needed.
+validation:
+  - python3 -I scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py -v
+  - scripts/github/validate_pullfrog_workflow.sh
+  - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task pr-066-container-source-rebuild-guard --expected-head-ref feat/container-source-rebuild-guard --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha "$(git rev-parse origin/dev)"
+  - git diff --check origin/dev...HEAD
+private_data_scan: required
+publish_authority: Exact PR 66 bootstrap publication only after protected-lane approval and exact head/base revalidation.

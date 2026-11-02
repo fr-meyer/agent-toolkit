@@ -56,6 +56,7 @@ class PullfrogCloudRemediationWorkflowPolicyTests(unittest.TestCase):
 
     def test_dogfood_evidence_runs_for_every_non_stable_base(self):
         trigger = DOGFOOD_TRIGGER.read_text(encoding="utf-8")
+        self.assertIn("  workflow_dispatch:\n", trigger)
         self.assertIn(
             "    branches:\n"
             "      - '**'\n"

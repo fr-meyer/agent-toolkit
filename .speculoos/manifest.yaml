@@ -96,5 +96,5 @@ gates:
     - hosted-review-fallback-pilot-separate-approval
     - composite-review-gate-consumers-validated
     - required-check-migration-separate-approval
-current_task: pullfrog-cloud-remediation-20261028
-current_task_metadata: .speculoos/tasks/pullfrog-cloud-remediation-20261028.yaml
+current_task: pr-066-container-source-rebuild-guard
+current_task_metadata: .speculoos/tasks/pr-066-container-source-rebuild-guard.yaml
