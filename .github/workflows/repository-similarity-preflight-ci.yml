@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "skills/repository-similarity-preflight/**"
+      - "templates/starter-workflows/repository-similarity-preflight-ci.yml"
       - ".github/workflows/repository-similarity-preflight-ci.yml"
   workflow_dispatch:
 

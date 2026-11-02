@@ -1,43 +1,51 @@
 id: fix-container-preflight-failed-version-evidence
 title: Reject failed live-version evidence in container preflight
-status: in_progress
+status: preparing_publication
 owner: fr-meyer
 branch: fix/container-preflight-failed-version-evidence
 base_branch: dev
-base_sha: 04b9d6e92842cb0abe9a7450e4fae72b383bcd4a
+base_sha: 49c1ebbab1c539c9532bd1356c883f61e9e28a09
 github:
   issue: null
-  pull_request: null
-  url: null
+  pull_request: 88
+  url: https://github.com/fr-meyer/agent-toolkit/pull/88
   related_pull_request: 66
 scope:
-- skills/container-runtime-change-control/scripts/container-runtime-preflight.sh
-- skills/container-runtime-change-control/tests/test_container_runtime_preflight.sh
-- .speculoos/manifest.yaml
-- .speculoos/review-evidence.json
-- .speculoos/tasks/fix-container-preflight-failed-version-evidence.yaml
+  - skills/container-runtime-change-control/scripts/container-runtime-preflight.sh
+  - skills/container-runtime-change-control/tests/test_container_runtime_preflight.sh
+  - .speculoos/manifest.yaml
+  - .speculoos/tasks/fix-container-preflight-failed-version-evidence.yaml
+  - specs/fix-container-preflight-failed-version-evidence/commit-message.txt
+  - specs/fix-container-preflight-failed-version-evidence/pr-body.md
 non_goals:
-- 'Implementing or superseding PR #66 source/candidate version-drift documentation'
-- Changing actor defaults, review requirements, credentials, branch protection, or shared broker code
-- Production changes, deployments, stable promotion, or merge execution
+  - implementing or superseding PR #66 source/candidate version-drift documentation
+  - changing actor defaults, credentials, branch protection, or shared broker code
+  - weakening exact-head Pullfrog, CI, Speculoos, destination, or merge gates
+  - enabling Astra, force-push, auto-merge, release, deployment, settings, or billing changes
 acceptance:
-- A nonzero live-version probe never supplies accepted version evidence
-- Failed probes leave the live version unknown and never yield safe-to-proceed; strict mode exits nonzero
-- Successful probes retain existing behavior and raw failed diagnostics are not published
-- The exact committed candidate receives required named Mergeguez review before parent-controlled merge
+  - a nonzero live-version probe never supplies accepted version evidence
+  - failed probes leave the live version unknown and never yield safe-to-proceed; strict mode exits nonzero
+  - successful probes retain existing behavior and raw failed diagnostics are not published
+  - current dev is merged without rewriting the existing PR branch
+  - the exact final head receives fresh Pullfrog review, pullfrog, pullfrog-approval, pullfrog-review-gate, Speculoos, and applicable CI evidence before merge
+  - Mergeguez merges only the exact reviewed head into dev
+  - cleanup occurs only after verified merge and exact branch/SHA revalidation
 delivery_policy:
   mode: inherit_branch_policy
 publication_boundary:
-  statement: User approved proceeding with isolated feature publication. Existing credential and actor policy remains authoritative; release, production operations, and merge execution are excluded.
+  statement: The user explicitly authorized finishing PR #88 through guarded feature-to-dev merge and cleanup. Stable promotion, release, deployment, fallback activation, settings, billing, credentials, and force-push remain excluded.
 documentation_impact:
-  status: none
-  rationale: 'The helper help text explains the success requirement; no new user workflow or deployment behavior is introduced. Task metadata binds this bounded fix and does not replace PR #66 documentation.'
+  status: task-packet-only
+  rationale: The behavior is covered by the helper tests and this PR-specific Speculoos packet; no top-level README or docs page changes are required.
 validation:
-- bash -n skills/container-runtime-change-control/scripts/container-runtime-preflight.sh && bash -n skills/container-runtime-change-control/tests/test_container_runtime_preflight.sh
-- bash skills/container-runtime-change-control/tests/test_container_runtime_preflight.sh
-- git diff --check
+  - bash -n skills/container-runtime-change-control/scripts/container-runtime-preflight.sh
+  - bash -n skills/container-runtime-change-control/tests/test_container_runtime_preflight.sh
+  - bash skills/container-runtime-change-control/tests/test_container_runtime_preflight.sh
+  - scripts/github/validate_pullfrog_workflow.sh
+  - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task fix-container-preflight-failed-version-evidence --expected-head-ref fix/container-preflight-failed-version-evidence --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha "$(git rev-parse origin/dev)"
+  - git diff --check origin/dev...HEAD
 private_data_scan: required
-publish_authority: User-approved isolated feature-to-dev publication using the declared actor route; merge and stable promotion remain parent-controlled gates.
+publish_authority: User-authorized PR #88 feature-to-dev completion through the protected Mergeguez lane, with exact-head review and hosted gates required before merge and exact-SHA cleanup afterward.
 functional_review:
   patch_sha256: 78c86d971215c7b5fd3815e434662cae8e1a6c50a94568fcd37a897a12435f31
   author_cases_passed: 21
@@ -45,17 +53,13 @@ functional_review:
   independent_receipt_sha256: 89b93495ab13cdb20a134dd7b21da5b05bc84484edb52279ba813239042585d7
   findings: 0
   named_hosted_review_satisfied: false
-  metadata_review: required separately; functional patch unchanged
+  metadata_review: fresh exact-head Pullfrog review required after publication
 publication_route:
-  strategy: new_independent
-  related_pr: https://github.com/fr-meyer/agent-toolkit/pull/66
-  declared_default_push_actor: franck_user_pr_author
-  supported_broker_push_actor: mergeguez_branch_broker
-  supported_broker_pr_actor: franck_user_pr_author
+  strategy: merge_current_dev_then_fast_forward_publish
   selected_push_actor: mergeguez_branch_broker
   selected_push_login: mergeguez[bot]
-  selected_pr_actor: franck_user_pr_author
+  selected_pr_actor: existing_pr_author
   selected_pr_login: fr-meyer
-  status: ready
-  approval: Existing user approval covers this explicit task-scoped selection of a registered profile; repository defaults remain unchanged.
-  selection_evidence: Speculoos actors select --role push_actor --profile mergeguez_branch_broker --dry-run returned ok; guarded push capability selected mergeguez[bot] and user PR capability selected fr-meyer.
+  selected_merge_actor: mergeguez_dev_merge
+  force_push_allowed: false
+  status: ready_for_local_validation

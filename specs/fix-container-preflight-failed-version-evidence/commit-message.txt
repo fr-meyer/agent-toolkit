@@ -1,0 +1,5 @@
+fix(container): reconcile failed-probe evidence guard
+
+Merge current dev without rewriting PR #88, preserve the failed live-version probe fix, and bind task fix-container-preflight-failed-version-evidence to the exact-head Pullfrog and Speculoos gates.
+
+Feature PRs target `dev`. Release/promotion PRs target `main`.

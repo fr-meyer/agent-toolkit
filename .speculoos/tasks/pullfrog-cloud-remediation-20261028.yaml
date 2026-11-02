@@ -1,0 +1,131 @@
+id: pullfrog-cloud-remediation-20261028
+title: Implement the guarded Pullfrog remediation and exact-head re-review loop
+status: implementation
+branch: feat/pullfrog-write-capable-loop
+base_branch: dev
+write_paths:
+  - README.md
+  - .github/workflows/pr-automation-dogfood-pr-trigger.yml
+  - .github/workflows/pullfrog-cloud-remediation-loop.yml
+  - .github/workflows/pullfrog-review-fallback.yml
+  - .github/workflows/pullfrog.yml
+  - .github/workflows/speculoos.yml
+  - .speculoos/actors.json
+  - .speculoos/goal.md
+  - .speculoos/manifest.yaml
+  - .speculoos/publish-policy.yaml
+  - .speculoos/review-evidence.json
+  - .speculoos/tasks/pullfrog-cloud-remediation-20261028.yaml
+  - docs/github-actions-template-catalog.md
+  - docs/pr-automation-dogfood.md
+  - docs/pullfrog-cloud-coordinator.md
+  - docs/pullfrog-destination-guard.md
+  - docs/pullfrog-review-model-fallback.md
+  - docs/pullfrog-review-only-pilot.md
+  - docs/workflow-asset-library-layout.md
+  - scripts/github/pullfrog_cloud_remediation.py
+  - scripts/github/pullfrog_cloud_coordinator.py
+  - scripts/github/pullfrog_destination_guard.py
+  - scripts/github/pullfrog_dev_auto_merge.py
+  - scripts/github/pullfrog_review_fallback.py
+  - scripts/github/pullfrog_review_contract.py
+  - scripts/github/speculoos_pr_contract.py
+  - scripts/github/tests/test_pullfrog_cloud_coordinator.py
+  - scripts/github/tests/test_pullfrog_cloud_coordinator_workflow_policy.py
+  - scripts/github/tests/test_pullfrog_cloud_remediation.py
+  - scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py
+  - scripts/github/tests/test_pullfrog_destination_guard.py
+  - scripts/github/tests/test_pullfrog_dev_auto_merge.py
+  - scripts/github/tests/test_pullfrog_review_fallback.py
+  - scripts/github/tests/test_pullfrog_review_fallback_workflow_policy.py
+  - scripts/github/tests/test_pullfrog_review_contract.py
+  - scripts/github/tests/test_pullfrog_speculoos_workflow_policy.py
+  - scripts/github/tests/test_pullfrog_workflow_policy.py
+  - scripts/github/tests/test_speculoos_pr_contract.py
+  - scripts/github/validate_pullfrog_workflow.sh
+  - specs/pullfrog-cloud-remediation-20261028/commit-message.txt
+  - specs/pullfrog-cloud-remediation-20261028/pr-body.md
+  - templates/repo-workflow-materialization-manifest.json
+  - templates/starter-workflows/pr-automation-dogfood-pr-trigger.yml
+  - templates/starter-workflows/pullfrog-cloud-remediation-loop.yml
+  - templates/starter-workflows/pullfrog-review-fallback.yml
+  - templates/starter-workflows/pullfrog.yml
+  - templates/starter-workflows/speculoos.yml
+scope:
+  - reconstruct bounded claim, candidate, and terminal history only from artifacts produced by the exact trusted workflow path
+  - mint a durable idempotent claim before provider invocation and cap remediation cycles and per-head attempts at three
+  - invoke Pullfrog v0.1.102 through its native fix_review dispatch contract while withholding repository write authority
+  - treat provider output as untrusted and rebuild it in a fresh read-only validation job against the exact source head, same-repository destination, forbidden-path policy, and gitlink prohibition
+  - isolate a trusted publisher with one normal exact-head fast-forward push and verify the resulting PR head
+  - require fresh Pullfrog, CI, repository-bound zero-secret Speculoos contract, and destination-guard evidence after every head mutation
+  - preserve human-only approval and `main`/`master` merge authority while allowing a repository-owned exact-head automatic merge gate for eligible same-repository feature PRs targeting any other valid base
+  - recognize only the two exact apostrophe variants of the recorded OpenAI cybersecurity-policy refusal and authorize at most one unchanged-head Pullfrog Astra review fallback
+  - publish a composite exact-head review gate without giving the provider job content-write, check-write, publication, approval, dispatch, or merge authority
+  - hand a deliverable repository-owned gate to the controller explicitly from trusted default-branch code because GitHub Actions-created checks do not emit check_run events
+  - require one canonical complete-review contract across coordinator, fallback, post-fix re-review, and merge eligibility
+non_goals:
+  - publishing this commit, activating the workflow on a serving ref, or running a hosted write pilot
+  - force-push, force-with-lease, approval, Pullfrog-native auto-merge, merges to main or master, release, deployment, settings changes, branch deletion, billing changes, or persistent credential creation/configuration
+  - giving Pullfrog or another provider a repository write token
+  - replacing Pullfrog with another reviewer, fixer, service, or fork
+  - enabling the review fallback variable, running the Astra pilot, changing required checks, or treating Astra as independent cross-provider evidence
+acceptance:
+  - native fix_review payload binds issue_number, review_id, approved_only=false, exact branch, and v0.1.102 compatibility
+  - provider, validator, and publisher credentials never coexist; Pullfrog is forced to reuse the job-scoped read token through GH_TOKEN instead of minting its normal MCP write token, authorPermission=none withholds gh and cross-run learning writes, and the separately provisioned publisher token is referenced only by the publish checkout
+  - the durable claim artifact contains only claim.json, the sealed dispatch is transient and separate, claim upload precedes provider execution, and terminal receipt follows publication or a proven retryable failure
+  - forked, stale, reused, protected, detached, forbidden-path, malformed-history, repeated-finding, unchanged-output, no-progress, and exhausted states fail closed
+  - provider output remains untrusted until a fresh validator checkout emits a canonical candidate; claim, candidate, publish plan, patch, changed paths, source/result heads, and pushed terminal evidence are mutually digest-bound
+  - provider remediation cannot modify the repository-owned coordinator, cycle, destination, remediation, auto-merge, Speculoos contract, shell validator, or executable workflow-policy test authority; candidate sealing and publication both re-run this path policy
+  - the hosted publication inventory includes deleted paths and requires documentation impact to declare deleted documentation
+  - exact head is re-read before provider execution, before patch application, and immediately before publication
+  - publication is one normal fast-forward push to the current same-repository PR branch
+  - automatic merge is performed only by a separate GitHub Actions job after a fresh clean coordinator receipt, same-repository and feature-head validation, exact live base/head re-read, a successful current digest-bound Pullfrog review gate, successful CI/Speculoos/destination evidence, and no unresolved human changes-requested review
+  - automatic merge accepts any valid base except `main` and `master`, the provider-free dogfood evidence trigger covers every such non-stable base including nested branch names, fresh app-bound exact-head evidence is refreshed immediately before mutation, and a two-parent merge commit is sent through one normal fast-forward Git receive-pack update to the literal reviewed base ref
+  - the coordinator's exact default branch and effective protected-ref set, including the live base, are validated and digest-bound into the remediation claim and reused by candidate validation and publication so any admitted non-dev base remains consistent through the full pipeline
+  - the receive-pack command carries the exact reviewed base SHA as its old OID, so the server rejects concurrent base advancement in the same ref-update transaction; concurrent PR retargeting cannot redirect the mutation, force and force-with-lease remain prohibited, and the source branch is never deleted
+  - receive-pack discovery validates object IDs and capabilities separately from byte-preserved ref names, so an unrelated legal Unicode branch or tag cannot block the selected exact destination
+  - because mutations made with the built-in token suppress ordinary push-triggered Actions runs, a merge into `dev` replays only the existing path-matched cross-repository updater and reusable-ref synchronization workflows through bounded workflow_dispatch calls and records any post-merge dispatch failure durably; other eligible bases do not dispatch `dev` publication automation
+  - the publisher uses a separately approved event-emitting credential so successful publication schedules fresh Pullfrog, CI, and Speculoos evidence rather than relying on suppressed built-in-token events
+  - artifact enumeration is complete, expired matching history fails closed, and PRs older than the 90-day durable-history window are not eligible for unattended remediation
+  - canonical and materialized workflows are byte-identical, immutable-pinned, bounded, and actionlint-clean
+  - the primary review is explicitly pinned to openai/gpt-sol at xhigh, and only one openai/gpt-astra at xhigh fallback may run for an unchanged exact PR/head/base identity
+  - fallback provider execution is restricted to github.run_attempt=1 and the trusted preflight repeats that invariant; failed-job reruns may recover trusted finalization from the bounded first-attempt artifact but cannot invoke Astra again
+  - the fallback's sealed controller mints one short-lived Pullfrog App token scoped exactly to contents:read and pull_requests:write, forces the action's external GH_TOKEN route, records only a sanitized lease receipt, and requires successful revocation before the composite gate can succeed; no content-write, issue-write, check-write, or action-dispatch token reaches the provider
+  - fallback eligibility requires exactly one failed Run review-only agent step, no other failed step, and exactly one failure annotation whose text literally equals one approved refusal variant
+  - fallback results are size-bounded and schema-exact; review identity, model footer, finding count, comment actor, comment head, token lease scope, and token revocation are freshly validated before the composite gate can authorize either a clean result or bounded remediation findings; every invalid receipt receives a distinct failed-gate digest that cannot match canonical findings evidence
+  - every verified remediation publish gets at most one first-attempt Sol/xhigh exact-head re-review with a short-lived contents-read and pull-requests-write Pullfrog App lease and explicit revocation; its bounded structured result plus sanitized lease/revocation evidence is persisted once, and later workflow-run attempts may only rerun the fresh trusted validator and downstream finalizers before a separately published repository/PR/base/head/evidence-profile/evidence-digest-bound gate
+  - after a finding-free re-review, a separate provider-free job may resolve only a bounded set of prior unresolved pullfrog[bot] threads; current-review threads, human threads, identity drift, evidence drift, and every non-thread blocker fail closed, and the complete contract is re-read as clean before gate publication
+  - merge eligibility requires a successful fresh exact-identity and evidence-digest-bound `pullfrog-review-gate`; a failed gate may match current findings only to authorize the next bounded remediation cycle, while passing raw checks, empty or markerless reviews, stale or spoofed evidence, unresolved Pullfrog threads, and invalid token-revocation evidence cannot authorize merge or remediation
+  - because GitHub suppresses check_run events for GitHub Actions-created gates, the trusted gate publisher has bounded actions-write authority and dispatches one controller evaluation only after re-reading the open PR identity, exact base/head, live gate app/name/status/conclusion/external ID, and current canonical contract profile/digest; in-progress, invalid, stale, drifted, or digest-mismatched gates never dispatch
+  - ordinary failures, partial or malformed reviews, extra annotations or failed steps, whitespace-altered refusals, duplicate attempts, recursion, forks, identity drift, token-scope drift, revocation failure, and Astra refusal all fail closed
+  - the hosted Speculoos check uses only repository-reviewed source, fetches no private cross-repository package, receives no extra credential, runs candidate-facing Python entrypoints in isolated mode so repository files cannot shadow standard-library imports, and persists exact-head contract evidence even when validation fails
+  - focused tests, workflow validation, full repository tests, whitespace checks, public-safety scans, and local official Speculoos validation pass
+publication_boundary:
+  statement: "Local source implementation and validation only. Publication, hosted activation, and the first write-capable remediation pilot require separate authorization for the exact commit SHA and scope. The repository-owned exact-head non-stable auto-merge gate is authorized for any valid base except main or master; approval, main/master merge, release, deployment, settings changes, force-push, branch deletion, billing, and credential changes remain prohibited."
+delivery_policy:
+  mode: inherit_branch_policy
+documentation_impact:
+  status: updated
+  rationale: The native fix_review contract, credential split, artifact ledger, compare-and-swap publisher, exact-refusal review fallback, composite review gate, and activation boundaries must remain recoverable from repository source.
+validation:
+  - "python3 -m unittest scripts/github/tests/test_pullfrog_cloud_remediation.py -v"
+  - "python3 -m unittest scripts/github/tests/test_pullfrog_dev_auto_merge.py -v"
+  - "python3 -m unittest scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py -v"
+  - "python3 -m py_compile scripts/github/pullfrog_cloud_remediation.py scripts/github/pullfrog_cloud_coordinator.py scripts/github/pullfrog_cycle_contract.py scripts/github/pullfrog_destination_guard.py scripts/github/pullfrog_dev_auto_merge.py scripts/github/pullfrog_review_fallback.py scripts/github/pullfrog_review_contract.py"
+  - "python3 -I scripts/github/tests/test_pullfrog_review_fallback.py -v"
+  - "python3 -I scripts/github/tests/test_pullfrog_review_fallback_workflow_policy.py -v"
+  - "scripts/github/validate_pullfrog_workflow.sh"
+  - "python3 -m unittest discover -s scripts/github/tests -p 'test_*.py' -q"
+  - "python3 scripts/github/materialize_repo_workflow_templates.py --repo-root . --manifest-path templates/repo-workflow-materialization-manifest.json"
+  - "git diff --check"
+  - "speculoos validate --repo . --repo-slug fr-meyer/agent-toolkit --base dev --task pullfrog-cloud-remediation-20261028 --validation 'scripts/github/validate_pullfrog_workflow.sh' --json"
+  - "speculoos publish-check --base origin/dev --task pullfrog-cloud-remediation-20261028 --pr-body specs/pullfrog-cloud-remediation-20261028/pr-body.md --commit-message specs/pullfrog-cloud-remediation-20261028/commit-message.txt --json"
+private_data_scan: required
+publish_authority: Local commit preparation only; hosted publication, activation, and every write-capable run remain separately gated.
+notes:
+  - Pullfrog is the sole AI reviewer and fixer. Speculoos remains independent exact-head evidence.
+  - The provider job has no GitHub write token and cannot mint Pullfrog's normal MCP write token; a separate read-only validator seals its raw output; the publisher has no provider identity token and alone references `PULLFROG_REMEDIATION_PUBLISH_TOKEN`.
+  - Provisioning or changing the publisher credential remains a separate hosted-settings approval and is not performed by this source change.
+  - The review fallback is source-only and activation-gated; publication, default-branch placement, credential-route audit, one exact-head hosted pilot, composite-gate consumer integration, required-check migration, and rollout are separate Workboard stages.
+  - Pullfrog remains the sole AI reviewer and fixer but has no merge actor role. The repository-owned gate may automatically merge an eligible exact-head feature PR into any valid base except `main` or `master`; those two stable bases remain human-authorized.
+  - The first hosted pilot must be bounded to one explicitly authorized same-repository feature head and must stop rather than bypass an unsupported native fix_review path.
