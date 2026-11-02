@@ -424,7 +424,10 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
             manifests_dir = self.module.ensure_real_subdirectories(video_dir, "manifests")
             language_manifest = manifests_dir / "en.json"
             manifest = self.module.metadata_storage.prepare_manifest_with_storage(
-                {"language": "en", "files": ["manifest.json", "metadata.json"]},
+                {
+                    "language": "en",
+                    "files": ["manifest.json", "metadata.json", "manifests/en.json"],
+                },
                 descriptor,
             )
 
@@ -458,6 +461,16 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
             )
             reused = self.module.resolve_existing_archive(video_dir, "en", metadata_storage_mode="dual")
             self.assertEqual(descriptor, reused["metadata_storage"])
+
+            interrupted = dict(manifest)
+            interrupted["title"] = "new refresh artifacts"
+            self.module.metadata_storage.durable_atomic_write(
+                language_manifest,
+                self.module.metadata_storage.manifest_bytes(interrupted),
+            )
+            self.assertIsNone(
+                self.module.resolve_existing_archive(video_dir, "best", metadata_storage_mode="dual")
+            )
 
     def test_non_replacing_creation_rejects_concurrent_metadata_appearance(self) -> None:
         info = {"id": "abc123", "title": "First writer"}
@@ -658,6 +671,42 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
             self.assertEqual(old_manifest, (video_dir / "manifest.json").read_bytes())
             self.assertEqual(old_plaintext, (video_dir / "metadata.json").read_bytes())
             self.assertFalse(any(video_dir.glob("metadata.*.json.gz")))
+
+    def test_changed_legacy_refresh_is_explicitly_refused_without_damage(self) -> None:
+        original = {"id": "abc123", "title": "Original legacy"}
+        changed = {"id": "abc123", "title": "Changed legacy"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            self.module.write_base_artifacts(
+                video_dir,
+                original,
+                "none\n",
+                refresh=False,
+                metadata_storage_mode="legacy",
+            )
+            self.module.write_metadata_only_archive(
+                video_dir,
+                original,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+            )
+            old_manifest = (video_dir / "manifest.json").read_bytes()
+            old_plaintext = (video_dir / "metadata.json").read_bytes()
+
+            with self.assertRaisesRegex(
+                self.module.metadata_storage.MetadataIntegrityError,
+                "legacy refresh with changed metadata bytes",
+            ):
+                self.module.write_base_artifacts(
+                    video_dir,
+                    changed,
+                    "changed\n",
+                    refresh=True,
+                    metadata_storage_mode="legacy",
+                )
+
+            self.assertEqual(old_manifest, (video_dir / "manifest.json").read_bytes())
+            self.assertEqual(old_plaintext, (video_dir / "metadata.json").read_bytes())
 
     def test_existing_dual_archive_cannot_be_downgraded_by_legacy_writer(self) -> None:
         info = {"id": "abc123", "title": "Original"}

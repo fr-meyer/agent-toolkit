@@ -434,6 +434,19 @@ def resolve_existing_archive(
     existing_lang = manifest.get("language")
     if requested_lang != "best" and existing_lang != requested_lang:
         return None
+    if requested_lang == "best" and isinstance(existing_lang, str):
+        try:
+            alias_name = validate_language_token(existing_lang)
+        except metadata_storage.MetadataPathError:
+            return None
+        alias_relative = f"manifests/{alias_name}.json"
+        if alias_relative in manifest.get("files", []):
+            alias_path = video_dir / alias_relative
+            if not alias_path.exists():
+                return None
+            alias_raw = metadata_storage.read_regular_bytes(alias_path, max_bytes=4 * 1024 * 1024)
+            if alias_raw != raw_manifest:
+                return None
     if metadata_storage_mode in {"dual", "compressed"}:
         descriptor = manifest.get("metadata_storage")
         if not isinstance(descriptor, dict) or descriptor.get("state") != metadata_storage_mode:
@@ -555,6 +568,13 @@ def write_base_artifacts(
         else:
             raw = requested_raw
             metadata_storage.parse_metadata_json(raw)
+    elif existing_manifest is not None and metadata_storage_mode == "legacy":
+        existing_raw = metadata_storage.read_metadata_bytes(video_dir, existing_manifest)
+        if existing_raw != requested_raw:
+            raise metadata_storage.MetadataIntegrityError(
+                "refusing non-atomic legacy refresh with changed metadata bytes"
+            )
+        raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
     elif existing_manifest is not None and metadata_storage_mode == "dual":
         # G2 can opt an unchanged legacy archive into dual storage, but changed
         # legacy metadata needs the separate migration lane: replacing the
