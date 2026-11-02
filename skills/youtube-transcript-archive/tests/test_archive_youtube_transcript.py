@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -223,6 +224,154 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
             archive_resolved_video.assert_not_called()
             after = {path.relative_to(video_dir): path.read_bytes() for path in video_dir.rglob("*") if path.is_file()}
             self.assertEqual(before, after)
+
+    def test_default_compressed_mode_reuses_complete_dual_archive_without_writes(self) -> None:
+        info = {
+            "id": "abc123",
+            "title": "Complete dual archive",
+            "subtitles": {},
+            "automatic_captions": {},
+        }
+        with tempfile.TemporaryDirectory() as tmp_s:
+            archive_root = Path(tmp_s) / "archive"
+            archive_root.mkdir()
+            video_dir = archive_root / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "no captions listed\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            self.module.write_metadata_only_archive(
+                video_dir,
+                info,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+                metadata_descriptor=descriptor,
+            )
+            before = {path.relative_to(video_dir): path.read_bytes() for path in video_dir.rglob("*") if path.is_file()}
+
+            with (
+                mock.patch.object(self.module.shutil, "which", return_value="/fixture/yt-dlp"),
+                mock.patch.object(self.module, "load_json_from_yt_dlp", return_value=info),
+                mock.patch.object(self.module, "archive_resolved_video") as archive_resolved_video,
+                mock.patch.object(
+                    sys,
+                    "argv",
+                    ["archive", "https://www.youtube.com/watch?v=abc123", "--archive-root", str(archive_root)],
+                ),
+            ):
+                self.assertEqual(0, self.module.main())
+
+            archive_resolved_video.assert_not_called()
+            after = {path.relative_to(video_dir): path.read_bytes() for path in video_dir.rglob("*") if path.is_file()}
+            self.assertEqual(before, after)
+
+    def test_compressed_metadata_only_refresh_rejects_symlinked_plaintext_twin(self) -> None:
+        info = {"id": "abc123", "title": "Unsafe optional twin", "subtitles": {}, "automatic_captions": {}}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            archive_root = root / "archive"
+            archive_root.mkdir()
+            video_dir = archive_root / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "none\n",
+                refresh=False,
+                metadata_storage_mode="compressed",
+            )
+            self.module.write_metadata_only_archive(
+                video_dir,
+                info,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+                metadata_descriptor=descriptor,
+            )
+            old_manifest = (video_dir / "manifest.json").read_bytes()
+            outside = root / "outside.json"
+            outside.write_text("{}\n", encoding="utf-8")
+            (video_dir / "metadata.json").symlink_to(outside)
+
+            with (
+                mock.patch.object(self.module.shutil, "which", return_value="/fixture/yt-dlp"),
+                mock.patch.object(self.module, "load_json_from_yt_dlp", return_value=info),
+                mock.patch.object(self.module, "list_subs", return_value="none\n"),
+                mock.patch.object(self.module, "yt_dlp_version", return_value="fixture"),
+                mock.patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "archive",
+                        "https://www.youtube.com/watch?v=abc123",
+                        "--archive-root",
+                        str(archive_root),
+                        "--metadata-only-on-no-captions",
+                        "--refresh",
+                    ],
+                ),
+            ):
+                with self.assertRaises(self.module.metadata_storage.MetadataPathError):
+                    self.module.main()
+
+            self.assertEqual(old_manifest, (video_dir / "manifest.json").read_bytes())
+            self.assertEqual("{}\n", outside.read_text(encoding="utf-8"))
+
+    def test_compressed_caption_refresh_rejects_hardlinked_plaintext_twin(self) -> None:
+        info = {
+            "id": "abc123",
+            "title": "Unsafe caption twin",
+            "subtitles": {"en": [{"url": "https://example.invalid/en"}]},
+            "automatic_captions": {},
+        }
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            archive_root = root / "archive"
+            archive_root.mkdir()
+            video_dir = archive_root / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "captions\n",
+                refresh=False,
+                metadata_storage_mode="compressed",
+            )
+            self.module.write_metadata_only_archive(
+                video_dir,
+                info,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+                metadata_descriptor=descriptor,
+            )
+            old_manifest = (video_dir / "manifest.json").read_bytes()
+            outside = root / "outside.json"
+            outside.write_text("{}\n", encoding="utf-8")
+            os.link(outside, video_dir / "metadata.json")
+
+            with (
+                mock.patch.object(self.module.shutil, "which", return_value="/fixture/yt-dlp"),
+                mock.patch.object(self.module, "load_json_from_yt_dlp", return_value=info),
+                mock.patch.object(self.module, "list_subs", return_value="captions\n"),
+                mock.patch.object(self.module, "download_caption_vtt") as download_caption_vtt,
+                mock.patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "archive",
+                        "https://www.youtube.com/watch?v=abc123",
+                        "--archive-root",
+                        str(archive_root),
+                        "--refresh",
+                    ],
+                ),
+            ):
+                with self.assertRaises(self.module.metadata_storage.MetadataPathError):
+                    self.module.main()
+
+            download_caption_vtt.assert_not_called()
+            self.assertEqual(old_manifest, (video_dir / "manifest.json").read_bytes())
+            self.assertEqual("{}\n", outside.read_text(encoding="utf-8"))
 
     def test_dual_metadata_only_archive_is_exact_and_manifest_selected(self) -> None:
         info = {

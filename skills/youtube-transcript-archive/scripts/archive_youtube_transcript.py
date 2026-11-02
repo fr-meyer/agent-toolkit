@@ -502,7 +502,7 @@ def resolve_existing_archive(
     if metadata_storage_mode in {"dual", "compressed"}:
         descriptor = manifest.get("metadata_storage")
         if descriptor is not None and (
-            not isinstance(descriptor, dict) or descriptor.get("state") != metadata_storage_mode
+            not isinstance(descriptor, dict) or descriptor.get("state") not in {"dual", "compressed"}
         ):
             return None
 
@@ -693,6 +693,7 @@ def write_metadata_only_archive(
     metadata_descriptor: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     video_id = info.get("id") or video_dir.name
+    plaintext_metadata_files = validated_optional_plaintext_metadata_files(video_dir)
     manifest = {
         "status": "metadata-only-no-captions",
         "duplicate_policy": duplicate_policy,
@@ -706,7 +707,7 @@ def write_metadata_only_archive(
         "yt_dlp_version": yt_dlp_version_text,
         "files": [
             "manifest.json",
-            *(["metadata.json"] if (video_dir / "metadata.json").is_file() else []),
+            *plaintext_metadata_files,
             "subtitles-list.txt",
             "report.md",
         ],
@@ -720,6 +721,18 @@ def write_metadata_only_archive(
     else:
         safe_write(video_dir / "manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True))
     return manifest
+
+
+def validated_optional_plaintext_metadata_files(video_dir: Path) -> list[str]:
+    """Return the rollback twin only after stable no-follow validation."""
+    plaintext = video_dir / "metadata.json"
+    if not (plaintext.exists() or plaintext.is_symlink()):
+        return []
+    metadata_storage.read_regular_bytes(
+        plaintext,
+        max_bytes=metadata_storage.DEFAULT_MAX_RAW_BYTES,
+    )
+    return ["metadata.json"]
 
 
 def archive_resolved_video(
@@ -777,6 +790,7 @@ def archive_resolved_video(
                 return 0
 
     ensure_base_artifacts()
+    plaintext_metadata_files = validated_optional_plaintext_metadata_files(video_dir)
 
     def download_selected(candidate_lang: str, candidate_source: str) -> CaptionDownload:
         return download_caption_vtt(yt_dlp, args.url, video_id, candidate_lang, candidate_source, video_dir)
@@ -808,7 +822,7 @@ def archive_resolved_video(
     lang_report = reports_dir / f"{lang}.md"
     rel_files = [
         "manifest.json",
-        *(["metadata.json"] if (video_dir / "metadata.json").is_file() else []),
+        *plaintext_metadata_files,
         "subtitles-list.txt",
         str(lang_manifest.relative_to(video_dir)),
         str(raw_vtt.relative_to(video_dir)),
