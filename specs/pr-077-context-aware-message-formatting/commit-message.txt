@@ -1,0 +1,5 @@
+feat(skill): reconcile context-aware message formatting
+
+Merge current dev without rewriting PR #77 and bind task pr-077-context-aware-message-formatting to the exact-head Pullfrog and Speculoos gates.
+
+Feature PRs target `dev`. Release/promotion PRs target `main`.

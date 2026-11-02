@@ -1,0 +1,53 @@
+id: pr-077-context-aware-message-formatting
+title: Add portable context-aware message formatting skill
+status: preparing_publication
+owner: fr-meyer
+branch: skill/context-aware-message-formatting
+base_branch: dev
+base_sha: 38d17965593841ffe91450fdf92480d6155e5792
+github:
+  issue: null
+  pull_request: 77
+  url: https://github.com/fr-meyer/agent-toolkit/pull/77
+scope:
+  - skills/context-aware-message-formatting/SKILL.md
+  - .speculoos/manifest.yaml
+  - .speculoos/tasks/pr-077-context-aware-message-formatting.yaml
+  - specs/pr-077-context-aware-message-formatting/commit-message.txt
+  - specs/pr-077-context-aware-message-formatting/pr-body.md
+non_goals:
+  - changing channel delivery implementations or provider routing
+  - weakening privacy, external-send approval, or incident-fact boundaries
+  - adding runtime dependencies, scripts, credentials, or network access
+  - enabling fallback, force-push, auto-merge, release, deployment, settings, or billing changes
+acceptance:
+  - the skill remains self-contained and below the portable 10,000-character limit
+  - frontmatter name matches the skill directory and the description exposes message-formatting triggers
+  - guidance distinguishes internal updates, incident alerts, recurring reports, and external messages while preserving privacy and factual caveats
+  - current dev is merged without rewriting the existing PR branch
+  - the exact final head receives fresh Pullfrog review, pullfrog, pullfrog-approval, pullfrog-review-gate, Speculoos, and applicable CI evidence before merge
+  - Mergeguez merges only the exact reviewed head into dev
+  - cleanup occurs only after verified merge and exact branch/SHA revalidation
+delivery_policy:
+  mode: inherit_branch_policy
+publication_boundary:
+  statement: 'The user explicitly authorized finishing PR #77 through guarded feature-to-dev merge and cleanup. Stable promotion, release, deployment, fallback activation, settings, billing, credentials, and force-push remain excluded.'
+documentation_impact:
+  status: skill-only
+  rationale: The reusable procedure is fully documented in its SKILL.md; no top-level README or docs page change is required.
+validation:
+  - python3 validates frontmatter enclosure, directory/name identity, required description, and a size below 10000 characters
+  - scripts/github/validate_pullfrog_workflow.sh
+  - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task pr-077-context-aware-message-formatting --expected-head-ref skill/context-aware-message-formatting --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha "$(git rev-parse origin/dev)"
+  - git diff --check origin/dev...HEAD
+private_data_scan: required
+publish_authority: 'User-authorized PR #77 feature-to-dev completion through the protected Mergeguez lane, with exact-head review and hosted gates required before merge and exact-SHA cleanup afterward.'
+publication_route:
+  strategy: merge_current_dev_then_fast_forward_publish
+  selected_push_actor: mergeguez_branch_broker
+  selected_push_login: mergeguez[bot]
+  selected_pr_actor: existing_pr_author
+  selected_pr_login: mergeguez[bot]
+  selected_merge_actor: mergeguez_dev_merge
+  force_push_allowed: false
+  status: ready_for_local_validation
