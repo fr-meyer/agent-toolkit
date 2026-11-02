@@ -1,0 +1,4 @@
+chore: close out merged agent-toolkit review-policy metadata
+
+Task: pr-080-agent-toolkit-review-gate
+Record the exact reviewed head, Mergeguez evidence, and merge commit for PR #81 without changing runtime behavior or repository authority.

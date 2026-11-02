@@ -1,0 +1,50 @@
+id: pullfrog-cloud-cycle-contract-20261027
+title: Define the exact-head Pullfrog remediation cycle contract
+status: implementation
+branch: chore/pullfrog-cloud-cycle-contract
+base_branch: dev
+write_paths:
+  - .speculoos/goal.md
+  - .speculoos/manifest.yaml
+  - .speculoos/tasks/pullfrog-cloud-cycle-contract-20261027.yaml
+  - docs/pullfrog-cycle-contract.md
+  - scripts/github/pullfrog_cycle_contract.py
+  - scripts/github/tests/test_pullfrog_cycle_contract.py
+  - specs/pullfrog-cloud-cycle-contract-20261027/commit-message.txt
+  - specs/pullfrog-cloud-cycle-contract-20261027/pr-body.md
+scope:
+  - define a deterministic provider-free state machine for review, remediation, and exact-head re-review
+  - bind repository, PR, base, head, event, review, and required-check evidence to one exact head
+  - normalize findings into sanitized fingerprints without copying raw summaries into receipts
+  - make duplicate deliveries idempotent and cap remediation at three cycles
+  - stop on drift, stale or missing evidence, repeated findings, unchanged output, unchanged head, or incomplete history
+non_goals:
+  - invoking Pullfrog or any coding provider
+  - enabling repository writes, remediation, approval, auto-merge, release, or deployment
+  - changing credentials, billing, GitHub App permissions, or branch protection
+  - replacing Pullfrog as reviewer or fixer
+acceptance:
+  - clean exact-head evidence produces only a clean completion decision
+  - exact-head findings produce only a bounded remediation-ready decision
+  - duplicate exact claims perform no action
+  - head/base/repository/PR/destination drift stops the cycle
+  - missing, pending, failed, cancelled, timed-out, malformed, or stale evidence stops the cycle
+  - repeated findings, unchanged output, unchanged or reused heads, and incomplete history stop the cycle
+  - no more than three remediation cycles can be authorized
+  - receipts omit raw finding summaries and arbitrary input notes
+  - focused tests, syntax checks, whitespace checks, Speculoos validation, and publish checks pass
+publication_boundary:
+  statement: "Provider-free local contract and documentation only. No Pullfrog invocation, repository push, PR mutation, approval, merge, release, deployment, credential, billing, or hosted-setting change."
+documentation_impact:
+  status: updated
+  rationale: The exact-head state machine and fail-closed decisions must remain recoverable from repository source.
+validation:
+  - "python3 -m unittest scripts/github/tests/test_pullfrog_cycle_contract.py -v"
+  - "python3 -m py_compile scripts/github/pullfrog_cycle_contract.py scripts/github/tests/test_pullfrog_cycle_contract.py"
+  - "git diff --check origin/dev...HEAD"
+  - "speculoos validate --repo . --repo-slug fr-meyer/agent-toolkit --base dev --task pullfrog-cloud-cycle-contract-20261027 --validation 'python3 -m unittest scripts/github/tests/test_pullfrog_cycle_contract.py -v' --json"
+  - "speculoos publish-check --base origin/dev --task pullfrog-cloud-cycle-contract-20261027 --pr-body specs/pullfrog-cloud-cycle-contract-20261027/pr-body.md --commit-message specs/pullfrog-cloud-cycle-contract-20261027/commit-message.txt --json"
+private_data_scan: required
+publish_authority: Local contract preparation only; publication and every write-capable hosted behavior remain separately gated.
+notes:
+  - This contract is a dependency of the destination guard and dry-run GitHub Actions coordinator.
