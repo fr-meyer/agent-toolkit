@@ -1,0 +1,5 @@
+chore(github): bootstrap guarded PR 66 remediation
+
+Bind task pr-066-container-source-rebuild-guard and add a manual exact-ref dogfood trigger without changing pull-request path filters.
+
+Feature PRs target `dev`. Release/promotion PRs target `main`.

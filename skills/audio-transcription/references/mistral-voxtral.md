@@ -63,9 +63,19 @@ Generic or platform-level quick transcription wrappers may return only plain tra
 
 Diarization labels separate voices, but labels such as `Speaker 1` are not verified real people. Only map names from explicit user metadata, self-introduction, or manual review.
 
-## Long audio caveat
+## Long-audio reliability
 
-The helper defaults to a 3-hour direct-request guard (`--max-direct-duration-seconds 10800`) and refuses longer cloud uploads unless `--allow-long-audio` is passed. For very long recordings, prefer a separate chunk/stitch workflow that preserves absolute timestamps and records chunk boundaries.
+The helper normalizes by default: first audio stream only, mono 16 kHz, 64 kbps for MP3/M4A, with video/cover art, source metadata, and chapters removed. `--no-normalize` is an explicit bypass and must have a recorded reason.
+
+Uploads use a replayable content-length-aware multipart iterator; responses stream through a bounded temporary file and are accepted only after advertised-length, size, strict UTF-8, and JSON validation. `--max-response-bytes` controls the response cap.
+
+One equivalent request is hard-capped at three attempts. Retry SSL EOF/reset/remote-close/timeout, HTTP 429/5xx, and incomplete response bodies with bounded exponential backoff/jitter; honor bounded `Retry-After`. Do not retry schema, authentication, payment/quota, proxy 407, invalid UTF-8, or invalid successful-response JSON failures. `--failure-report` writes safe typed failure evidence for durable workflow circuits.
+
+The direct-request duration guard remains 3 hours (`--max-direct-duration-seconds 10800`). For a normalized retryable direct failure, opt into `--chunk-on-failure`; default chunks are 45 minutes with two seconds of overlap on each ownership boundary. The aggregate shifts timestamps to absolute time and deduplicates overlap. Independent diarization labels are namespaced per chunk and flagged for reconciliation; never infer cross-chunk voice identity.
+
+A non-diarized final pass never happens implicitly. It requires both `--chunk-on-failure` and `--allow-non-diarized-fallback`, runs only after retryable direct and chunk failures, and records `diarization_disabled_after_explicit_fallback`.
+
+For chunked archives, `provider-response.json` is an explicitly derived aggregate. Exact provider bodies are stored separately under `provider-responses.raw/` with hashes and sizes in metadata.
 
 ## Repair fallback
 

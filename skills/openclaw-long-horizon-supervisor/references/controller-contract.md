@@ -1,31 +1,28 @@
-# Controller adapter contract
+# Optional controller extension contract
 
-Use this reference when registering, auditing, or recovering a durable project supervisor.
+Use this reference only when a task needs fenced exactly-once effects that Workboard plus the native service preview/confirm or compare-and-swap API cannot provide. Workboard remains the durable task ledger; the controller only strengthens one effect boundary.
 
 The environment-provided controller should support equivalent operations for:
 
-- initialize without overwrite and validate descriptor/state;
-- render canonical recurring-watchdog and one-shot-wake declarations;
-- bind and verify exact scheduler identities;
-- check whether work is due;
-- claim, renew, and release a fenced lease;
-- record/deduplicate external signals and queue signals during a lease;
-- record non-idempotent operation intents and receipts;
-- raise, approve, expire, and consume exact manual gates;
-- update notification routing only from an interactive lane;
-- repair interrupted state/event journal writes.
+- initialize without overwrite and validate its descriptor/state;
+- claim, renew, and release a fenced operation lease;
+- record a stable non-idempotent intent before execution;
+- record a conclusive receipt as `succeeded`, `failed`, or `ambiguous`;
+- bind an exact manual gate to action, mutable identifiers, approver, reference, revision, and expiry;
+- expire and consume approvals;
+- repair interrupted state/event-journal writes;
+- export a bounded receipt that can be attached to Workboard proof.
 
 Validation must fail closed on:
 
-- unknown or malformed descriptor, state, event, signal, or pending-journal fields;
-- project-id mismatch;
-- scheduler payload/session/tools/delivery/schedule drift;
-- lease id, owner, epoch, or expiry mismatch;
+- unknown or malformed descriptor, state, event, intent, gate, or pending-journal fields;
+- project/card identity mismatch;
+- lease id, owner, fencing epoch, or expiry mismatch;
 - gate hash, revision, mutable-identifier, approver, reference, or expiry mismatch;
-- operation receipt without the matching fenced intent;
-- event payload collisions with reserved envelope fields;
-- duplicate event ids outside any bounded recent cache.
+- receipt without the matching fenced intent;
+- duplicate event or operation ids;
+- stale owners attempting release or receipt publication.
 
-State writes should be atomic and single-writer. Event append recovery must not create duplicate records. An expired or stale lease holder must be unable to release or record receipts. A queued signal must override a requested terminal or gated release to a resumable state.
+State writes should be atomic and single-writer. Event recovery must not create duplicate records. A surviving intent without a conclusive receipt is ambiguous and must not be replayed automatically.
 
-The adapter manages control metadata only. It must not execute project commands, infer approvals, call providers, or grant authority beyond the surrounding repository/user policy.
+The controller manages effect metadata only. It must not execute project commands, call providers, modify Workboard or Automations outside the authorized lane, infer approvals, or grant authority beyond repository/user policy. Record its bounded receipt on the claimed Workboard card, then complete, block, or release that card through the normal workflow.
