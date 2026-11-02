@@ -232,10 +232,10 @@ def validate_manifest_files(video_dir: Path, manifest: Mapping[str, Any]) -> lis
 
 
 def _same_file_identity(left: os.stat_result, right: os.stat_result) -> bool:
-    return all(
-        getattr(left, field) == getattr(right, field)
-        for field in ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
-    )
+    fields = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns")
+    if os.name != "nt":
+        fields += ("st_ctime_ns",)
+    return all(getattr(left, field) == getattr(right, field) for field in fields)
 
 
 def _regular_file_stat(path: Path) -> os.stat_result:

@@ -68,6 +68,25 @@ class MetadataStorageTests(unittest.TestCase):
         with mock.patch.object(storage.os, "O_BINARY", synthetic_binary_flag, create=True):
             self.assertEqual(synthetic_binary_flag, storage._read_only_flags() & synthetic_binary_flag)
 
+    def test_windows_identity_ignores_only_unstable_ctime(self):
+        fields = {
+            "st_dev": 1,
+            "st_ino": 2,
+            "st_mode": 0o100600,
+            "st_nlink": 1,
+            "st_size": 20,
+            "st_mtime_ns": 30,
+        }
+        left = mock.Mock(**fields, st_ctime_ns=40)
+        right = mock.Mock(**fields, st_ctime_ns=41)
+        with mock.patch.object(storage.os, "name", "nt"):
+            self.assertTrue(storage._same_file_identity(left, right))
+            right.st_size = 21
+            self.assertFalse(storage._same_file_identity(left, right))
+        right.st_size = 20
+        with mock.patch.object(storage.os, "name", "posix"):
+            self.assertFalse(storage._same_file_identity(left, right))
+
     def test_temp_mode_falls_back_when_fchmod_is_unavailable(self):
         temp, video, _manifest, _raw = self.make_video()
         self.addCleanup(temp.cleanup)
