@@ -1,0 +1,22 @@
+{
+  "should_trigger": [
+    "Turn this textbook folder into an OpenKB study workflow with lesson maps and summaries.",
+    "We imported a multi-volume manual into OpenKB; build collection cards, chapter cards, and bottom-up summaries.",
+    "Productize this course pack into source inventory, book cards, lesson cards, and a completion gate.",
+    "Compare whether a ConDB tree helps with hierarchy questions for this workbook collection.",
+    "Make a learning pack from these language books using source packs and lesson maps.",
+    "After ingesting these training manuals, create chapter maps and practical lookup cards.",
+    "Build a reusable reading guide for this multi-volume textbook set, including supplement links.",
+    "Create a project skeleton for a book workflow with source inventory, book cards, summaries, and optional ChatIndex artifacts."
+  ],
+  "should_not_trigger": [
+    "Import this one PDF into OpenKB and run OCR.",
+    "Find this research paper in Page Index and read every page.",
+    "Classify these papers into my taxonomy.",
+    "Write a thematic literature review from these article summaries.",
+    "Rename this folder of tax PDFs before import.",
+    "Summarize this single Page Index paper into a Markdown report.",
+    "Create a generic GitHub PR checklist for shared skills.",
+    "Run a normal OpenKB status check and tell me how many documents are indexed."
+  ]
+}

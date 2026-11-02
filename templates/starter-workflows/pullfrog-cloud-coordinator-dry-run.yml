@@ -1,0 +1,126 @@
+# Managed by templates/repo-workflow-materialization-manifest.json.
+# Edit templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml, then rematerialize the live workflow.
+name: Pullfrog cloud coordinator (dry run)
+run-name: Pullfrog coordinator dry run · ${{ github.event_name }} · ${{ github.run_id }}
+
+on:
+  check_run:
+    types:
+      - completed
+  workflow_run:
+    workflows:
+      - PR automation dogfood
+      - Speculoos
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Open pull request number
+        required: true
+        type: number
+      expected_head_sha:
+        description: Exact 40-character pull request head SHA
+        required: true
+        type: string
+
+permissions:
+  checks: read
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pullfrog-cloud-coordinator-${{ github.repository_id }}-${{ inputs.expected_head_sha || github.event.check_run.head_sha || github.event.workflow_run.head_sha || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    name: Exact-head decision (no mutation)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'workflow_run' ||
+      (github.event_name == 'check_run' &&
+       (github.event.check_run.app.slug == 'pullfrog' ||
+        startsWith(github.event.check_run.name, 'speculoos')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout trusted coordinator source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Resolve bounded event context
+        id: context
+        shell: bash
+        env:
+          DISPATCH_PR_NUMBER: ${{ inputs.pr_number }}
+          DISPATCH_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          receipt="artifacts/pullfrog-cloud-coordinator/receipt.json"
+          mkdir -p "$(dirname "$receipt")"
+          set +e
+          python scripts/github/pullfrog_cloud_coordinator.py resolve-event \
+            --event "$GITHUB_EVENT_PATH" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --dispatch-pr-number "$DISPATCH_PR_NUMBER" \
+            --dispatch-head-sha "$DISPATCH_HEAD_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --github-output "$GITHUB_OUTPUT" \
+            --failure-receipt "$receipt"
+          context_exit="$?"
+          set -e
+          echo "context_exit=$context_exit" >> "$GITHUB_OUTPUT"
+
+      - name: Evaluate exact-head evidence without mutation
+        if: steps.context.outputs.context_exit == '0'
+        id: coordinator
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          receipt="artifacts/pullfrog-cloud-coordinator/receipt.json"
+          mkdir -p "$(dirname "$receipt")"
+          set +e
+          python scripts/github/pullfrog_cloud_coordinator.py evaluate-github \
+            --repository "$GITHUB_REPOSITORY" \
+            --pr-number "${{ steps.context.outputs.pr_number }}" \
+            --expected-head-sha "${{ steps.context.outputs.expected_head_sha }}" \
+            --event-kind "${{ steps.context.outputs.event_kind }}" \
+            --delivery-id "${{ steps.context.outputs.delivery_id }}" \
+            --protected-ref dev \
+            --protected-ref main \
+            --ci-check 'dogfood / Provider-free PR automation contract=github-actions' \
+            --speculoos-check 'speculoos=github-actions' \
+            --out "$receipt" \
+            --fail-on-stopped
+          coordinator_exit="$?"
+          set -e
+          test -s "$receipt"
+          echo "coordinator_exit=$coordinator_exit" >> "$GITHUB_OUTPUT"
+
+      - name: Upload sanitized dry-run receipt
+        if: always() && steps.context.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pullfrog-cloud-coordinator-${{ github.run_id }}
+          path: artifacts/pullfrog-cloud-coordinator/receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish sanitized summary and enforce fail-closed result
+        if: always() && steps.context.outcome == 'success'
+        run: >-
+          python scripts/github/pullfrog_cloud_coordinator.py summarize
+          --receipt artifacts/pullfrog-cloud-coordinator/receipt.json
+          --github-step-summary "$GITHUB_STEP_SUMMARY"
+          --fail-on-stopped

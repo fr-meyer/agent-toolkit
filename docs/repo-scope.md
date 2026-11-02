@@ -21,6 +21,7 @@ Do not commit copies of skills that are already maintained in an official upstre
 | Runtime installs | npm packages, pip envs, tool binaries | Installed per machine; not portable as committed files |
 | Machine-specific paths | Absolute paths to clones, home dirs | Differ per machine; hardcoding breaks portability |
 | Per-project local state | `.cursor/rules` symlink, local overrides | Created by connect scripts; belongs to each project |
+| PR safety denylists | `.public-pr-safety-denylist.local` | Project-specific publication checks belong in ignored local config |
 | The `~/.agent-toolkit` alias | The symlink itself | Points to a machine-specific path; cannot be shared |
 
 ## Why `~/.agent-toolkit` is not committed

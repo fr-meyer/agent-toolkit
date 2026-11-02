@@ -15,6 +15,8 @@ Transform a pending changeset so it no longer contains blocker content that is u
 - replacing risky sample values with placeholders or env-var references
 - excluding unsafe files from the pending commit
 - cleaning logs, dumps, exports, or internal-only docs from a public-facing changeset
+- rewriting public PR prose, release notes, or task metadata that copied private context into public-facing surfaces
+- preparing history rewrite or hosted-artifact escalation when sensitive content already reached a public PR patch/diff
 
 ## Do not use this skill for
 
@@ -48,6 +50,29 @@ Gather what is available:
 
 Prefer temporary breakage over committing dangerous public red-list content.
 
+## Public Attribution Rule
+
+Do not redact intentionally public attribution solely because it is a personal name.
+
+Preserve names and GitHub noreply email addresses in:
+
+- Git author or committer metadata
+- `Co-authored-by` trailers
+- copyright or license notices
+- package/project author metadata
+- public maintainer or README attribution
+
+Clean the private context around a name instead. Still remove or generalize local paths, local usernames, workspace names, private runtime names, private memory references, private project/property/customer context, and chat-derived notes such as `<person> wants...` when they do not belong in public metadata.
+
+## Hosted PR Artifacts
+
+For public or public-intended GitHub repositories, remediation is not complete until hosted PR artifacts are also checked when a PR exists.
+
+- Re-scan the PR title/body after editing.
+- Fetch and scan the generated PR `.patch` or `.diff` endpoint before merge.
+- If a public PR patch/diff contains sensitive context, rewrite the branch before merge when possible.
+- If the PR is already closed/merged and GitHub retains the leak through read-only `refs/pull/*`, report that normal remediation is insufficient and recommend a proportionate escalation such as GitHub Support purge, temporary repository privacy, or repo recreation for severe cases.
+
 ## Validation
 
 Before finishing, verify:
@@ -56,13 +81,16 @@ Before finishing, verify:
 - replacements do not preserve the original secret/value
 - excluded files are truly excluded from the commit
 - the follow-up red-list audit passes or remaining blockers are clearly reported
+- any existing public PR body and generated `.patch`/`.diff` views are clean, or unremovable hosted artifacts are explicitly reported
 
 ## Gotchas
 
 - deleting a secret in a later commit does not undo exposure if it was already committed
+- rewriting branch history does not necessarily clean closed PR patch/diff views hosted by GitHub
 - test fixtures and docs often hide live values
 - "internal-only but harmless" is not a safe assumption for public repos
 - do not silently leave risky content staged after partial remediation
+- do not remove public attribution metadata just to hide a private-context finding; remove the private context instead
 
 ## Portability notes
 

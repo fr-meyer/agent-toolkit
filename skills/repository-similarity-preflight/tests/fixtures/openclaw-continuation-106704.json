@@ -1,0 +1,47 @@
+{
+  "schema_version": "repository-similarity-preflight/v1",
+  "repository": {
+    "host": "github.com",
+    "owner": "openclaw",
+    "name": "openclaw",
+    "visibility": "public",
+    "revision": "public-base-revision",
+    "branch": "planned/continuation-fix"
+  },
+  "intent": {
+    "title": "Prevent an empty successful result after a first-turn sessions_yield",
+    "summary": "Clarify the continuation behavior and route implementation discussion through the existing canonical issue.",
+    "target": "issue",
+    "terms": ["sessions_yield", "empty result", "continuation", "follow-up", "canonical issue"],
+    "behavior_names": ["first-turn sessions_yield"]
+  },
+  "search": {
+    "auth": {"status": "anonymous"},
+    "queries": [
+      "continuation behavior yielded run",
+      "follow-up canonical issue"
+    ],
+    "sources": [
+      {
+        "kind": "issues",
+        "status": "complete",
+        "items": [
+          {
+            "number": 106704,
+            "url": "https://github.com/openclaw/openclaw/issues/106704",
+            "state": "open",
+            "title": "[Bug]: sessions_yield on a subagent's first turn (no children, no wake source) silently finalizes the run as ok with an empty result — tool descriptions invite the misuse",
+            "relationship": "duplicate",
+            "reason": "Existing issue covers the same first-turn sessions_yield behavior and canonical follow-up path."
+          }
+        ]
+      },
+      {"kind": "discussions", "status": "not_applicable", "reason": "Not used for this issue-focused check."},
+      {"kind": "pull_requests", "status": "complete", "items": []},
+      {"kind": "releases", "status": "complete", "items": []},
+      {"kind": "docs", "status": "complete", "items": []},
+      {"kind": "code", "status": "complete", "items": []},
+      {"kind": "tests", "status": "complete", "items": []}
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+fix(github): enforce complete Pullfrog review contract
+
+Share one exact repository/PR/base/head review contract across the coordinator,
+fallback, post-remediation re-review, and merge boundary. Reject empty,
+markerless, stale, spoofed, unresolved, or structurally incomplete evidence.
+
+After a verified remediation publish, run at most one Sol/xhigh re-review with
+a short-lived review-only Pullfrog App lease, revoke it, reconcile only bounded
+prior Pullfrog threads in an isolated provider-free job, and publish the exact
+identity gate only after the complete contract re-reads clean.
+
+Feature PRs target `dev`. Release/promotion PRs target `main`.

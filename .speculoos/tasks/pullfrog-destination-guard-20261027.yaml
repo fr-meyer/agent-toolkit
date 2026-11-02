@@ -1,0 +1,50 @@
+id: pullfrog-destination-guard-20261027
+title: Add the non-bypassable Pullfrog remediation destination guard
+status: implementation
+branch: chore/pullfrog-destination-guard
+base_branch: dev
+write_paths:
+  - .speculoos/goal.md
+  - .speculoos/manifest.yaml
+  - .speculoos/tasks/pullfrog-destination-guard-20261027.yaml
+  - docs/pullfrog-destination-guard.md
+  - scripts/github/pullfrog_destination_guard.py
+  - scripts/github/tests/test_pullfrog_destination_guard.py
+  - specs/pullfrog-destination-guard-20261027/commit-message.txt
+  - specs/pullfrog-destination-guard-20261027/pr-body.md
+scope:
+  - bind every remediation attempt to the exact current PR head repository, branch, and SHA
+  - permit only feat, fix, docs, test, or chore feature-branch prefixes
+  - reject forks, detached refs, protected/default/base branches, stale heads, and retry destination changes
+  - block automatic changes to workflow and governance authority paths
+  - prove credentials, environment variables, and unrelated event fields cannot override the destination
+non_goals:
+  - enabling Pullfrog push or invoking a coding provider
+  - changing credentials, billing, GitHub App permissions, branch protection, or hosted settings
+  - merging, releasing, or deploying
+acceptance:
+  - an allowed same-repository exact-head feature branch passes
+  - a forbidden first attempt and forbidden retry both fail closed
+  - repository, PR, base, head, destination, or protected-ref drift fails closed
+  - forks and detached or full refs fail closed
+  - credentials, environment variables, and untrusted event fields cannot override the destination
+  - workflow and governance authority paths fail closed before and after remediation
+  - attempts are capped at three and every retry matches the first destination
+  - focused tests, syntax checks, whitespace checks, safety scan, and the full repository test set pass
+publication_boundary:
+  statement: "Provider-free local guard and documentation only. No Pullfrog invocation, push, PR mutation, approval, merge, release, deployment, credential, billing, or hosted-setting change."
+documentation_impact:
+  status: updated
+  rationale: The destination, retry, fork, protected-ref, and forbidden-path rules must remain recoverable from repository source.
+validation:
+  - "python3 -m unittest scripts/github/tests/test_pullfrog_destination_guard.py -v"
+  - "python3 -m py_compile scripts/github/pullfrog_destination_guard.py scripts/github/tests/test_pullfrog_destination_guard.py"
+  - "python3 -m unittest discover -s scripts/github/tests -p 'test_*.py' -q"
+  - "git diff --check"
+  - "speculoos validate --repo . --repo-slug fr-meyer/agent-toolkit --base dev --task pullfrog-destination-guard-20261027 --validation 'python3 -m unittest scripts/github/tests/test_pullfrog_destination_guard.py -v' --json"
+  - "speculoos publish-check --base origin/dev --task pullfrog-destination-guard-20261027 --pr-body specs/pullfrog-destination-guard-20261027/pr-body.md --commit-message specs/pullfrog-destination-guard-20261027/commit-message.txt --json"
+private_data_scan: required
+publish_authority: Local guard preparation only; publication and every write-capable hosted behavior remain separately gated.
+notes:
+  - This branch is based on the locally validated cycle-contract commit 7cd4d87.
+  - The dry-run coordinator depends on both components.

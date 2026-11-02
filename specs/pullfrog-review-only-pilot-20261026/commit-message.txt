@@ -1,0 +1,4 @@
+ci: prepare bounded Pullfrog review pilot
+
+Task: pullfrog-review-only-pilot-20261026
+Add an immutable, review-only Pullfrog workflow with disabled push, restricted shell, no provider secrets, and optional evidence status while preserving the required Mergeguez gate.
