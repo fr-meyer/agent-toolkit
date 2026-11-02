@@ -261,7 +261,10 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
 
     def test_caption_download_refuses_symlinked_destination_ancestors(self) -> None:
         def emit_caption(_cmd, *, cwd):
-            (Path(cwd) / "abc123.en.vtt").write_text("WEBVTT\n", encoding="utf-8")
+            (Path(cwd) / "abc123.en.vtt").write_text(
+                "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello\n",
+                encoding="utf-8",
+            )
             return mock.Mock()
 
         with tempfile.TemporaryDirectory() as tmp_s:
@@ -285,7 +288,10 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
 
     def test_caption_download_refuses_symlinked_final_file(self) -> None:
         def emit_caption(_cmd, *, cwd):
-            (Path(cwd) / "abc123.en.vtt").write_text("WEBVTT\n", encoding="utf-8")
+            (Path(cwd) / "abc123.en.vtt").write_text(
+                "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello\n",
+                encoding="utf-8",
+            )
             return mock.Mock()
 
         with tempfile.TemporaryDirectory() as tmp_s:
@@ -309,6 +315,46 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
                     )
             self.assertTrue(target.is_symlink())
             self.assertEqual("sentinel\n", outside.read_text(encoding="utf-8"))
+
+    def test_caption_download_rejects_non_vtt_fallback_before_archive_commit(self) -> None:
+        def emit_caption(_cmd, *, cwd):
+            (Path(cwd) / "abc123.en.json3").write_text('{"events": []}\n', encoding="utf-8")
+            return mock.Mock()
+
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            video_dir.mkdir()
+            with mock.patch.object(self.module, "run", side_effect=emit_caption):
+                with self.assertRaisesRegex(RuntimeError, "did not produce WebVTT"):
+                    self.module.download_caption_vtt(
+                        "/fixture/yt-dlp",
+                        "https://www.youtube.com/watch?v=abc123",
+                        "abc123",
+                        "en",
+                        "automatic",
+                        video_dir,
+                    )
+            self.assertFalse((video_dir / "raw").exists())
+
+    def test_caption_download_rejects_zero_cue_vtt_before_archive_commit(self) -> None:
+        def emit_caption(_cmd, *, cwd):
+            (Path(cwd) / "abc123.en.vtt").write_text("WEBVTT\n", encoding="utf-8")
+            return mock.Mock()
+
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            video_dir.mkdir()
+            with mock.patch.object(self.module, "run", side_effect=emit_caption):
+                with self.assertRaisesRegex(RuntimeError, "contain no cues"):
+                    self.module.download_caption_vtt(
+                        "/fixture/yt-dlp",
+                        "https://www.youtube.com/watch?v=abc123",
+                        "abc123",
+                        "en",
+                        "automatic",
+                        video_dir,
+                    )
+            self.assertFalse((video_dir / "raw" / "en" / "abc123.en.vtt").exists())
 
     def test_parse_vtt_rejects_symlink_replacement(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_s:

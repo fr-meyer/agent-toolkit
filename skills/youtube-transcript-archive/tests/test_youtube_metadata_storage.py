@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -305,6 +306,56 @@ class MetadataStorageTests(unittest.TestCase):
             storage.durable_atomic_write(target, b"ours")
         self.assertEqual(b"concurrent", target.read_bytes())
         self.assertEqual([], list(Path(temp.name).glob(".target.bin.tmp-*")))
+
+    @unittest.skipIf(os.name == "nt", "POSIX owner/mode validation")
+    def test_writer_lock_rejects_a_non_private_lock_root(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            lock_root = Path(tmp_s) / f"openclaw-youtube-metadata-locks-{os.geteuid()}"
+            lock_root.mkdir(mode=0o755)
+            lock_root.chmod(0o755)
+            with mock.patch.object(storage.tempfile, "gettempdir", return_value=tmp_s):
+                with self.assertRaisesRegex(storage.MetadataPathError, "owner-only"):
+                    storage._lock_path(Path(tmp_s) / "target", "target")
+
+    def test_atomic_write_serializes_contender_started_immediately_before_replace(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        target = Path(temp.name) / "target.bin"
+        target.write_bytes(b"old")
+        original_replace = storage.os.replace
+        main_thread = threading.current_thread()
+        contender_started = threading.Event()
+        contender_done = threading.Event()
+        replacement_order: list[str] = []
+
+        def contender() -> None:
+            contender_started.set()
+            storage.durable_atomic_write(target, b"concurrent")
+            contender_done.set()
+
+        worker = threading.Thread(target=contender, daemon=True)
+
+        def interleaved_replace(source, destination):
+            if Path(destination) == target:
+                if threading.current_thread() is main_thread:
+                    worker.start()
+                    self.assertTrue(contender_started.wait(1))
+                    self.assertFalse(
+                        contender_done.wait(0.05),
+                        "contender passed the target lock before the first replace",
+                    )
+                    replacement_order.append("first")
+                else:
+                    replacement_order.append("contender")
+            return original_replace(source, destination)
+
+        with mock.patch.object(storage.os, "replace", side_effect=interleaved_replace):
+            storage.durable_atomic_write(target, b"ours")
+            worker.join(2)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(["first", "contender"], replacement_order)
+        self.assertEqual(b"concurrent", target.read_bytes())
 
     def test_manifest_file_validation_rejects_backslash_and_symlink_parent(self):
         temp, video, manifest, _raw = self.make_video()

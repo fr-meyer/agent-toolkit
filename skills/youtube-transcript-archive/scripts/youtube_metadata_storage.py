@@ -8,6 +8,7 @@ compressed generation never falls back to plaintext.
 from __future__ import annotations
 
 import copy
+import contextlib
 import gzip
 import hashlib
 import io
@@ -18,6 +19,11 @@ import stat
 import tempfile
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Callable, Mapping
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 
 SCHEMA = "openclaw.youtube-metadata-storage.v1"
 GZIP_CODEC_VERSION = "gzip-6-mtime0-v1"
@@ -428,16 +434,74 @@ def _set_temp_mode(fd: int, path: Path, mode: int) -> None:
         os.chmod(path, mode)
 
 
-def durable_atomic_write(path: Path, data: bytes, *, mode: int = 0o600) -> None:
-    """Write through a same-directory temp, fsync, replace, and sync the directory where supported.
+def _lock_path(identity: Path, purpose: str) -> Path:
+    """Return an owner-only process-shared lock path outside the archive tree."""
+    owner_id = os.geteuid() if os.name != "nt" and hasattr(os, "geteuid") else None
+    owner = str(owner_id) if owner_id is not None else sha256_bytes(str(Path.home()).encode())[:16]
+    root = Path(tempfile.gettempdir()).resolve(strict=True) / f"openclaw-youtube-metadata-locks-{owner}"
+    try:
+        root.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    metadata = root.lstat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or owner_id is not None
+        and (metadata.st_mode & 0o077 or metadata.st_uid != owner_id)
+    ):
+        raise MetadataPathError("metadata writer lock root is not owner-only")
+    digest = sha256_bytes(f"{purpose}\0{identity.resolve(strict=False)}".encode("utf-8"))
+    return root / f"{digest}.lock"
 
-    The target identity is rechecked immediately before replacement so a
-    concurrent writer cannot be overwritten silently.
-    """
-    unresolved_parent = path.parent.absolute()
+
+@contextlib.contextmanager
+def _exclusive_file_lock(path: Path):
+    """Hold one owner-only advisory lock without following an unsafe lock path."""
     parent = path.parent.resolve(strict=True)
-    if not parent.is_dir() or unresolved_parent != parent:
-        raise MetadataPathError("target parent is not a stable real directory")
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags, 0o600)
+    try:
+        opened = os.fstat(fd)
+        current = path.lstat()
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or not _same_file_identity(opened, current)
+            or path.parent.resolve(strict=True) != parent
+        ):
+            raise MetadataPathError(f"writer lock is not a stable single-link file: {path.name}")
+        if os.name == "nt":
+            if opened.st_size == 0:
+                os.write(fd, b"\0")
+                os.fsync(fd)
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+        else:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+@contextlib.contextmanager
+def writer_lock(video_dir: Path):
+    """Serialize one complete archive preparation and manifest commit."""
+    directory = _real_video_directory(video_dir)
+    lock_path = _lock_path(directory, "archive")
+    with _exclusive_file_lock(lock_path):
+        yield
+
+
+def _durable_atomic_write_locked(path: Path, parent: Path, data: bytes, mode: int) -> None:
+    """Perform one replacement while the target-specific writer lock is held."""
     existing: os.stat_result | None = None
     if path.exists() or path.is_symlink():
         existing = path.lstat()
@@ -468,6 +532,17 @@ def durable_atomic_write(path: Path, data: bytes, *, mode: int = 0o600) -> None:
             temp.unlink()
         except FileNotFoundError:
             pass
+
+
+def durable_atomic_write(path: Path, data: bytes, *, mode: int = 0o600) -> None:
+    """Durably replace one target while serializing its final identity check."""
+    unresolved_parent = path.parent.absolute()
+    parent = path.parent.resolve(strict=True)
+    if not parent.is_dir() or unresolved_parent != parent:
+        raise MetadataPathError("target parent is not a stable real directory")
+    lock_path = _lock_path(path, "target")
+    with _exclusive_file_lock(lock_path):
+        _durable_atomic_write_locked(path, parent, data, mode)
 
 
 def write_immutable_generation(video_dir: Path, filename: str, stored: bytes) -> str:
@@ -605,25 +680,27 @@ def write_dual_from_plaintext(
 ) -> dict[str, Any]:
     """Write and verify a dual generation, committing the manifest last.
 
-    The caller must hold the per-video writer lock. The optional hook is for
-    receipts, tests, and interruption injection; it is called after each durable
-    step and before the next one.
+    This helper holds the per-video writer lock from source read through
+    manifest verification. The optional hook is for receipts, tests, and
+    interruption injection; it is called after each durable step and before the
+    next one.
     """
-    notify = on_step or (lambda _step: None)
-    raw = read_regular_bytes(_safe_child(video_dir, "metadata.json"), max_bytes=max_raw_bytes)
-    parse_metadata_json(raw)
-    descriptor = prepare_dual_generation(video_dir, raw, max_raw_bytes=max_raw_bytes)
-    notify("generation_committed")
-    provisional = prepare_manifest_with_storage(manifest, descriptor)
-    recovered = read_metadata_bytes(video_dir, provisional, max_raw_bytes=max_raw_bytes)
-    if recovered != raw:
-        raise MetadataIntegrityError("compressed generation did not round-trip exact bytes")
-    notify("generation_verified")
-    commit_manifest(video_dir, provisional)
-    notify("manifest_committed")
-    committed = read_manifest(video_dir)
-    verified = read_metadata_bytes(video_dir, committed, max_raw_bytes=max_raw_bytes)
-    if verified != raw:
-        raise MetadataIntegrityError("committed manifest did not recover exact metadata bytes")
-    notify("manifest_verified")
-    return committed
+    with writer_lock(video_dir):
+        notify = on_step or (lambda _step: None)
+        raw = read_regular_bytes(_safe_child(video_dir, "metadata.json"), max_bytes=max_raw_bytes)
+        parse_metadata_json(raw)
+        descriptor = prepare_dual_generation(video_dir, raw, max_raw_bytes=max_raw_bytes)
+        notify("generation_committed")
+        provisional = prepare_manifest_with_storage(manifest, descriptor)
+        recovered = read_metadata_bytes(video_dir, provisional, max_raw_bytes=max_raw_bytes)
+        if recovered != raw:
+            raise MetadataIntegrityError("compressed generation did not round-trip exact bytes")
+        notify("generation_verified")
+        commit_manifest(video_dir, provisional)
+        notify("manifest_committed")
+        committed = read_manifest(video_dir)
+        verified = read_metadata_bytes(video_dir, committed, max_raw_bytes=max_raw_bytes)
+        if verified != raw:
+            raise MetadataIntegrityError("committed manifest did not recover exact metadata bytes")
+        notify("manifest_verified")
+        return committed

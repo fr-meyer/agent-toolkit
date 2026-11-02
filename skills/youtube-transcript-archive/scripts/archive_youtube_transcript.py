@@ -249,15 +249,20 @@ def download_caption_vtt(
         cmd.append("--write-subs" if source == "manual" else "--write-auto-subs")
         cmd.append(url)
         run(cmd, cwd=tmp)
-        candidates = sorted(tmp.glob(f"{video_id}*.vtt")) or sorted(tmp.glob(f"{video_id}*"))
+        candidates = sorted(tmp.glob(f"{video_id}*.vtt"))
         if not candidates:
-            raise RuntimeError(f"yt-dlp did not produce a subtitle file for language {lang}")
+            produced = sorted(path.name for path in tmp.glob(f"{video_id}*") if path.is_file())
+            detail = f"; produced unsupported files: {', '.join(produced)}" if produced else ""
+            raise RuntimeError(f"yt-dlp did not produce WebVTT subtitles for language {lang}{detail}")
         raw_parent = ensure_real_subdirectories(video_dir, "raw", lang)
         raw_vtt = raw_parent / f"{video_id}.{lang}.vtt"
         caption_bytes = metadata_storage.read_regular_bytes(
             candidates[0],
             max_bytes=64 * 1024 * 1024,
         )
+        _clean_lines, cues = parse_vtt_bytes(caption_bytes)
+        if not cues:
+            raise RuntimeError(f"WebVTT subtitles for language {lang} contain no cues")
         metadata_storage.durable_atomic_write(raw_vtt, caption_bytes)
         return raw_vtt, caption_bytes
 
@@ -665,67 +670,13 @@ def write_metadata_only_archive(
     return manifest
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("url", help="YouTube URL or video ID")
-    parser.add_argument("--archive-root", required=True, help="Trusted archive root directory")
-    parser.add_argument("--lang", default="best", help="Caption language preference, e.g. en, fr, fr-orig, or best")
-    parser.add_argument("--refresh", action="store_true", help="Refresh an existing complete archive in place")
-    parser.add_argument("--yt-dlp-bin", default=os.environ.get("YT_DLP", "yt-dlp"), help="yt-dlp binary path")
-    parser.add_argument("--summary-file", help="Optional Markdown summary to inject into report.md")
-    parser.add_argument(
-        "--no-caption-fallback",
-        action="store_true",
-        help="Do not retry alternate caption tracks when --lang best selects a track that yt-dlp cannot download",
-    )
-    parser.add_argument(
-        "--max-caption-candidates",
-        type=int,
-        default=12,
-        help="Maximum best-mode caption tracks to try before failing; ignored for explicit --lang values",
-    )
-    parser.add_argument(
-        "--metadata-only-on-no-captions",
-        action="store_true",
-        help="Create a metadata-only archive instead of failing when YouTube exposes no captions",
-    )
-    parser.add_argument(
-        "--metadata-storage",
-        choices=["legacy", "dual", "compressed"],
-        default="compressed",
-        help="Metadata storage mode. compressed is the canonical deterministic-gzip default and never removes an existing plaintext rollback twin.",
-    )
-    # The canonical queue owns the writer lock and projection refresh. Accept
-    # its explicit carrier context so this sibling script can be deployed as a
-    # drop-in helper without loading or mutating those coordinator resources.
-    parser.add_argument("--state-root", help="Coordinator-owned state root; accepted for queue compatibility")
-    parser.add_argument("--projection-root", help="Coordinator-owned projection root; accepted for queue compatibility")
-    parser.add_argument("--storage-module", help="Coordinator storage module path; accepted for queue compatibility")
-    parser.add_argument("--writer-lock-held", action="store_true", help="Asserted by the coordinator-held writer lock")
-    args = parser.parse_args()
-
-    yt_dlp = shutil.which(args.yt_dlp_bin) or args.yt_dlp_bin
-    if not shutil.which(yt_dlp) and not Path(yt_dlp).exists():
-        raise SystemExit(f"yt-dlp binary not found: {args.yt_dlp_bin}")
-
-    archive_root = Path(args.archive_root).expanduser().resolve()
-    archive_root.mkdir(parents=True, exist_ok=True)
-
-    info = load_json_from_yt_dlp(yt_dlp, args.url)
-    video_id = info.get("id")
-    if not video_id:
-        raise SystemExit("Could not resolve YouTube video ID")
-    video_id = validate_video_id(video_id)
-
-    video_dir = archive_root / video_id
-    if not args.refresh:
-        existing = resolve_existing_archive(video_dir, args.lang, metadata_storage_mode=args.metadata_storage)
-        if existing:
-            existing["status"] = "reused"
-            existing["notes"] = "complete existing archive reused; use --refresh to reprocess"
-            print(json.dumps(existing, indent=2, ensure_ascii=False))
-            return 0
-
+def archive_resolved_video(
+    args: argparse.Namespace,
+    yt_dlp: str,
+    info: dict[str, Any],
+    video_id: str,
+    video_dir: Path,
+) -> int:
     subtitles_text: str | None = None
     metadata_descriptor: dict[str, Any] | None = None
 
@@ -843,6 +794,75 @@ def main() -> int:
 
     print(json.dumps(manifest, indent=2, ensure_ascii=False))
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("url", help="YouTube URL or video ID")
+    parser.add_argument("--archive-root", required=True, help="Trusted archive root directory")
+    parser.add_argument("--lang", default="best", help="Caption language preference, e.g. en, fr, fr-orig, or best")
+    parser.add_argument("--refresh", action="store_true", help="Refresh an existing complete archive in place")
+    parser.add_argument("--yt-dlp-bin", default=os.environ.get("YT_DLP", "yt-dlp"), help="yt-dlp binary path")
+    parser.add_argument("--summary-file", help="Optional Markdown summary to inject into report.md")
+    parser.add_argument(
+        "--no-caption-fallback",
+        action="store_true",
+        help="Do not retry alternate caption tracks when --lang best selects a track that yt-dlp cannot download",
+    )
+    parser.add_argument(
+        "--max-caption-candidates",
+        type=int,
+        default=12,
+        help="Maximum best-mode caption tracks to try before failing; ignored for explicit --lang values",
+    )
+    parser.add_argument(
+        "--metadata-only-on-no-captions",
+        action="store_true",
+        help="Create a metadata-only archive instead of failing when YouTube exposes no captions",
+    )
+    parser.add_argument(
+        "--metadata-storage",
+        choices=["legacy", "dual", "compressed"],
+        default="compressed",
+        help="Metadata storage mode. compressed is the canonical deterministic-gzip default and never removes an existing plaintext rollback twin.",
+    )
+    # The canonical queue owns the writer lock and projection refresh. Accept
+    # its explicit carrier context so this sibling script can be deployed as a
+    # drop-in helper without loading or mutating those coordinator resources.
+    parser.add_argument("--state-root", help="Coordinator-owned state root; accepted for queue compatibility")
+    parser.add_argument("--projection-root", help="Coordinator-owned projection root; accepted for queue compatibility")
+    parser.add_argument("--storage-module", help="Coordinator storage module path; accepted for queue compatibility")
+    parser.add_argument("--writer-lock-held", action="store_true", help="Asserted by the coordinator-held writer lock")
+    args = parser.parse_args()
+
+    yt_dlp = shutil.which(args.yt_dlp_bin) or args.yt_dlp_bin
+    if not shutil.which(yt_dlp) and not Path(yt_dlp).exists():
+        raise SystemExit(f"yt-dlp binary not found: {args.yt_dlp_bin}")
+
+    archive_root = Path(args.archive_root).expanduser().resolve()
+    archive_root.mkdir(parents=True, exist_ok=True)
+
+    info = load_json_from_yt_dlp(yt_dlp, args.url)
+    video_id = info.get("id")
+    if not video_id:
+        raise SystemExit("Could not resolve YouTube video ID")
+    video_id = validate_video_id(video_id)
+
+    video_dir = archive_root / video_id
+    video_dir.mkdir(parents=False, exist_ok=True)
+    with metadata_storage.writer_lock(video_dir):
+        if not args.refresh:
+            existing = resolve_existing_archive(
+                video_dir,
+                args.lang,
+                metadata_storage_mode=args.metadata_storage,
+            )
+            if existing:
+                existing["status"] = "reused"
+                existing["notes"] = "complete existing archive reused; use --refresh to reprocess"
+                print(json.dumps(existing, indent=2, ensure_ascii=False))
+                return 0
+        return archive_resolved_video(args, yt_dlp, info, video_id, video_dir)
 
 
 if __name__ == "__main__":
