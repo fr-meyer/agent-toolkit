@@ -601,6 +601,9 @@ def write_base_artifacts(
 ) -> dict[str, Any] | None:
     video_dir = ensure_real_subdirectories(video_dir.parent, video_dir.name)
     subtitles_path = video_dir / "subtitles-list.txt"
+    retained_subtitles = not refresh and (subtitles_path.exists() or subtitles_path.is_symlink())
+    if retained_subtitles:
+        metadata_storage.read_regular_bytes(subtitles_path, max_bytes=16 * 1024 * 1024)
     requested_raw = json.dumps(info, indent=2, ensure_ascii=False, sort_keys=True).encode("utf-8")
     existing_manifest: dict[str, Any] | None = None
     canonical_manifest = video_dir / "manifest.json"
@@ -672,7 +675,7 @@ def write_base_artifacts(
         raise metadata_storage.MetadataIntegrityError(
             "metadata bytes changed during non-replacing archive creation"
         )
-    if refresh or not subtitles_path.exists():
+    if not retained_subtitles:
         safe_write(subtitles_path, subtitles_list)
     if metadata_storage_mode == "legacy":
         return None

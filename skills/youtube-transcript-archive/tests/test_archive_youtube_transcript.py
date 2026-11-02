@@ -628,6 +628,32 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
                         metadata_storage_mode="dual",
                     )
 
+    def test_non_refresh_rejects_retained_subtitles_symlink_before_metadata_writes(self) -> None:
+        info = {"id": "abc123", "title": "Unsafe retained subtitles"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            archive_root = root / "archive"
+            archive_root.mkdir()
+            video_dir = archive_root / "abc123"
+            video_dir.mkdir()
+            outside = root / "outside.txt"
+            outside.write_text("attacker-controlled\n", encoding="utf-8")
+            (video_dir / "subtitles-list.txt").symlink_to(outside)
+
+            with self.assertRaises(self.module.metadata_storage.MetadataPathError):
+                self.module.write_base_artifacts(
+                    video_dir,
+                    info,
+                    "captions\n",
+                    refresh=False,
+                    metadata_storage_mode="compressed",
+                )
+
+            self.assertEqual("attacker-controlled\n", outside.read_text(encoding="utf-8"))
+            self.assertFalse((video_dir / "manifest.json").exists())
+            self.assertFalse((video_dir / "metadata.json").exists())
+            self.assertEqual([], list(video_dir.glob("metadata.*.json.gz")))
+
     def test_orphaned_plaintext_mismatch_is_refused_without_replacement(self) -> None:
         original = {"id": "abc123", "title": "Interrupted original"}
         changed = {"id": "abc123", "title": "Changed retry"}
