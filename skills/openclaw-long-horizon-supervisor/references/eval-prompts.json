@@ -1,0 +1,16 @@
+{
+  "should_trigger": [
+    "Keep this migration moving over several days with a Workboard card and safe recovery wakes.",
+    "Register a durable OpenClaw supervisor for this project with linked cards, proofs, and one recovery Automation.",
+    "The one-shot wake was missed; recover the exact Automation without creating a duplicate.",
+    "Audit whether this autonomous project safely handles claims, approvals, effect receipts, and stale runs.",
+    "Resume this multi-turn project after compaction while preserving its exact branch, review, and card state."
+  ],
+  "should_not_trigger": [
+    "Remind me in twenty minutes to call the dentist.",
+    "Run the unit tests once and tell me whether they pass.",
+    "Restart this systemd service if it crashes.",
+    "Write a handoff message to another agent.",
+    "Summarize this checkpoint but do not continue the project."
+  ]
+}

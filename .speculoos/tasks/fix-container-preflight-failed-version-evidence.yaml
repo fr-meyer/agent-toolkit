@@ -4,7 +4,7 @@ status: preparing_publication
 owner: fr-meyer
 branch: fix/container-preflight-failed-version-evidence
 base_branch: dev
-base_sha: 49c1ebbab1c539c9532bd1356c883f61e9e28a09
+base_sha: 79e11ee7fb20800f2d51425e57377f9c955a6400
 github:
   issue: null
   pull_request: 88
