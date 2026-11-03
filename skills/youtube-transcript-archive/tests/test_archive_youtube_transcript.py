@@ -599,6 +599,63 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
             self.assertEqual(["verified original"], clean_lines)
             self.assertEqual([("00:00:00.000", "verified original")], timestamped)
 
+    def test_manifest_publication_rejects_caption_replaced_after_verification(self) -> None:
+        original_vtt = b"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nverified original\n"
+        replacement_vtt = b"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nreplaced outside\n"
+        info = {
+            "id": "abc123",
+            "webpage_url": "https://www.youtube.com/watch?v=abc123",
+            "title": "Replacement race",
+            "language": "en",
+            "subtitles": {"en": [{"url": "https://example.invalid/en"}]},
+            "automatic_captions": {},
+        }
+        args = self.module.argparse.Namespace(
+            url=info["webpage_url"],
+            lang="en",
+            refresh=False,
+            metadata_storage="dual",
+            metadata_only_on_no_captions=False,
+            max_caption_candidates=12,
+            no_caption_fallback=False,
+            summary_file=None,
+        )
+
+        def emit_caption(_cmd, *, cwd):
+            (Path(cwd) / "abc123.en.vtt").write_bytes(original_vtt)
+            return mock.Mock()
+
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = Path(tmp_s)
+            video_dir = root / "abc123"
+            outside = root / "outside.vtt"
+            outside.write_bytes(replacement_vtt)
+            original_download = self.module.download_caption_vtt
+
+            def download_then_replace(*download_args):
+                raw_vtt, caption_bytes = original_download(*download_args)
+                raw_vtt.unlink()
+                raw_vtt.symlink_to(outside)
+                return raw_vtt, caption_bytes
+
+            with (
+                mock.patch.object(self.module, "run", side_effect=emit_caption),
+                mock.patch.object(self.module, "list_subs", return_value="en\n"),
+                mock.patch.object(self.module, "yt_dlp_version", return_value="fixture"),
+                mock.patch.object(self.module, "download_caption_vtt", side_effect=download_then_replace),
+            ):
+                with self.assertRaises(self.module.metadata_storage.MetadataPathError):
+                    self.module.archive_resolved_video(
+                        args,
+                        "/fixture/yt-dlp",
+                        info,
+                        "abc123",
+                        video_dir,
+                    )
+
+            self.assertFalse((video_dir / "manifest.json").exists())
+            self.assertFalse((video_dir / "manifests" / "en.complete").exists())
+
     def test_language_manifest_reuse_requires_the_canonical_commit_marker(self) -> None:
         info = {"id": "abc123", "title": "Interrupted language manifest"}
         with tempfile.TemporaryDirectory() as tmp_s:
@@ -708,6 +765,51 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
             self.assertIsNone(
                 self.module.resolve_existing_archive(video_dir, "best", metadata_storage_mode="dual")
             )
+
+    def test_archive_manifest_publish_verifies_canonical_readback(self) -> None:
+        info = {"id": "abc123", "title": "Canonical readback"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "captions\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            self.assertIsNotNone(descriptor)
+            manifests_dir = self.module.ensure_real_subdirectories(video_dir, "manifests")
+            language_manifest = manifests_dir / "en.json"
+            manifest = self.module.metadata_storage.prepare_manifest_with_storage(
+                {
+                    "language": "en",
+                    "files": ["manifest.json", "metadata.json", "manifests/en.json"],
+                },
+                descriptor,
+            )
+            real_commit = self.module.metadata_storage.commit_manifest
+
+            def replace_after_commit(path: Path, value: dict) -> None:
+                real_commit(path, value)
+                self.module.metadata_storage.durable_atomic_write(path / "manifest.json", b"{}\n")
+
+            with mock.patch.object(
+                self.module.metadata_storage,
+                "commit_manifest",
+                side_effect=replace_after_commit,
+            ):
+                with self.assertRaisesRegex(
+                    self.module.metadata_storage.MetadataIntegrityError,
+                    "canonical manifest readback mismatch",
+                ):
+                    self.module.commit_archive_manifests(
+                        video_dir,
+                        language_manifest,
+                        manifest,
+                        descriptor,
+                    )
+
+            self.assertFalse((manifests_dir / "en.complete").exists())
 
     def test_language_completion_markers_allow_alternating_archived_languages(self) -> None:
         info = {"id": "abc123", "title": "Two languages"}

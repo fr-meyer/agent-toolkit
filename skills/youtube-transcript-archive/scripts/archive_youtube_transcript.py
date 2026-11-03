@@ -390,6 +390,47 @@ def duration_text(seconds: Any) -> str:
     return f"{m}:{s:02d}"
 
 
+def validate_archive_artifacts(
+    video_dir: Path,
+    manifest: dict[str, Any],
+    *,
+    include_canonical_manifest: bool,
+) -> None:
+    """Validate every currently publishable artifact and the selected metadata."""
+    candidate = manifest
+    if not include_canonical_manifest:
+        candidate = dict(manifest)
+        files = manifest.get("files")
+        if isinstance(files, list):
+            candidate["files"] = [relative for relative in files if relative != "manifest.json"]
+    metadata_storage.validate_manifest_files(video_dir, candidate)
+    metadata_storage.read_metadata_json(video_dir, manifest)
+
+
+def commit_canonical_manifest(
+    video_dir: Path,
+    manifest: dict[str, Any],
+    metadata_descriptor: dict[str, Any] | None,
+) -> bytes:
+    """Validate artifacts, publish the canonical manifest, then verify it and its files."""
+    serialized = metadata_storage.manifest_bytes(manifest)
+    validate_archive_artifacts(video_dir, manifest, include_canonical_manifest=False)
+    if metadata_descriptor is not None:
+        metadata_storage.commit_manifest(video_dir, manifest)
+    else:
+        metadata_storage.durable_atomic_write(video_dir / "manifest.json", serialized)
+
+    canonical_path = video_dir / "manifest.json"
+    committed_raw = metadata_storage.read_regular_bytes(canonical_path, max_bytes=4 * 1024 * 1024)
+    if committed_raw != serialized:
+        raise metadata_storage.MetadataIntegrityError("committed canonical manifest readback mismatch")
+    committed = metadata_storage.read_manifest(video_dir)
+    validate_archive_artifacts(video_dir, committed, include_canonical_manifest=True)
+    if metadata_storage.read_regular_bytes(canonical_path, max_bytes=4 * 1024 * 1024) != serialized:
+        raise metadata_storage.MetadataIntegrityError("canonical manifest changed during publication validation")
+    return serialized
+
+
 def commit_archive_manifests(
     video_dir: Path,
     language_manifest: Path,
@@ -400,14 +441,16 @@ def commit_archive_manifests(
     _mark_current_language_complete(video_dir)
     serialized = metadata_storage.manifest_bytes(manifest)
     metadata_storage.durable_atomic_write(language_manifest, serialized)
-    if metadata_descriptor is not None:
-        metadata_storage.commit_manifest(video_dir, manifest)
-    else:
-        metadata_storage.durable_atomic_write(video_dir / "manifest.json", serialized)
-    metadata_storage.durable_atomic_write(
-        language_completion_marker_path(language_manifest),
-        language_completion_marker_bytes(serialized),
-    )
+    if metadata_storage.read_regular_bytes(language_manifest, max_bytes=4 * 1024 * 1024) != serialized:
+        raise metadata_storage.MetadataIntegrityError("language manifest readback mismatch")
+    commit_canonical_manifest(video_dir, manifest, metadata_descriptor)
+    if metadata_storage.read_regular_bytes(language_manifest, max_bytes=4 * 1024 * 1024) != serialized:
+        raise metadata_storage.MetadataIntegrityError("language manifest changed during publication validation")
+    marker_path = language_completion_marker_path(language_manifest)
+    marker_bytes = language_completion_marker_bytes(serialized)
+    metadata_storage.durable_atomic_write(marker_path, marker_bytes)
+    if metadata_storage.read_regular_bytes(marker_path, max_bytes=128) != marker_bytes:
+        raise metadata_storage.MetadataIntegrityError("language completion marker readback mismatch")
 
 
 def language_completion_marker_path(language_manifest: Path) -> Path:
@@ -716,10 +759,7 @@ def write_metadata_only_archive(
     if metadata_descriptor is not None:
         manifest = metadata_storage.prepare_manifest_with_storage(manifest, metadata_descriptor)
     safe_write(video_dir / "report.md", metadata_only_report_markdown(info, manifest))
-    if metadata_descriptor is not None:
-        metadata_storage.commit_manifest(video_dir, manifest)
-    else:
-        safe_write(video_dir / "manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True))
+    commit_canonical_manifest(video_dir, manifest, metadata_descriptor)
     return manifest
 
 
