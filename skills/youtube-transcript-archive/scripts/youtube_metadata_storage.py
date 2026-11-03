@@ -346,10 +346,10 @@ def read_metadata_bytes(
 ) -> bytes:
     if not isinstance(manifest, Mapping):
         raise MetadataManifestError("manifest must be an object")
-    storage = manifest.get("metadata_storage")
-    if storage is None:
+    if "metadata_storage" not in manifest:
         raw = read_regular_bytes(_safe_child(video_dir, "metadata.json"), max_bytes=max_raw_bytes)
         return raw
+    storage = manifest["metadata_storage"]
     descriptor = validate_descriptor(storage)
     if descriptor["raw_bytes"] > max_raw_bytes or descriptor["stored_bytes"] > max_stored_bytes:
         raise MetadataLimitError("declared metadata length exceeds configured limit")
@@ -366,8 +366,6 @@ def read_metadata_bytes(
     else:  # validate_descriptor already rejects this branch.
         raise MetadataCodecError(f"unsupported metadata codec: {descriptor['codec']!r}")
     _validate_recovered(raw, descriptor)
-    if descriptor["codec"] == "gzip" and deterministic_gzip(raw) != stored:
-        raise MetadataIntegrityError("stored metadata does not match deterministic gzip codec version")
     if descriptor["state"] == "dual":
         twin = read_regular_bytes(_safe_child(video_dir, "metadata.json"), max_bytes=max_raw_bytes)
         if len(twin) != descriptor["raw_bytes"] or sha256_bytes(twin) != descriptor["raw_sha256"]:

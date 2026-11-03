@@ -64,6 +64,13 @@ class MetadataStorageTests(unittest.TestCase):
         self.assertEqual(raw, storage.read_metadata_bytes(video, manifest))
         self.assertEqual("abcdefghijk", storage.read_metadata_json(video, manifest)["id"])
 
+    def test_present_null_storage_descriptor_is_rejected(self):
+        temp, video, manifest, _raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        manifest["metadata_storage"] = None
+        with self.assertRaises(storage.MetadataManifestError):
+            storage.read_metadata_bytes(video, manifest)
+
     def test_read_flags_include_binary_mode_when_available(self):
         synthetic_binary_flag = 1 << 29
         with mock.patch.object(storage.os, "O_BINARY", synthetic_binary_flag, create=True):
@@ -208,19 +215,21 @@ class MetadataStorageTests(unittest.TestCase):
         with self.assertRaises(storage.MetadataIntegrityError):
             storage.read_metadata_bytes(video, updated)
 
-    def test_nondeterministic_gzip_is_rejected_even_when_descriptor_matches(self):
-        temp, video, manifest, raw = self.make_video()
+    def test_valid_gzip_with_different_deflate_bytes_is_accepted(self):
+        raw = b'{"id":"abcdefghijk","title":"caf\xc3\xa9"}\n'
+        temp, video, manifest, _ = self.make_video(raw)
         self.addCleanup(temp.cleanup)
         filename, _compressed, descriptor = self.write_generation(video, raw)
-        import gzip
-
-        nondeterministic = gzip.compress(raw, compresslevel=6, mtime=123)
-        (video / filename).write_bytes(nondeterministic)
-        descriptor["stored_bytes"] = len(nondeterministic)
-        descriptor["stored_sha256"] = storage.sha256_bytes(nondeterministic)
+        alternate = bytes.fromhex(
+            "1f8b08000000000000ff012500daff7b226964223a226162636465666768696a6b22"
+            "2c227469746c65223a22636166c3a9227d0ab5c5fecd25000000"
+        )
+        self.assertNotEqual(storage.deterministic_gzip(raw), alternate)
+        (video / filename).write_bytes(alternate)
+        descriptor["stored_bytes"] = len(alternate)
+        descriptor["stored_sha256"] = storage.sha256_bytes(alternate)
         updated = storage.prepare_manifest_with_storage(manifest, descriptor)
-        with self.assertRaisesRegex(storage.MetadataIntegrityError, "deterministic gzip"):
-            storage.read_metadata_bytes(video, updated)
+        self.assertEqual(raw, storage.read_metadata_bytes(video, updated))
 
     def test_filename_raw_hash_mismatch_is_rejected(self):
         _, _, descriptor = storage.build_gzip_generation(b"{}\n")
