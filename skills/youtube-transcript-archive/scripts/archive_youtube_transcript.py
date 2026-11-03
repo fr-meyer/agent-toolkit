@@ -689,7 +689,10 @@ def write_base_artifacts(
     elif existing_manifest is not None and metadata_storage_mode == "compressed":
         # A compressed-canonical commit may preserve a legacy plaintext file as
         # rollback evidence while selecting fresh compressed bytes atomically in
-        # the manifest. The plaintext is never replaced here.
+        # the manifest. Prove that rollback evidence is still readable and valid
+        # before preparing any replacement generation; the plaintext is never
+        # replaced here.
+        metadata_storage.read_metadata_json(video_dir, existing_manifest)
         raw = requested_raw
         metadata_storage.parse_metadata_json(raw)
     else:

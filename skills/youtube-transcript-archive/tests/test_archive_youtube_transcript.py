@@ -1265,6 +1265,77 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
                 self.module.metadata_storage.read_metadata_bytes(video_dir, manifest),
             )
 
+    def test_compressed_cutover_rejects_missing_legacy_plaintext_without_manifest_change(self) -> None:
+        original = {"id": "abc123", "title": "Legacy rollback source"}
+        changed = {"id": "abc123", "title": "Compressed refresh"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                original,
+                "none\n",
+                refresh=False,
+                metadata_storage_mode="legacy",
+            )
+            self.assertIsNone(descriptor)
+            self.module.write_metadata_only_archive(
+                video_dir,
+                original,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+            )
+            manifest_path = video_dir / "manifest.json"
+            old_manifest = manifest_path.read_bytes()
+            (video_dir / "metadata.json").unlink()
+
+            with self.assertRaises(self.module.metadata_storage.MetadataIntegrityError):
+                self.module.write_base_artifacts(
+                    video_dir,
+                    changed,
+                    "none\n",
+                    refresh=True,
+                    metadata_storage_mode="compressed",
+                )
+
+            self.assertEqual(old_manifest, manifest_path.read_bytes())
+            self.assertEqual([], list(video_dir.glob("metadata.*.json.gz")))
+
+    def test_compressed_cutover_rejects_corrupt_legacy_plaintext_without_manifest_change(self) -> None:
+        original = {"id": "abc123", "title": "Legacy rollback source"}
+        changed = {"id": "abc123", "title": "Compressed refresh"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                original,
+                "none\n",
+                refresh=False,
+                metadata_storage_mode="legacy",
+            )
+            self.assertIsNone(descriptor)
+            self.module.write_metadata_only_archive(
+                video_dir,
+                original,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+            )
+            manifest_path = video_dir / "manifest.json"
+            old_manifest = manifest_path.read_bytes()
+            (video_dir / "metadata.json").write_bytes(b"{\n")
+
+            with self.assertRaises(self.module.metadata_storage.MetadataIntegrityError):
+                self.module.write_base_artifacts(
+                    video_dir,
+                    changed,
+                    "none\n",
+                    refresh=True,
+                    metadata_storage_mode="compressed",
+                )
+
+            self.assertEqual(old_manifest, manifest_path.read_bytes())
+            self.assertEqual(b"{\n", (video_dir / "metadata.json").read_bytes())
+            self.assertEqual([], list(video_dir.glob("metadata.*.json.gz")))
+
     def test_cli_accepts_queue_owned_carrier_context_without_mutating_it(self) -> None:
         info = {"id": "abc123", "title": "Queue carrier", "subtitles": {}, "automatic_captions": {}}
         with tempfile.TemporaryDirectory() as tmp_s:
