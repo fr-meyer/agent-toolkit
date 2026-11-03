@@ -268,6 +268,76 @@ class MetadataOnlyArchiveTests(unittest.TestCase):
             after = {path.relative_to(video_dir): path.read_bytes() for path in video_dir.rglob("*") if path.is_file()}
             self.assertEqual(before, after)
 
+    def test_default_compressed_mode_rejects_corrupt_dual_plaintext_twin(self) -> None:
+        info = {
+            "id": "abc123",
+            "title": "Corrupt dual rollback twin",
+            "subtitles": {},
+            "automatic_captions": {},
+        }
+        with tempfile.TemporaryDirectory() as tmp_s:
+            archive_root = Path(tmp_s) / "archive"
+            archive_root.mkdir()
+            video_dir = archive_root / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "no captions listed\n",
+                refresh=False,
+                metadata_storage_mode="dual",
+            )
+            self.module.write_metadata_only_archive(
+                video_dir,
+                info,
+                yt_dlp_version_text="fixture",
+                duplicate_policy="reuse-existing-complete-archive",
+                metadata_descriptor=descriptor,
+            )
+            old_manifest = (video_dir / "manifest.json").read_bytes()
+            (video_dir / "metadata.json").write_bytes(b"{\n")
+
+            with (
+                mock.patch.object(self.module.shutil, "which", return_value="/fixture/yt-dlp"),
+                mock.patch.object(self.module, "load_json_from_yt_dlp", return_value=info),
+                mock.patch.object(self.module, "archive_resolved_video") as archive_resolved_video,
+                mock.patch.object(
+                    sys,
+                    "argv",
+                    ["archive", "https://www.youtube.com/watch?v=abc123", "--archive-root", str(archive_root)],
+                ),
+            ):
+                with self.assertRaises(self.module.metadata_storage.MetadataIntegrityError):
+                    self.module.main()
+
+            archive_resolved_video.assert_not_called()
+            self.assertEqual(old_manifest, (video_dir / "manifest.json").read_bytes())
+            self.assertEqual(b"{\n", (video_dir / "metadata.json").read_bytes())
+
+    def test_compressed_publication_rejects_corrupt_plaintext_twin(self) -> None:
+        info = {"id": "abc123", "title": "Corrupt optional rollback twin"}
+        with tempfile.TemporaryDirectory() as tmp_s:
+            video_dir = Path(tmp_s) / "abc123"
+            descriptor = self.module.write_base_artifacts(
+                video_dir,
+                info,
+                "none\n",
+                refresh=False,
+                metadata_storage_mode="compressed",
+            )
+            (video_dir / "metadata.json").write_bytes(b"{\n")
+
+            with self.assertRaises(self.module.metadata_storage.MetadataIntegrityError):
+                self.module.write_metadata_only_archive(
+                    video_dir,
+                    info,
+                    yt_dlp_version_text="fixture",
+                    duplicate_policy="reuse-existing-complete-archive",
+                    metadata_descriptor=descriptor,
+                )
+
+            self.assertFalse((video_dir / "manifest.json").exists())
+            self.assertEqual(b"{\n", (video_dir / "metadata.json").read_bytes())
+
     def test_compressed_metadata_only_refresh_rejects_symlinked_plaintext_twin(self) -> None:
         info = {"id": "abc123", "title": "Unsafe optional twin", "subtitles": {}, "automatic_captions": {}}
         with tempfile.TemporaryDirectory() as tmp_s:

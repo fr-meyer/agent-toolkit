@@ -553,6 +553,8 @@ def resolve_existing_archive(
     try:
         metadata_storage.validate_manifest_files(video_dir, manifest)
         metadata_storage.read_metadata_json(video_dir, manifest)
+        if "metadata.json" in manifest.get("files", []):
+            validated_optional_plaintext_metadata_files(video_dir)
     except metadata_storage.MetadataStorageError:
         if declared_storage:
             raise
@@ -771,10 +773,11 @@ def validated_optional_plaintext_metadata_files(video_dir: Path) -> list[str]:
     plaintext = video_dir / "metadata.json"
     if not (plaintext.exists() or plaintext.is_symlink()):
         return []
-    metadata_storage.read_regular_bytes(
+    raw = metadata_storage.read_regular_bytes(
         plaintext,
         max_bytes=metadata_storage.DEFAULT_MAX_RAW_BYTES,
     )
+    metadata_storage.parse_metadata_json(raw)
     return ["metadata.json"]
 
 
