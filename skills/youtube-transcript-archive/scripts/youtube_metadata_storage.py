@@ -533,30 +533,38 @@ def _durable_atomic_write_locked(path: Path, parent: Path, data: bytes, mode: in
             pass
 
 
-def durable_atomic_write(path: Path, data: bytes, *, mode: int = 0o600) -> None:
-    """Durably replace one target while serializing its final identity check."""
+@contextlib.contextmanager
+def _target_writer_lock(path: Path):
+    """Hold the target lock after validating its parent as one real directory."""
     unresolved_parent = path.parent.absolute()
     parent = path.parent.resolve(strict=True)
     if not parent.is_dir() or unresolved_parent != parent:
         raise MetadataPathError("target parent is not a stable real directory")
     lock_path = _lock_path(path, "target")
     with _exclusive_file_lock(lock_path):
+        yield parent
+
+
+def durable_atomic_write(path: Path, data: bytes, *, mode: int = 0o600) -> None:
+    """Durably replace one target while serializing its final identity check."""
+    with _target_writer_lock(path) as parent:
         _durable_atomic_write_locked(path, parent, data, mode)
 
 
 def write_immutable_generation(video_dir: Path, filename: str, stored: bytes) -> str:
     """Commit one content-named generation, reusing only exact existing bytes."""
     target = _safe_child(video_dir, filename)
-    if target.exists() or target.is_symlink():
-        existing = read_regular_bytes(target, max_bytes=max(len(stored), 1))
-        if existing != stored:
-            raise MetadataIntegrityError("immutable generation already exists with different bytes")
-        return "reused"
-    durable_atomic_write(target, stored)
-    verified = read_regular_bytes(target, max_bytes=max(len(stored), 1))
-    if verified != stored:
-        raise MetadataIntegrityError("immutable generation readback mismatch")
-    return "created"
+    with _target_writer_lock(target) as parent:
+        if target.exists() or target.is_symlink():
+            existing = read_regular_bytes(target, max_bytes=max(len(stored), 1))
+            if existing != stored:
+                raise MetadataIntegrityError("immutable generation already exists with different bytes")
+            return "reused"
+        _durable_atomic_write_locked(target, parent, stored, 0o600)
+        verified = read_regular_bytes(target, max_bytes=max(len(stored), 1))
+        if verified != stored:
+            raise MetadataIntegrityError("immutable generation readback mismatch")
+        return "created"
 
 
 def write_plaintext_metadata(
@@ -575,16 +583,17 @@ def write_plaintext_metadata(
         raise MetadataLimitError("plaintext metadata exceeds configured byte limit")
     parse_metadata_json(raw)
     target = _safe_child(video_dir, "metadata.json")
-    if target.exists() or target.is_symlink():
-        existing = read_regular_bytes(target, max_bytes=max_raw_bytes)
-        parse_metadata_json(existing)
-        if not replace or existing == raw:
-            return existing
-    durable_atomic_write(target, raw)
-    verified = read_regular_bytes(target, max_bytes=max_raw_bytes)
-    if verified != raw:
-        raise MetadataIntegrityError("plaintext metadata readback mismatch")
-    return verified
+    with _target_writer_lock(target) as parent:
+        if target.exists() or target.is_symlink():
+            existing = read_regular_bytes(target, max_bytes=max_raw_bytes)
+            parse_metadata_json(existing)
+            if not replace or existing == raw:
+                return existing
+        _durable_atomic_write_locked(target, parent, raw, 0o600)
+        verified = read_regular_bytes(target, max_bytes=max_raw_bytes)
+        if verified != raw:
+            raise MetadataIntegrityError("plaintext metadata readback mismatch")
+        return verified
 
 
 def prepare_gzip_generation(

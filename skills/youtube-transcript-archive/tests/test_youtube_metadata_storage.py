@@ -296,6 +296,94 @@ class MetadataStorageTests(unittest.TestCase):
         )
         self.assertEqual(replacement, (video / "metadata.json").read_bytes())
 
+    def test_concurrent_immutable_generation_creation_rejects_late_conflict(self):
+        temp, video, _manifest, _raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        filename = f"metadata.{'0' * 64}.json.gz"
+        target = video / filename
+        first_entered = threading.Event()
+        second_entered = threading.Event()
+        release_first = threading.Event()
+        original_write = storage._durable_atomic_write_locked
+        results: dict[str, object] = {}
+
+        def paused_write(path, parent, data, mode):
+            if data == b"first":
+                first_entered.set()
+                self.assertTrue(release_first.wait(2))
+            return original_write(path, parent, data, mode)
+
+        def create(name: str, data: bytes) -> None:
+            if name == "second":
+                second_entered.set()
+            try:
+                results[name] = storage.write_immutable_generation(video, filename, data)
+            except Exception as exc:  # capture the exact cross-thread result
+                results[name] = exc
+
+        with mock.patch.object(storage, "_durable_atomic_write_locked", side_effect=paused_write):
+            first = threading.Thread(target=create, args=("first", b"first"), daemon=True)
+            second = threading.Thread(target=create, args=("second", b"second"), daemon=True)
+            first.start()
+            self.assertTrue(first_entered.wait(1))
+            second.start()
+            self.assertTrue(second_entered.wait(1))
+            self.assertTrue(second.is_alive(), "conflicting creator did not wait for the target lock")
+            release_first.set()
+            first.join(2)
+            second.join(2)
+
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual("created", results["first"])
+        self.assertIsInstance(results["second"], storage.MetadataIntegrityError)
+        self.assertEqual(b"first", target.read_bytes())
+
+    def test_concurrent_plaintext_creation_with_replace_false_preserves_first(self):
+        temp, video, _manifest, _raw = self.make_video()
+        self.addCleanup(temp.cleanup)
+        target = video / "metadata.json"
+        target.unlink()
+        first_raw = b'{"id":"abcdefghijk","writer":"first"}\n'
+        second_raw = b'{"id":"abcdefghijk","writer":"second"}\n'
+        first_entered = threading.Event()
+        second_entered = threading.Event()
+        release_first = threading.Event()
+        original_write = storage._durable_atomic_write_locked
+        results: dict[str, object] = {}
+
+        def paused_write(path, parent, data, mode):
+            if data == first_raw:
+                first_entered.set()
+                self.assertTrue(release_first.wait(2))
+            return original_write(path, parent, data, mode)
+
+        def create(name: str, data: bytes) -> None:
+            if name == "second":
+                second_entered.set()
+            try:
+                results[name] = storage.write_plaintext_metadata(video, data, replace=False)
+            except Exception as exc:  # capture the exact cross-thread result
+                results[name] = exc
+
+        with mock.patch.object(storage, "_durable_atomic_write_locked", side_effect=paused_write):
+            first = threading.Thread(target=create, args=("first", first_raw), daemon=True)
+            second = threading.Thread(target=create, args=("second", second_raw), daemon=True)
+            first.start()
+            self.assertTrue(first_entered.wait(1))
+            second.start()
+            self.assertTrue(second_entered.wait(1))
+            self.assertTrue(second.is_alive(), "second creator did not wait for the target lock")
+            release_first.set()
+            first.join(2)
+            second.join(2)
+
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual(first_raw, results["first"])
+        self.assertEqual(first_raw, results["second"])
+        self.assertEqual(first_raw, target.read_bytes())
+
     def test_prepare_dual_generation_fully_validates_before_return(self):
         temp, video, _manifest, raw = self.make_video()
         self.addCleanup(temp.cleanup)
