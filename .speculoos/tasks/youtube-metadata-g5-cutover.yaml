@@ -4,7 +4,7 @@ status: preparing_publication
 owner: fr-meyer
 branch: feat/youtube-metadata-storage-g2-20261030
 base_branch: dev
-base_sha: b54c2f06d7e72fadf405ed38aae92e198d19da65
+base_sha: e72fa34e5799891f90ae9b70c905a71a9186d5e4
 github:
   issue: null
   pull_request: 102
@@ -15,6 +15,7 @@ scope:
   - skills/youtube-transcript-archive/scripts/archive_youtube_transcript.py
   - skills/youtube-transcript-archive/scripts/youtube_metadata_storage.py
   - skills/youtube-transcript-archive/tests/test_archive_youtube_transcript.py
+  - skills/youtube-transcript-archive/tests/test_process_interruption.py
   - skills/youtube-transcript-archive/tests/test_youtube_metadata_storage.py
   - .speculoos/manifest.yaml
   - .speculoos/tasks/youtube-metadata-g5-cutover.yaml
@@ -30,7 +31,7 @@ acceptance:
   - deterministic gzip metadata remains manifest-selected and exact raw/stored hashes are validated
   - existing plaintext twins are preserved during the G5 candidate phase
   - compressed-canonical writes never delete or replace rollback plaintext
-  - 73 focused archive tests and Python compilation pass
+  - 118 focused archive and interruption tests and Python compilation pass
   - the production-surface review reports zero plaintext-only readers and all cutover assertions pass
   - the exact final head receives fresh Pullfrog, pullfrog-approval, Speculoos, and applicable CI evidence before merge
   - Mergeguez merges only the exact reviewed head into dev
@@ -55,8 +56,10 @@ functional_review:
   cutover_assertions_passed: 9
   plaintext_only_reader_hits: 0
   workspace_tests_passed: 201
-  toolkit_tests_passed: 73
-  publication_packet_sha256: fe1629b5a7b274fbd819b8c095f4a773f26c763f01125cbd875b44d55938c1da
+  toolkit_tests_passed: 118
+  prior_publication_packet_sha256: fe1629b5a7b274fbd819b8c095f4a773f26c763f01125cbd875b44d55938c1da
+  reconciliation_base_sha: e72fa34e5799891f90ae9b70c905a71a9186d5e4
+  reconciliation_notes: preserved G5 compressed metadata validation plus PR 100 interruption, circuit-breaker, and redaction protections
   named_hosted_review_satisfied: false
   metadata_review: fresh exact-head Pullfrog review required after remediation publication
 publication_route:

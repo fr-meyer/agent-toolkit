@@ -1,0 +1,5 @@
+chore(workflows): retire obsolete CodeRabbit assets
+
+Supersede PR #86 on current dev, remove retired CodeRabbit workflows, templates, helpers, distribution bindings, and CodeRabbit-only skills, while preserving active Pullfrog, Speculoos, workflow-distribution, and repository-similarity assets.
+
+Feature PRs target `dev`. Release/promotion PRs target `main`.

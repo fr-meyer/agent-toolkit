@@ -9,11 +9,11 @@ Feature PRs target `dev`. Release/promotion PRs target `main`.
 
 ## Validation
 
-- 73 focused archive unit tests passed
+- 118 focused archive and interruption unit tests passed after reconciliation with current `dev`
 - Python compile validation passed
 - production-surface review classified 30 changed production files with zero plaintext-only readers
 - nine compressed-canonical writer and documentation assertions passed
-- sealed G5 publication packet SHA-256: `fe1629b5a7b274fbd819b8c095f4a773f26c763f01125cbd875b44d55938c1da`
+- prior sealed G5 publication packet SHA-256: `fe1629b5a7b274fbd819b8c095f4a773f26c763f01125cbd875b44d55938c1da`; the reconciled exact head is revalidated by the repository-bound Speculoos contract
 
 ## Changed Files For Publish
 
@@ -24,6 +24,7 @@ Feature PRs target `dev`. Release/promotion PRs target `main`.
 - `skills/youtube-transcript-archive/scripts/archive_youtube_transcript.py`
 - `skills/youtube-transcript-archive/scripts/youtube_metadata_storage.py`
 - `skills/youtube-transcript-archive/tests/test_archive_youtube_transcript.py`
+- `skills/youtube-transcript-archive/tests/test_process_interruption.py`
 - `skills/youtube-transcript-archive/tests/test_youtube_metadata_storage.py`
 - `specs/youtube-metadata-g5-cutover/commit-message.txt`
 - `specs/youtube-metadata-g5-cutover/pr-body.md`

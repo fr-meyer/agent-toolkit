@@ -65,7 +65,6 @@ CROSS_REPO_TRIGGER_PATHS = frozenset(
 )
 REF_SYNC_TRIGGER_PATHS = frozenset(
     {
-        "templates/reusable-workflows/coderabbit-pr-automation.yml",
         "templates/reusable-workflows/sync-starter-workflow-template-refs-reusable.yml",
         "templates/workflow-ref-sync-manifest.json",
     }

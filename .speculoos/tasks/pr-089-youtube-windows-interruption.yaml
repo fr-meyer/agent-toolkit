@@ -1,0 +1,61 @@
+id: pr-089-youtube-windows-interruption
+title: Stop caption fallback after Windows process interruption
+status: preparing_publication
+owner: fr-meyer
+branch: fix/youtube-windows-archiver-20261102
+base_branch: dev
+base_sha: 4f6a2b3ece4de162353410abf6754b26635fd193
+github:
+  issue: null
+  pull_request: 100
+  url: https://github.com/fr-meyer/agent-toolkit/pull/100
+  related_pull_request: 89
+scope:
+  - skills/youtube-transcript-archive/scripts/archive_youtube_transcript.py
+  - skills/youtube-transcript-archive/tests/test_process_interruption.py
+  - .speculoos/manifest.yaml
+  - .speculoos/tasks/pr-089-youtube-windows-interruption.yaml
+  - specs/pr-089-youtube-windows-interruption/commit-message.txt
+  - specs/pr-089-youtube-windows-interruption/pr-body.md
+non_goals:
+  - changing YouTube credentials, account routing, archive formats, metadata migration, compression, or retention
+  - changing yt-dlp installation, provider selection, media download behavior, or existing archived artifacts
+  - enabling force-push, auto-merge, release, deployment, settings, billing, or fallback-model activation
+acceptance:
+  - Windows STATUS_DLL_INIT_FAILED_LOGOFF in numeric, hexadecimal, wrapped, stdout, or stderr form stops caption-candidate fallback after the first fatal attempt
+  - source-wide bot-check, rate-limit, and authentication circuits stop further caption attempts while ordinary per-track failures retain fallback
+  - public diagnostics preserve bounded root-cause evidence while redacting credentials, cookies, signed query values, and process command secrets
+  - existing archived artifacts remain untouched when the fresh caption source circuit fails
+  - current dev is merged without rewriting the existing PR branch
+  - the exact final head receives fresh Pullfrog review and independent hosted Speculoos evidence before merge
+  - Mergeguez merges only the exact reviewed head into dev
+  - cleanup occurs only after verified merge and exact branch/SHA revalidation
+delivery_policy:
+  mode: inherit_branch_policy
+publication_boundary:
+  statement: 'The user explicitly authorized finishing replacement PR #100 through guarded fixes, publication, exact-head review, and validation. Merge, stable promotion, release, deployment, settings, billing, credentials, force-push, and archive-retention changes remain separately gated or excluded.'
+documentation_impact:
+  status: task-packet-only
+  rationale: The behavior is internal failure classification and is fully covered by focused tests; no user-facing command or archive schema changes.
+validation:
+  - python3 -m unittest -v skills/youtube-transcript-archive/tests/test_archive_youtube_transcript.py skills/youtube-transcript-archive/tests/test_process_interruption.py
+  - python3 -m py_compile skills/youtube-transcript-archive/scripts/archive_youtube_transcript.py skills/youtube-transcript-archive/tests/test_archive_youtube_transcript.py skills/youtube-transcript-archive/tests/test_process_interruption.py
+  - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task pr-089-youtube-windows-interruption --expected-head-ref fix/youtube-windows-archiver-20261102 --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha 4f6a2b3ece4de162353410abf6754b26635fd193
+  - git diff --check
+private_data_scan: required
+publish_authority: 'User-authorized PR #100 fix publication through the protected Mergeguez lane, with exact-head review and hosted gates required before any separately approved merge and exact-SHA cleanup afterward.'
+functional_review:
+  author_cases_passed: 40
+  windows_native_cases_passed: not_run_source_only_merge
+  findings: 0
+  named_hosted_review_satisfied: false
+  metadata_review: fresh exact-head Pullfrog review required after publication
+publication_route:
+  strategy: merge_current_dev_then_fast_forward_publish
+  selected_push_actor: mergeguez_branch_broker
+  selected_push_login: mergeguez[bot]
+  selected_pr_actor: existing_pr_author
+  selected_pr_login: fr-meyer
+  selected_merge_actor: mergeguez_dev_merge
+  force_push_allowed: false
+  status: ready_for_guarded_publication
