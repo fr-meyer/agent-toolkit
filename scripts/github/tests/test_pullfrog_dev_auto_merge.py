@@ -1,8 +1,10 @@
 import copy
 import importlib.util
+import json
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "pullfrog_dev_auto_merge.py"
@@ -474,19 +476,12 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
 
     def test_clean_exact_head_dev_pr_merges_once(self):
         client = FakeClient()
-        result = MODULE.merge_clean_pr(client, clean_receipt(), expected_head_sha=HEAD_SHA)
-        self.assertEqual(result["status"], "merged")
-        self.assertEqual(result["base_ref"], "dev")
-        self.assertEqual(result["head_sha"], HEAD_SHA)
-        self.assertEqual(result["merge_commit_sha"], MERGE_SHA)
-        self.assertEqual(result["merge_method"], "merge")
-        self.assertEqual(
-            result["merge_transport"], "exact-old-oid-normal-fast-forward-push"
-        )
-        self.assertFalse(result["branch_deleted"])
-        self.assertEqual(len(client.push_calls), 1)
-        self.assertEqual(result["downstream_dispatches"], [])
-        self.assertEqual(result["downstream_dispatch_failures"], [])
+        # Historical admission case is retained; legacy mutation is now disabled.
+        with self.assertRaises(MODULE.AutoMergeError) as blocked:
+            MODULE.merge_clean_pr(client, clean_receipt(), expected_head_sha=HEAD_SHA)
+        self.assertEqual(blocked.exception.code, "legacy_merge_controller_disabled")
+        self.assertEqual(client.push_calls, [])
+        self.assertEqual(client.dispatch_calls, [])
 
     def test_clean_review_only_gate_merges_without_raw_pullfrog_checks(self):
         client = FakeClient()
@@ -502,22 +497,22 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
             if item["name"] == MODULE.review_contract.GATE_NAME
         )
         gate["external_id"] = receipt["review_contract"]["gate"]["external_id"]
-        result = MODULE.merge_clean_pr(client, receipt, expected_head_sha=HEAD_SHA)
-        self.assertEqual(result["status"], "merged")
-        self.assertEqual(
-            receipt["review_contract"]["evidence_profile"],
-            MODULE.review_contract.REVIEW_ONLY_EVIDENCE_PROFILE,
-        )
-        self.assertEqual(len(client.push_calls), 1)
+        # Historical admission case is retained; legacy mutation is now disabled.
+        with self.assertRaises(MODULE.AutoMergeError) as blocked:
+            MODULE.merge_clean_pr(client, receipt, expected_head_sha=HEAD_SHA)
+        self.assertEqual(blocked.exception.code, "legacy_merge_controller_disabled")
+        self.assertEqual(client.push_calls, [])
+        self.assertEqual(client.dispatch_calls, [])
 
     def test_clean_exact_head_non_stable_base_is_eligible(self):
         client = FakeClient()
         receipt = retarget_base(clean_receipt(), client, "staging")
-        result = MODULE.merge_clean_pr(client, receipt, expected_head_sha=HEAD_SHA)
-        self.assertEqual(result["status"], "merged")
-        self.assertEqual(result["base_ref"], "staging")
-        self.assertEqual(client.refs["staging"], MERGE_SHA)
-        self.assertEqual(client.refs["dev"], BASE_SHA)
+        # Historical admission case is retained; legacy mutation is now disabled.
+        with self.assertRaises(MODULE.AutoMergeError) as blocked:
+            MODULE.merge_clean_pr(client, receipt, expected_head_sha=HEAD_SHA)
+        self.assertEqual(blocked.exception.code, "legacy_merge_controller_disabled")
+        self.assertEqual(client.push_calls, [])
+        self.assertEqual(client.dispatch_calls, [])
 
     def test_main_and_master_bases_fail_closed(self):
         for base in ("main", "master"):
@@ -644,52 +639,54 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
                 {"state": "APPROVED", "user": {"login": "human-reviewer"}},
             ]
         )
-        result = MODULE.merge_clean_pr(client, clean_receipt(), expected_head_sha=HEAD_SHA)
-        self.assertEqual(result["status"], "merged")
+        # Historical admission case is retained; legacy mutation is now disabled.
+        with self.assertRaises(MODULE.AutoMergeError) as blocked:
+            MODULE.merge_clean_pr(client, clean_receipt(), expected_head_sha=HEAD_SHA)
+        self.assertEqual(blocked.exception.code, "legacy_merge_controller_disabled")
+        self.assertEqual(client.push_calls, [])
+        self.assertEqual(client.dispatch_calls, [])
 
     def test_expected_head_and_merge_confirmation_are_required(self):
-        client = FakeClient()
-        self.assert_code(
-            "expected_head_mismatch",
-            MODULE.merge_clean_pr,
-            client,
-            clean_receipt(),
-            expected_head_sha="4" * 40,
-        )
-        client.merge_result = {"merged": False, "message": "blocked"}
-        self.assert_code(
-            "merge_not_confirmed",
-            MODULE.merge_clean_pr,
-            client,
-            clean_receipt(),
-            expected_head_sha=HEAD_SHA,
-        )
+            client = FakeClient()
+            self.assert_code(
+                "expected_head_mismatch",
+                MODULE.merge_clean_pr,
+                client,
+                clean_receipt(),
+                expected_head_sha="4" * 40,
+            )
+            client.merge_result = {"merged": False, "message": "blocked"}
+            self.assert_code(
+                "legacy_merge_controller_disabled",
+                MODULE.merge_clean_pr,
+                client,
+                clean_receipt(),
+                expected_head_sha=HEAD_SHA,
+            )
 
     def test_replays_dev_push_automation_suppressed_by_github_token_merge(self):
         client = FakeClient()
         paths = ["scripts/github/cross_repo_workflow_updater.py"]
         client.files = [{"filename": path} for path in paths]
-        result = MODULE.merge_clean_pr(
-            client, receipt_for_paths(paths), expected_head_sha=HEAD_SHA
-        )
-        self.assertEqual(result["status"], "merged")
-        self.assertEqual(
-            result["downstream_dispatches"],
-            [MODULE.CROSS_REPO_DISPATCH_WORKFLOW],
-        )
-        self.assertEqual(len(client.dispatch_calls), 1)
-        self.assertEqual(client.dispatch_calls[0][1], "dev")
-        self.assertEqual(client.dispatch_calls[0][2]["source_commit"], MERGE_SHA)
-        self.assertEqual(client.dispatch_calls[0][2]["previous_source_commit"], BASE_SHA)
+        # Historical admission case is retained; legacy mutation is now disabled.
+        with self.assertRaises(MODULE.AutoMergeError) as blocked:
+            MODULE.merge_clean_pr(
+                        client, receipt_for_paths(paths), expected_head_sha=HEAD_SHA
+                    )
+        self.assertEqual(blocked.exception.code, "legacy_merge_controller_disabled")
+        self.assertEqual(client.push_calls, [])
+        self.assertEqual(client.dispatch_calls, [])
 
     def test_non_dev_merge_does_not_replay_dev_push_automation(self):
         client = FakeClient()
         paths = ["scripts/github/cross_repo_workflow_updater.py"]
         client.files = [{"filename": path} for path in paths]
         receipt = retarget_base(receipt_for_paths(paths), client, "staging")
-        result = MODULE.merge_clean_pr(client, receipt, expected_head_sha=HEAD_SHA)
-        self.assertEqual(result["status"], "merged")
-        self.assertEqual(result["downstream_dispatches"], [])
+        # Historical admission case is retained; legacy mutation is now disabled.
+        with self.assertRaises(MODULE.AutoMergeError) as blocked:
+            MODULE.merge_clean_pr(client, receipt, expected_head_sha=HEAD_SHA)
+        self.assertEqual(blocked.exception.code, "legacy_merge_controller_disabled")
+        self.assertEqual(client.push_calls, [])
         self.assertEqual(client.dispatch_calls, [])
 
     def test_downstream_dispatch_failure_is_durable_after_confirmed_merge(self):
@@ -697,15 +694,14 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
         paths = ["scripts/github/cross_repo_workflow_updater.py"]
         client.files = [{"filename": path} for path in paths]
         client.dispatch_failure = True
-        result = MODULE.merge_clean_pr(
-            client, receipt_for_paths(paths), expected_head_sha=HEAD_SHA
-        )
-        self.assertEqual(result["status"], "merged_with_downstream_failure")
-        self.assertEqual(result["merge_commit_sha"], MERGE_SHA)
-        self.assertEqual(
-            result["downstream_dispatch_failures"],
-            [MODULE.CROSS_REPO_DISPATCH_WORKFLOW],
-        )
+        # Historical admission case is retained; legacy mutation is now disabled.
+        with self.assertRaises(MODULE.AutoMergeError) as blocked:
+            MODULE.merge_clean_pr(
+                        client, receipt_for_paths(paths), expected_head_sha=HEAD_SHA
+                    )
+        self.assertEqual(blocked.exception.code, "legacy_merge_controller_disabled")
+        self.assertEqual(client.push_calls, [])
+        self.assertEqual(client.dispatch_calls, [])
 
     def test_newer_same_head_failed_or_pending_check_supersedes_clean_receipt(self):
         for status in ("failure", "pending"):
@@ -906,141 +902,52 @@ class PullfrogDevAutoMergeTests(unittest.TestCase):
             value.pr["base"] = {"ref": "main", "sha": stable_before}
 
         client.before_push = retarget_after_final_get
-        result = MODULE.merge_clean_pr(
-            client, clean_receipt(), expected_head_sha=HEAD_SHA
-        )
-        self.assertEqual(result["status"], "merged")
-        self.assertEqual(client.refs["dev"], MERGE_SHA)
-        self.assertEqual(client.refs["main"], stable_before)
-        self.assertEqual(client.push_calls[0][0]["base_ref"], "dev")
+        # Historical admission case is retained; legacy mutation is now disabled.
+        with self.assertRaises(MODULE.AutoMergeError) as blocked:
+            MODULE.merge_clean_pr(
+                        client, clean_receipt(), expected_head_sha=HEAD_SHA
+                    )
+        self.assertEqual(blocked.exception.code, "legacy_merge_controller_disabled")
+        self.assertEqual(client.push_calls, [])
+        self.assertEqual(client.dispatch_calls, [])
 
     def test_base_advance_during_push_fails_exact_base_compare_and_swap(self):
-        client = FakeClient()
-        advanced = "4" * 40
+            client = FakeClient()
+            advanced = "4" * 40
 
-        def advance_base(value):
-            value.refs["dev"] = advanced
+            def advance_base(value):
+                value.refs["dev"] = advanced
 
-        client.before_push = advance_base
-        self.assert_code(
-            "base_compare_and_swap_failed",
-            MODULE.merge_clean_pr,
-            client,
-            clean_receipt(),
-            expected_head_sha=HEAD_SHA,
-        )
-        self.assertEqual(client.refs["dev"], advanced)
+            client.before_push = advance_base
+            self.assert_code(
+                "legacy_merge_controller_disabled",
+                MODULE.merge_clean_pr,
+                client,
+                clean_receipt(),
+                expected_head_sha=HEAD_SHA,
+            )
+            self.assertEqual(client.refs["dev"], BASE_SHA)
 
     def test_real_receive_pack_enforces_exact_old_oid_and_builds_two_parent_merge(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            source = root / "source"
-            remote = root / "remote.git"
-            subprocess.run(["git", "init", "-b", "dev", str(source)], check=True, stdout=subprocess.DEVNULL)
-            subprocess.run(["git", "-C", str(source), "config", "user.name", "Test"], check=True)
-            subprocess.run(["git", "-C", str(source), "config", "user.email", "test@example.invalid"], check=True)
-            (source / "base.txt").write_text("base\n", encoding="utf-8")
-            subprocess.run(["git", "-C", str(source), "add", "base.txt"], check=True)
-            subprocess.run(["git", "-C", str(source), "commit", "-m", "base"], check=True, stdout=subprocess.DEVNULL)
-            base_sha = subprocess.check_output(
-                ["git", "-C", str(source), "rev-parse", "HEAD"], text=True
-            ).strip()
-            subprocess.run(["git", "-C", str(source), "switch", "-c", "feat/test"], check=True, stdout=subprocess.DEVNULL)
-            (source / "head.txt").write_text("head\n", encoding="utf-8")
-            subprocess.run(["git", "-C", str(source), "add", "head.txt"], check=True)
-            subprocess.run(["git", "-C", str(source), "commit", "-m", "head"], check=True, stdout=subprocess.DEVNULL)
-            head_sha = subprocess.check_output(
-                ["git", "-C", str(source), "rev-parse", "HEAD"], text=True
-            ).strip()
-            subprocess.run(["git", "init", "--bare", str(remote)], check=True, stdout=subprocess.DEVNULL)
-            subprocess.run(["git", "-C", str(source), "remote", "add", "origin", str(remote)], check=True)
-            subprocess.run(
-                ["git", "-C", str(source), "push", "origin", "dev:refs/heads/dev", f"{head_sha}:refs/pull/95/head"],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            subprocess.run(
-                [
-                    "git",
-                    "--git-dir",
-                    str(remote),
-                    "update-ref",
-                    "refs/heads/feat/café",
-                    base_sha,
-                ],
-                check=True,
-            )
+        # Real server transport coverage moved to the atomic engine; this entry cannot submit.
+        client = MODULE.GitHubMergeClient("https://api.github.com", "FAKE_OFFLINE_TOKEN", "fr-meyer/agent-toolkit")
+        with mock.patch.object(client, "_git") as git_call:
+            self.assert_code("legacy_merge_transport_disabled", client.push_exact_merge, review_identity(), "Legacy")
+        git_call.assert_not_called()
 
-            class LocalClient(MODULE.GitHubMergeClient):
-                def _repository_remote(self):
-                    return str(remote)
 
-            class RacingClient(LocalClient):
-                def _submit_receive_pack(self, remote_path, token, body):
-                    subprocess.run(
-                        [
-                            "git",
-                            "-C",
-                            str(source),
-                            "push",
-                            "origin",
-                            f"{head_sha}:refs/heads/dev",
-                        ],
-                        check=True,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    return super()._submit_receive_pack(remote_path, token, body)
-
-            identity = {
-                "repository_slug": "fr-meyer/agent-toolkit",
-                "pr_number": 95,
-                "base_ref": "dev",
-                "base_sha": base_sha,
-                "head_ref": "feat/test",
-                "head_sha": head_sha,
-                "head_repository_slug": "fr-meyer/agent-toolkit",
-            }
-            racing_client = RacingClient(
-                "https://api.github.com", "test-token", "fr-meyer/agent-toolkit"
-            )
-            self.assert_code(
-                "base_compare_and_swap_failed",
-                racing_client.push_exact_merge,
-                identity,
-                "Test stale-base merge",
-            )
-            raced_tip = subprocess.check_output(
-                ["git", "--git-dir", str(remote), "rev-parse", "refs/heads/dev"],
-                text=True,
-            ).strip()
-            self.assertEqual(raced_tip, head_sha)
-            subprocess.run(
-                [
-                    "git",
-                    "--git-dir",
-                    str(remote),
-                    "update-ref",
-                    "refs/heads/dev",
-                    base_sha,
-                    head_sha,
-                ],
-                check=True,
-            )
-
-            client = LocalClient("https://api.github.com", "test-token", "fr-meyer/agent-toolkit")
-            result = client.push_exact_merge(identity, "Test merge")
-            remote_tip = subprocess.check_output(
-                ["git", "--git-dir", str(remote), "rev-parse", "refs/heads/dev"], text=True
-            ).strip()
-            commit = subprocess.check_output(
-                ["git", "--git-dir", str(remote), "cat-file", "-p", remote_tip], text=True
-            )
-            self.assertEqual(result["sha"], remote_tip)
-            self.assertIn(f"parent {base_sha}\n", commit)
-            self.assertIn(f"parent {head_sha}\n", commit)
-
+class LegacyCliDisabledTests(unittest.TestCase):
+    def test_legacy_cli_writes_blocked_receipt_without_loading_receipt_or_client(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "blocked.json"
+            argv = ["legacy", "--repository", "fr-meyer/agent-toolkit", "--pr-number", "119",
+                    "--expected-head-sha", HEAD_SHA, "--coordinator-receipt", str(Path(temp) / "absent.json"),
+                    "--out", str(output)]
+            with mock.patch.object(MODULE.sys, "argv", argv), mock.patch.object(MODULE, "GitHubMergeClient") as client:
+                with self.assertRaises(SystemExit):
+                    MODULE.main()
+            client.assert_not_called()
+            self.assertEqual(json.loads(output.read_text())["code"], "legacy_merge_controller_disabled")
 
 if __name__ == "__main__":
     unittest.main()

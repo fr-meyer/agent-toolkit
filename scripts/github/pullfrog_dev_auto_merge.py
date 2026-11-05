@@ -721,119 +721,8 @@ class GitHubMergeClient(coordinator.GitHubReadClient):
         return f"https://github.com/{self.repository_slug}.git"
 
     def push_exact_merge(self, identity: dict[str, Any], title: str) -> dict[str, Any]:
-        """Build and normally push one merge commit onto the reviewed base.
-
-        The generated commit's first parent is the reviewed base SHA. The Git
-        receive-pack command carries that exact SHA as the update's old OID, so
-        the server rejects any intervening base change in the same ref-update
-        transaction. The update remains a normal fast-forward, never a force or
-        force-with-lease, and targets the literal reviewed base ref.
-        """
-
-        token = self.token
-        if not token:
-            raise AutoMergeError("missing_github_token")
-        remote = self._repository_remote()
-        with tempfile.TemporaryDirectory(prefix="pullfrog-auto-merge-") as temporary:
-            workspace = Path(temporary)
-            askpass = workspace / "git-askpass.sh"
-            askpass.write_text(
-                "#!/bin/sh\n"
-                "case \"$1\" in\n"
-                "  *Username*) printf '%s\\n' x-access-token ;;\n"
-                "  *) printf '%s\\n' \"$GITHUB_TOKEN\" ;;\n"
-                "esac\n",
-                encoding="utf-8",
-            )
-            askpass.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
-            env = os.environ.copy()
-            env.update(
-                {
-                    "GITHUB_TOKEN": token,
-                    "GIT_ASKPASS": str(askpass),
-                    "GIT_TERMINAL_PROMPT": "0",
-                    "GIT_AUTHOR_NAME": "github-actions[bot]",
-                    "GIT_AUTHOR_EMAIL": "41898282+github-actions[bot]@users.noreply.github.com",
-                    "GIT_COMMITTER_NAME": "github-actions[bot]",
-                    "GIT_COMMITTER_EMAIL": "41898282+github-actions[bot]@users.noreply.github.com",
-                }
-            )
-            self._git(workspace, "init", "--quiet", env=env)
-            self._git(workspace, "remote", "add", "origin", remote, env=env)
-            self._git(
-                workspace,
-                "fetch",
-                "--quiet",
-                "--no-tags",
-                "origin",
-                f"refs/heads/{identity['base_ref']}:refs/remotes/origin/base",
-                f"refs/pull/{identity['pr_number']}/head:refs/remotes/origin/pull-head",
-                env=env,
-                code="git_fetch_failed",
-            )
-            base = self._git(
-                workspace, "rev-parse", "refs/remotes/origin/base", env=env
-            ).stdout.strip()
-            head = self._git(
-                workspace, "rev-parse", "refs/remotes/origin/pull-head", env=env
-            ).stdout.strip()
-            if base != identity["base_sha"] or head != identity["head_sha"]:
-                raise AutoMergeError("git_fetch_identity_drift")
-            tree = self._git(
-                workspace,
-                "merge-tree",
-                "--write-tree",
-                identity["base_sha"],
-                identity["head_sha"],
-                env=env,
-                code="merge_conflict_or_tree_failure",
-            ).stdout.strip()
-            if not SHA_RE.fullmatch(tree):
-                raise AutoMergeError("invalid_merge_tree")
-            message = f"{title} (#{identity['pr_number']})"
-            merge_sha = self._git(
-                workspace,
-                "commit-tree",
-                tree,
-                "-p",
-                identity["base_sha"],
-                "-p",
-                identity["head_sha"],
-                "-m",
-                message,
-                env=env,
-                code="merge_commit_creation_failed",
-            ).stdout.strip()
-            if not SHA_RE.fullmatch(merge_sha):
-                raise AutoMergeError("invalid_merge_commit")
-            destination = f"refs/heads/{identity['base_ref']}"
-            advertisement = self._receive_pack_advertisement(remote, token)
-            advertised_old, capabilities = self._advertised_ref(
-                advertisement, destination
-            )
-            if advertised_old != identity["base_sha"]:
-                raise AutoMergeError("base_compare_and_swap_failed")
-            pack = self._pack_objects(workspace, merge_sha, identity["base_sha"])
-            response = self._submit_receive_pack(
-                remote,
-                token,
-                self._receive_pack_body(
-                    old_oid=identity["base_sha"],
-                    new_oid=merge_sha,
-                    ref=destination,
-                    capabilities=capabilities,
-                    pack=pack,
-                ),
-            )
-            self._assert_receive_pack_success(response, destination)
-        return {
-            "merged": True,
-            "sha": merge_sha,
-            "base_ref": identity["base_ref"],
-            "base_sha": identity["base_sha"],
-            "head_sha": identity["head_sha"],
-            "transport": "exact-old-oid-normal-fast-forward-push",
-        }
+        """Legacy base-only mutation is disabled; use the atomic library."""
+        raise AutoMergeError("legacy_merge_transport_disabled")
 
     def dispatch_workflow(
         self,
@@ -968,38 +857,8 @@ def merge_clean_pr(
     _assert_live_pull_request(
         _mapping(client.get(f"{prefix}/pulls/{identity['pr_number']}")), identity
     )
-    merge = client.push_exact_merge(identity, _text(pr.get("title")) or "Merge pull request")
-    merge_sha = _text(merge.get("sha"))
-    if (
-        merge.get("merged") is not True
-        or not SHA_RE.fullmatch(merge_sha)
-        or merge.get("base_ref") != identity["base_ref"]
-        or merge.get("base_sha") != identity["base_sha"]
-        or merge.get("head_sha") != identity["head_sha"]
-        or merge.get("transport") != "exact-old-oid-normal-fast-forward-push"
-    ):
-        raise AutoMergeError("merge_not_confirmed")
-    dispatched, dispatch_failures = _post_merge_dispatches(
-        client, identity, merge_sha, changed_paths
-    )
-    return {
-        "schema": RECEIPT_SCHEMA,
-        "status": "merged" if not dispatch_failures else "merged_with_downstream_failure",
-        "repository_slug": identity["repository_slug"],
-        "pr_number": identity["pr_number"],
-        "base_ref": identity["base_ref"],
-        "head_ref": identity["head_ref"],
-        "head_sha": identity["head_sha"],
-        "merge_commit_sha": merge_sha,
-        "merge_method": "merge",
-        "merge_transport": "exact-old-oid-normal-fast-forward-push",
-        "branch_deleted": False,
-        "changed_paths_digest": _digest(changed_paths),
-        "fresh_evidence_digest": _digest(fresh_evidence),
-        "downstream_dispatches": dispatched,
-        "downstream_dispatch_failures": dispatch_failures,
-        "coordinator_receipt_digest": _digest(receipt),
-    }
+    raise AutoMergeError("legacy_merge_controller_disabled")
+
 
 
 def main() -> int:
@@ -1010,45 +869,14 @@ def main() -> int:
     parser.add_argument("--coordinator-receipt", required=True)
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
-
-    try:
-        receipt = _load_object(Path(args.coordinator_receipt))
-        identity = validate_clean_receipt(receipt)
-        if (
-            cycle_contract._canonical_slug(args.repository) != identity["repository_slug"]
-            or args.pr_number != identity["pr_number"]
-        ):
-            raise AutoMergeError("invocation_identity_mismatch")
-        client = GitHubMergeClient(
-            os.environ.get("GITHUB_API_URL", "https://api.github.com"),
-            os.environ.get("GITHUB_TOKEN", ""),
-            args.repository,
-        )
-        result = merge_clean_pr(
-            client,
-            receipt,
-            expected_head_sha=args.expected_head_sha,
-        )
-    except (AutoMergeError, coordinator.CoordinatorError) as exc:
-        code = getattr(exc, "code", "invalid_state")
-        _write_object(
-            Path(args.out),
-            {
-                "schema": RECEIPT_SCHEMA,
-                "status": "blocked",
-                "code": code,
-                "repository_slug": cycle_contract._canonical_slug(args.repository),
-                "pr_number": args.pr_number,
-                "expected_head_sha": args.expected_head_sha,
-                "branch_deleted": False,
-            },
-        )
-        raise SystemExit(f"auto-merge failed: {code}") from exc
-    _write_object(Path(args.out), result)
-    print(json.dumps(result, sort_keys=True))
-    if result["status"] != "merged":
-        raise SystemExit("auto-merge completed with downstream dispatch failure")
-    return 0
+    _write_object(Path(args.out), {
+        "schema": RECEIPT_SCHEMA, "status": "blocked",
+        "code": "legacy_merge_controller_disabled",
+        "repository_slug": cycle_contract._canonical_slug(args.repository),
+        "pr_number": args.pr_number, "expected_head_sha": args.expected_head_sha,
+        "branch_deleted": False,
+    })
+    raise SystemExit("auto-merge disabled: use the trusted atomic controller")
 
 
 if __name__ == "__main__":

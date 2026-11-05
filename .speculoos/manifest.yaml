@@ -96,5 +96,5 @@ gates:
     - hosted-review-fallback-pilot-separate-approval
     - composite-review-gate-consumers-validated
     - required-check-migration-separate-approval
-current_task: youtube-metadata-g5-cutover
-current_task_metadata: .speculoos/tasks/youtube-metadata-g5-cutover.yaml
+current_task: pullfrog-dualref-custody-current-dev-20261105
+current_task_metadata: .speculoos/tasks/pullfrog-dualref-custody-current-dev-20261105.yaml

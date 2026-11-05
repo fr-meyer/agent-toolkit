@@ -1,0 +1,8 @@
+fix(pullfrog): prepare atomic dev merge with durable custody
+
+Bind task `pullfrog-dualref-custody-current-dev-20261105` to the additive
+atomic transport and explicit legacy mutation stop. Feature PRs target `dev`;
+release/promotion PRs target `main`.
+
+This source preparation does not activate a controller, deploy, change access,
+or authorize a publication or merge.
