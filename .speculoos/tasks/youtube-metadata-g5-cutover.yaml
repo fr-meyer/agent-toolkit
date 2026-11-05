@@ -1,0 +1,73 @@
+id: youtube-metadata-g5-cutover
+title: Publish compressed-canonical YouTube metadata source safely
+status: preparing_publication
+owner: fr-meyer
+branch: feat/youtube-metadata-storage-g2-20261030
+base_branch: dev
+base_sha: e72fa34e5799891f90ae9b70c905a71a9186d5e4
+github:
+  issue: null
+  pull_request: 102
+  url: https://github.com/fr-meyer/agent-toolkit/pull/102
+scope:
+  - skills/youtube-transcript-archive/SKILL.md
+  - skills/youtube-transcript-archive/scripts/archive_youtube_batch.py
+  - skills/youtube-transcript-archive/scripts/archive_youtube_transcript.py
+  - skills/youtube-transcript-archive/scripts/youtube_metadata_storage.py
+  - skills/youtube-transcript-archive/tests/test_archive_youtube_transcript.py
+  - skills/youtube-transcript-archive/tests/test_process_interruption.py
+  - skills/youtube-transcript-archive/tests/test_youtube_metadata_storage.py
+  - .speculoos/manifest.yaml
+  - .speculoos/tasks/youtube-metadata-g5-cutover.yaml
+  - specs/youtube-metadata-g5-cutover/commit-message.txt
+  - specs/youtube-metadata-g5-cutover/pr-body.md
+non_goals:
+  - deploying source to GCP, macOS, Windows, or the live OpenClaw workspace
+  - switching production writers or configuration to compressed-canonical mode
+  - deleting any plaintext metadata twin or starting G6
+  - retiring any YouTube worktree or rollback asset
+  - changing credentials, billing, branch protection, review policy, or release policy
+acceptance:
+  - deterministic gzip metadata remains manifest-selected and exact raw/stored hashes are validated
+  - existing plaintext twins are preserved during the G5 candidate phase
+  - compressed-canonical writes never delete or replace rollback plaintext
+  - 118 focused archive and interruption tests and Python compilation pass
+  - the production-surface review reports zero plaintext-only readers and all cutover assertions pass
+  - the exact final head receives fresh Pullfrog, pullfrog-approval, Speculoos, and applicable CI evidence before merge
+  - Mergeguez merges only the exact reviewed head into dev
+  - deployment and production cutover remain separately authorized gates after source merge
+delivery_policy:
+  mode: inherit_branch_policy
+publication_boundary:
+  statement: 'The user approved publication of the exact G5 source candidate through the protected Mergeguez lane. Deployment, production cutover, plaintext deletion, G6, worktree retirement, stable promotion, release, settings, credentials, and billing remain excluded.'
+documentation_impact:
+  status: task-packet-only
+  rationale: The user-facing archive skill is already part of the product change; this packet adds only repository-local publication evidence and does not require a separate top-level documentation page.
+validation:
+  - python3 -m unittest discover -s skills/youtube-transcript-archive/tests -v
+  - python3 -m compileall -q skills/youtube-transcript-archive
+  - scripts/github/validate_pullfrog_workflow.sh
+  - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task youtube-metadata-g5-cutover --expected-head-ref feat/youtube-metadata-storage-g2-20261030 --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha "$(git rev-parse origin/dev)"
+  - git diff --check origin/dev...HEAD
+private_data_scan: required
+publish_authority: 'User-approved exact-head G5 source publication through Mergeguez; exact-head CI and Pullfrog review are mandatory before merge, and production actions remain separately gated.'
+functional_review:
+  production_surface_rows: 30
+  cutover_assertions_passed: 9
+  plaintext_only_reader_hits: 0
+  workspace_tests_passed: 201
+  toolkit_tests_passed: 118
+  prior_publication_packet_sha256: fe1629b5a7b274fbd819b8c095f4a773f26c763f01125cbd875b44d55938c1da
+  reconciliation_base_sha: e72fa34e5799891f90ae9b70c905a71a9186d5e4
+  reconciliation_notes: preserved G5 compressed metadata validation plus PR 100 interruption, circuit-breaker, and redaction protections
+  named_hosted_review_satisfied: false
+  metadata_review: fresh exact-head Pullfrog review required after remediation publication
+publication_route:
+  strategy: merge_current_dev_then_fast_forward_publish
+  selected_push_actor: mergeguez_branch_broker
+  selected_push_login: mergeguez[bot]
+  selected_pr_actor: mergeguez_app
+  selected_pr_login: mergeguez[bot]
+  selected_merge_actor: mergeguez_dev_merge
+  force_push_allowed: false
+  status: ready_for_local_validation

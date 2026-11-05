@@ -17,9 +17,16 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Iterable
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+import youtube_metadata_storage as metadata_storage
+
 TIMESTAMP_RE = re.compile(r"^(?P<start>\d{2}:\d{2}:\d{2}\.\d{3})\s+-->\s+(?P<end>\d{2}:\d{2}:\d{2}\.\d{3})")
 TAG_RE = re.compile(r"<[^>]+>")
 WS_RE = re.compile(r"\s+")
+VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+LANG_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 CAPTION_CIRCUIT_MARKERS = {
     "bot_check": ("confirm you’re not a bot", "confirm you're not a bot", "captcha", "unusual traffic"),
     "rate_limited": ("http error 429", "too many requests", "rate limit"),
@@ -36,6 +43,18 @@ CAPTION_CIRCUIT_DIAGNOSTICS = {
     "rate_limited": "rate_limited; HTTP Error 429",
     "auth_required": "auth_required; authentication required",
 }
+
+
+def validate_video_id(video_id: Any) -> str:
+    if not isinstance(video_id, str) or not VIDEO_ID_RE.fullmatch(video_id):
+        raise metadata_storage.MetadataPathError(f"unsafe YouTube video ID: {video_id!r}")
+    return video_id
+
+
+def validate_language_token(lang: Any) -> str:
+    if not isinstance(lang, str) or not LANG_TOKEN_RE.fullmatch(lang):
+        raise metadata_storage.MetadataPathError(f"unsafe caption language key: {lang!r}")
+    return lang
 
 
 class YtDlpProcessInterrupted(RuntimeError):
@@ -70,8 +89,46 @@ def run(cmd: list[str], *, capture: bool = True, cwd: Path | None = None) -> sub
 
 
 def safe_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    metadata_storage.durable_atomic_write(path, text.encode("utf-8"))
+
+
+def ensure_real_subdirectories(root: Path, *parts: str) -> Path:
+    """Create trusted descendants without accepting a symlinked ancestor."""
+    unresolved_root = root.absolute()
+    try:
+        resolved_root = root.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise metadata_storage.MetadataPathError("archive root directory is missing") from exc
+    if unresolved_root != resolved_root or not resolved_root.is_dir():
+        raise metadata_storage.MetadataPathError("archive root is not a stable real directory")
+    current = resolved_root
+    for part in parts:
+        if (
+            not isinstance(part, str)
+            or part in {"", ".", ".."}
+            or "/" in part
+            or "\\" in part
+            or "\x00" in part
+        ):
+            raise metadata_storage.MetadataPathError(f"unsafe archive directory component: {part!r}")
+        candidate = current / part
+        try:
+            candidate.mkdir(mode=0o700)
+        except FileExistsError:
+            pass
+        try:
+            value = candidate.lstat()
+            resolved = candidate.resolve(strict=True)
+        except (FileNotFoundError, OSError) as exc:
+            raise metadata_storage.MetadataPathError(
+                f"archive directory component is unavailable: {part!r}"
+            ) from exc
+        if not candidate.is_dir() or candidate.is_symlink() or candidate.absolute() != resolved:
+            raise metadata_storage.MetadataPathError(
+                f"archive directory component is not a stable real directory: {part!r}"
+            )
+        current = candidate
+    return current
 
 
 def load_json_from_yt_dlp(yt_dlp: str, url: str) -> dict[str, Any]:
@@ -89,7 +146,8 @@ def yt_dlp_version(yt_dlp: str) -> str:
 
 
 CaptionChoice = tuple[str, str, list[dict[str, Any]]]
-CaptionDownloader = Callable[[str, str], Path]
+CaptionDownload = tuple[Path, bytes]
+CaptionDownloader = Callable[[str, str], CaptionDownload]
 
 
 def has_any_captions(info: dict[str, Any]) -> bool:
@@ -272,7 +330,16 @@ def caption_error_summary(exc: subprocess.CalledProcessError | RuntimeError) -> 
     return prefix + detail
 
 
-def download_caption_vtt(yt_dlp: str, url: str, video_id: str, lang: str, source: str, video_dir: Path) -> Path:
+def download_caption_vtt(
+    yt_dlp: str,
+    url: str,
+    video_id: str,
+    lang: str,
+    source: str,
+    video_dir: Path,
+) -> CaptionDownload:
+    video_id = validate_video_id(video_id)
+    lang = validate_language_token(lang)
     with tempfile.TemporaryDirectory(prefix="youtube-transcript-") as tmp_s:
         tmp = Path(tmp_s)
         cmd = [
@@ -288,13 +355,22 @@ def download_caption_vtt(yt_dlp: str, url: str, video_id: str, lang: str, source
         cmd.append("--write-subs" if source == "manual" else "--write-auto-subs")
         cmd.append(url)
         run(cmd, cwd=tmp)
-        candidates = sorted(tmp.glob(f"{video_id}*.vtt")) or sorted(tmp.glob(f"{video_id}*"))
+        candidates = sorted(tmp.glob(f"{video_id}*.vtt"))
         if not candidates:
-            raise RuntimeError(f"yt-dlp did not produce a subtitle file for language {lang}")
-        raw_vtt = video_dir / "raw" / lang / f"{video_id}.{lang}.vtt"
-        raw_vtt.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(candidates[0], raw_vtt)
-        return raw_vtt
+            produced = sorted(path.name for path in tmp.glob(f"{video_id}*") if path.is_file())
+            detail = f"; produced unsupported files: {', '.join(produced)}" if produced else ""
+            raise RuntimeError(f"yt-dlp did not produce WebVTT subtitles for language {lang}{detail}")
+        raw_parent = ensure_real_subdirectories(video_dir, "raw", lang)
+        raw_vtt = raw_parent / f"{video_id}.{lang}.vtt"
+        caption_bytes = metadata_storage.read_regular_bytes(
+            candidates[0],
+            max_bytes=64 * 1024 * 1024,
+        )
+        _clean_lines, cues = parse_vtt_bytes(caption_bytes)
+        if not cues:
+            raise RuntimeError(f"WebVTT subtitles for language {lang} contain no cues")
+        metadata_storage.durable_atomic_write(raw_vtt, caption_bytes)
+        return raw_vtt, caption_bytes
 
 
 def select_caption_vtt(
@@ -302,12 +378,12 @@ def select_caption_vtt(
     requested: str,
     no_caption_fallback: bool,
     download: CaptionDownloader,
-) -> tuple[str, str, Path, list[str]]:
+) -> tuple[str, str, Path, bytes, list[str]]:
     attempt_errors: list[str] = []
     for lang, source, _entries in choices:
         try:
-            raw_vtt = download(lang, source)
-            return lang, source, raw_vtt, attempt_errors
+            raw_vtt, caption_bytes = download(lang, source)
+            return lang, source, raw_vtt, caption_bytes, attempt_errors
         except (subprocess.CalledProcessError, RuntimeError) as exc:
             summary = caption_error_summary(exc)
             attempt_errors.append(f"{lang} ({source}): {summary}")
@@ -333,7 +409,7 @@ def clean_text(text: str) -> str:
     return text
 
 
-def parse_vtt(vtt_path: Path) -> tuple[list[str], list[tuple[str, str]]]:
+def parse_vtt_bytes(raw_vtt: bytes) -> tuple[list[str], list[tuple[str, str]]]:
     blocks: list[tuple[str, list[str]]] = []
     current_start: str | None = None
     current_lines: list[str] = []
@@ -347,7 +423,7 @@ def parse_vtt(vtt_path: Path) -> tuple[list[str], list[tuple[str, str]]]:
         current_start = None
         current_lines = []
 
-    for raw in vtt_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+    for raw in raw_vtt.decode("utf-8", errors="ignore").splitlines():
         line = raw.strip()
         if not line:
             flush()
@@ -366,6 +442,11 @@ def parse_vtt(vtt_path: Path) -> tuple[list[str], list[tuple[str, str]]]:
     clean_lines = [text for _, lines in blocks for text in lines]
     timestamped = [(ts, text) for ts, lines in blocks for text in lines]
     return clean_lines, timestamped
+
+
+def parse_vtt(vtt_path: Path) -> tuple[list[str], list[tuple[str, str]]]:
+    raw_vtt = metadata_storage.read_regular_bytes(vtt_path, max_bytes=64 * 1024 * 1024)
+    return parse_vtt_bytes(raw_vtt)
 
 
 def dedupe_consecutive(items: Iterable[Any]) -> list[Any]:
@@ -422,30 +503,174 @@ def duration_text(seconds: Any) -> str:
     return f"{m}:{s:02d}"
 
 
+def validate_archive_artifacts(
+    video_dir: Path,
+    manifest: dict[str, Any],
+    *,
+    include_canonical_manifest: bool,
+) -> None:
+    """Validate every currently publishable artifact and the selected metadata."""
+    candidate = manifest
+    if not include_canonical_manifest:
+        candidate = dict(manifest)
+        files = manifest.get("files")
+        if isinstance(files, list):
+            candidate["files"] = [relative for relative in files if relative != "manifest.json"]
+    metadata_storage.validate_manifest_files(video_dir, candidate)
+    metadata_storage.read_metadata_json(video_dir, manifest)
+
+
+def commit_canonical_manifest(
+    video_dir: Path,
+    manifest: dict[str, Any],
+    metadata_descriptor: dict[str, Any] | None,
+) -> bytes:
+    """Validate artifacts, publish the canonical manifest, then verify it and its files."""
+    serialized = metadata_storage.manifest_bytes(manifest)
+    validate_archive_artifacts(video_dir, manifest, include_canonical_manifest=False)
+    if metadata_descriptor is not None:
+        metadata_storage.commit_manifest(video_dir, manifest)
+    else:
+        metadata_storage.durable_atomic_write(video_dir / "manifest.json", serialized)
+
+    canonical_path = video_dir / "manifest.json"
+    committed_raw = metadata_storage.read_regular_bytes(canonical_path, max_bytes=4 * 1024 * 1024)
+    if committed_raw != serialized:
+        raise metadata_storage.MetadataIntegrityError("committed canonical manifest readback mismatch")
+    committed = metadata_storage.read_manifest(video_dir)
+    validate_archive_artifacts(video_dir, committed, include_canonical_manifest=True)
+    if metadata_storage.read_regular_bytes(canonical_path, max_bytes=4 * 1024 * 1024) != serialized:
+        raise metadata_storage.MetadataIntegrityError("canonical manifest changed during publication validation")
+    return serialized
+
+
+def commit_archive_manifests(
+    video_dir: Path,
+    language_manifest: Path,
+    manifest: dict[str, Any],
+    metadata_descriptor: dict[str, Any] | None,
+) -> None:
+    """Publish a language alias, canonical marker, then durable language completion."""
+    _mark_current_language_complete(video_dir)
+    serialized = metadata_storage.manifest_bytes(manifest)
+    metadata_storage.durable_atomic_write(language_manifest, serialized)
+    if metadata_storage.read_regular_bytes(language_manifest, max_bytes=4 * 1024 * 1024) != serialized:
+        raise metadata_storage.MetadataIntegrityError("language manifest readback mismatch")
+    commit_canonical_manifest(video_dir, manifest, metadata_descriptor)
+    if metadata_storage.read_regular_bytes(language_manifest, max_bytes=4 * 1024 * 1024) != serialized:
+        raise metadata_storage.MetadataIntegrityError("language manifest changed during publication validation")
+    marker_path = language_completion_marker_path(language_manifest)
+    marker_bytes = language_completion_marker_bytes(serialized)
+    metadata_storage.durable_atomic_write(marker_path, marker_bytes)
+    if metadata_storage.read_regular_bytes(marker_path, max_bytes=128) != marker_bytes:
+        raise metadata_storage.MetadataIntegrityError("language completion marker readback mismatch")
+
+
+def language_completion_marker_path(language_manifest: Path) -> Path:
+    return language_manifest.with_suffix(".complete")
+
+
+def language_completion_marker_bytes(serialized_manifest: bytes) -> bytes:
+    return f"{metadata_storage.sha256_bytes(serialized_manifest)}\n".encode("ascii")
+
+
+def _mark_current_language_complete(video_dir: Path) -> None:
+    """Backfill a marker while the current canonical manifest still proves completion."""
+    canonical_path = video_dir / "manifest.json"
+    if not canonical_path.exists():
+        return
+    try:
+        canonical_raw = metadata_storage.read_regular_bytes(canonical_path, max_bytes=4 * 1024 * 1024)
+        canonical = json.loads(canonical_raw.decode("utf-8"))
+        if not isinstance(canonical, dict):
+            return
+        language = canonical.get("language")
+        if not isinstance(language, str):
+            return
+        alias_name = validate_language_token(language)
+        alias_path = video_dir / "manifests" / f"{alias_name}.json"
+        if f"manifests/{alias_name}.json" not in canonical.get("files", []):
+            return
+        alias_raw = metadata_storage.read_regular_bytes(alias_path, max_bytes=4 * 1024 * 1024)
+        if alias_raw != canonical_raw:
+            return
+        metadata_storage.validate_manifest_files(video_dir, canonical)
+        metadata_storage.read_metadata_json(video_dir, canonical)
+        metadata_storage.durable_atomic_write(
+            language_completion_marker_path(alias_path),
+            language_completion_marker_bytes(alias_raw),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, metadata_storage.MetadataStorageError):
+        return
+
+
 def manifest_path_for(video_dir: Path, lang: str | None) -> Path:
     if lang and lang != "best":
-        return video_dir / "manifests" / f"{lang}.json"
+        return video_dir / "manifests" / f"{validate_language_token(lang)}.json"
     return video_dir / "manifest.json"
 
 
-def resolve_existing_archive(video_dir: Path, requested_lang: str) -> dict[str, Any] | None:
+def resolve_existing_archive(
+    video_dir: Path,
+    requested_lang: str,
+    *,
+    metadata_storage_mode: str = "compressed",
+) -> dict[str, Any] | None:
     manifest_path = manifest_path_for(video_dir, requested_lang)
+    canonical_path = video_dir / "manifest.json"
     if not manifest_path.exists():
         return None
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        raw_manifest = metadata_storage.read_regular_bytes(manifest_path, max_bytes=4 * 1024 * 1024)
+        if manifest_path != canonical_path:
+            if not canonical_path.exists():
+                return None
+            canonical_raw = metadata_storage.read_regular_bytes(canonical_path, max_bytes=4 * 1024 * 1024)
+            marker_path = language_completion_marker_path(manifest_path)
+            if marker_path.exists():
+                marker_raw = metadata_storage.read_regular_bytes(marker_path, max_bytes=128)
+                if marker_raw != language_completion_marker_bytes(raw_manifest):
+                    return None
+            elif canonical_raw != raw_manifest:
+                return None
+        manifest = json.loads(raw_manifest.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(manifest, dict):
         return None
 
     existing_lang = manifest.get("language")
     if requested_lang != "best" and existing_lang != requested_lang:
         return None
+    if requested_lang == "best" and isinstance(existing_lang, str):
+        try:
+            alias_name = validate_language_token(existing_lang)
+        except metadata_storage.MetadataPathError:
+            return None
+        alias_relative = f"manifests/{alias_name}.json"
+        if alias_relative in manifest.get("files", []):
+            alias_path = video_dir / alias_relative
+            if not alias_path.exists():
+                return None
+            alias_raw = metadata_storage.read_regular_bytes(alias_path, max_bytes=4 * 1024 * 1024)
+            if alias_raw != raw_manifest:
+                return None
+    if metadata_storage_mode in {"dual", "compressed"}:
+        descriptor = manifest.get("metadata_storage")
+        if descriptor is not None and (
+            not isinstance(descriptor, dict) or descriptor.get("state") not in {"dual", "compressed"}
+        ):
+            return None
 
-    rel_files = manifest.get("files") or []
-    if not rel_files:
-        return None
-    missing = [rel for rel in rel_files if not (video_dir / rel).exists()]
-    if missing:
+    declared_storage = manifest.get("metadata_storage") is not None
+    try:
+        metadata_storage.validate_manifest_files(video_dir, manifest)
+        metadata_storage.read_metadata_json(video_dir, manifest)
+        if "metadata.json" in manifest.get("files", []):
+            validated_optional_plaintext_metadata_files(video_dir)
+    except metadata_storage.MetadataStorageError:
+        if declared_storage:
+            raise
         return None
     return manifest
 
@@ -524,10 +749,100 @@ No transcript available.
 """
 
 
-def write_base_artifacts(video_dir: Path, info: dict[str, Any], subtitles_list: str) -> None:
-    video_dir.mkdir(parents=True, exist_ok=True)
-    safe_write(video_dir / "metadata.json", json.dumps(info, indent=2, ensure_ascii=False, sort_keys=True))
-    safe_write(video_dir / "subtitles-list.txt", subtitles_list)
+def write_base_artifacts(
+    video_dir: Path,
+    info: dict[str, Any],
+    subtitles_list: str,
+    *,
+    refresh: bool,
+    metadata_storage_mode: str,
+) -> dict[str, Any] | None:
+    video_dir = ensure_real_subdirectories(video_dir.parent, video_dir.name)
+    subtitles_path = video_dir / "subtitles-list.txt"
+    retained_subtitles = not refresh and (subtitles_path.exists() or subtitles_path.is_symlink())
+    if retained_subtitles:
+        metadata_storage.read_regular_bytes(subtitles_path, max_bytes=16 * 1024 * 1024)
+    requested_raw = json.dumps(info, indent=2, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    existing_manifest: dict[str, Any] | None = None
+    canonical_manifest = video_dir / "manifest.json"
+    if canonical_manifest.exists() or canonical_manifest.is_symlink():
+        existing_manifest = metadata_storage.read_manifest(video_dir)
+    existing_storage = existing_manifest.get("metadata_storage") if existing_manifest else None
+    if existing_storage is not None:
+        if metadata_storage_mode == "legacy":
+            raise metadata_storage.MetadataIntegrityError(
+                "refusing to downgrade an existing compressed archive through the legacy writer"
+            )
+        existing_raw = metadata_storage.read_metadata_bytes(video_dir, existing_manifest)
+        if metadata_storage_mode == "dual" and existing_raw != requested_raw:
+            raise metadata_storage.MetadataIntegrityError(
+                "refusing non-atomic dual refresh/reuse with changed metadata bytes"
+            )
+        if metadata_storage_mode == "dual":
+            raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
+        else:
+            raw = requested_raw
+            metadata_storage.parse_metadata_json(raw)
+    elif existing_manifest is not None and metadata_storage_mode == "legacy":
+        existing_raw = metadata_storage.read_metadata_bytes(video_dir, existing_manifest)
+        if existing_raw != requested_raw:
+            raise metadata_storage.MetadataIntegrityError(
+                "refusing non-atomic legacy refresh with changed metadata bytes"
+            )
+        raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
+    elif existing_manifest is not None and metadata_storage_mode == "dual":
+        # G2 can opt an unchanged legacy archive into dual storage, but changed
+        # legacy metadata needs the separate migration lane: replacing the
+        # plaintext before the manifest switch would violate manifest-last
+        # atomicity if the process stopped between those steps.
+        existing_raw = metadata_storage.read_metadata_bytes(video_dir, existing_manifest)
+        if existing_raw != requested_raw:
+            raise metadata_storage.MetadataIntegrityError(
+                "refusing non-atomic legacy-to-dual refresh with changed metadata bytes"
+            )
+        raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
+    elif existing_manifest is not None and metadata_storage_mode == "compressed":
+        # A compressed-canonical commit may preserve a legacy plaintext file as
+        # rollback evidence while selecting fresh compressed bytes atomically in
+        # the manifest. Prove that rollback evidence is still readable and valid
+        # before preparing any replacement generation; the plaintext is never
+        # replaced here.
+        metadata_storage.read_metadata_json(video_dir, existing_manifest)
+        raw = requested_raw
+        metadata_storage.parse_metadata_json(raw)
+    else:
+        plaintext = video_dir / "metadata.json"
+        if plaintext.exists() or plaintext.is_symlink():
+            existing_raw = metadata_storage.read_regular_bytes(
+                plaintext,
+                max_bytes=metadata_storage.DEFAULT_MAX_RAW_BYTES,
+            )
+            metadata_storage.parse_metadata_json(existing_raw)
+            if existing_raw != requested_raw:
+                raise metadata_storage.MetadataIntegrityError(
+                    "refusing orphaned plaintext metadata mismatch without a canonical manifest"
+                )
+            if metadata_storage_mode == "compressed":
+                raw = requested_raw
+            else:
+                raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=False)
+        else:
+            if metadata_storage_mode == "compressed":
+                raw = requested_raw
+                metadata_storage.parse_metadata_json(raw)
+            else:
+                raw = metadata_storage.write_plaintext_metadata(video_dir, requested_raw, replace=refresh)
+    if raw != requested_raw:
+        raise metadata_storage.MetadataIntegrityError(
+            "metadata bytes changed during non-replacing archive creation"
+        )
+    if not retained_subtitles:
+        safe_write(subtitles_path, subtitles_list)
+    if metadata_storage_mode == "legacy":
+        return None
+    if metadata_storage_mode == "dual":
+        return metadata_storage.prepare_dual_generation(video_dir, raw)
+    return metadata_storage.prepare_compressed_generation(video_dir, raw)
 
 
 def write_metadata_only_archive(
@@ -536,8 +851,10 @@ def write_metadata_only_archive(
     *,
     yt_dlp_version_text: str,
     duplicate_policy: str,
+    metadata_descriptor: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     video_id = info.get("id") or video_dir.name
+    plaintext_metadata_files = validated_optional_plaintext_metadata_files(video_dir)
     manifest = {
         "status": "metadata-only-no-captions",
         "duplicate_policy": duplicate_policy,
@@ -551,73 +868,53 @@ def write_metadata_only_archive(
         "yt_dlp_version": yt_dlp_version_text,
         "files": [
             "manifest.json",
-            "metadata.json",
+            *plaintext_metadata_files,
             "subtitles-list.txt",
             "report.md",
         ],
         "notes": "metadata-only archive; no subtitles or automatic captions exposed by YouTube; video/audio media not downloaded",
     }
-    manifest_json = json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True)
+    if metadata_descriptor is not None:
+        manifest = metadata_storage.prepare_manifest_with_storage(manifest, metadata_descriptor)
     safe_write(video_dir / "report.md", metadata_only_report_markdown(info, manifest))
-    safe_write(video_dir / "manifest.json", manifest_json)
+    commit_canonical_manifest(video_dir, manifest, metadata_descriptor)
     return manifest
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("url", help="YouTube URL or video ID")
-    parser.add_argument("--archive-root", required=True, help="Trusted archive root directory")
-    parser.add_argument("--lang", default="best", help="Caption language preference, e.g. en, fr, fr-orig, or best")
-    parser.add_argument("--refresh", action="store_true", help="Refresh an existing complete archive in place")
-    parser.add_argument("--yt-dlp-bin", default=os.environ.get("YT_DLP", "yt-dlp"), help="yt-dlp binary path")
-    parser.add_argument("--summary-file", help="Optional Markdown summary to inject into report.md")
-    parser.add_argument(
-        "--no-caption-fallback",
-        action="store_true",
-        help="Do not retry alternate caption tracks when --lang best selects a track that yt-dlp cannot download",
+def validated_optional_plaintext_metadata_files(video_dir: Path) -> list[str]:
+    """Return the rollback twin only after stable no-follow validation."""
+    plaintext = video_dir / "metadata.json"
+    if not (plaintext.exists() or plaintext.is_symlink()):
+        return []
+    raw = metadata_storage.read_regular_bytes(
+        plaintext,
+        max_bytes=metadata_storage.DEFAULT_MAX_RAW_BYTES,
     )
-    parser.add_argument(
-        "--max-caption-candidates",
-        type=int,
-        default=12,
-        help="Maximum best-mode caption tracks to try before failing; ignored for explicit --lang values",
-    )
-    parser.add_argument(
-        "--metadata-only-on-no-captions",
-        action="store_true",
-        help="Create a metadata-only archive instead of failing when YouTube exposes no captions",
-    )
-    args = parser.parse_args()
+    metadata_storage.parse_metadata_json(raw)
+    return ["metadata.json"]
 
-    yt_dlp = shutil.which(args.yt_dlp_bin) or args.yt_dlp_bin
-    if not shutil.which(yt_dlp) and not Path(yt_dlp).exists():
-        raise SystemExit(f"yt-dlp binary not found: {args.yt_dlp_bin}")
 
-    archive_root = Path(args.archive_root).expanduser().resolve()
-    archive_root.mkdir(parents=True, exist_ok=True)
-
-    info = load_json_from_yt_dlp(yt_dlp, args.url)
-    video_id = info.get("id")
-    if not video_id:
-        raise SystemExit("Could not resolve YouTube video ID")
-
-    video_dir = archive_root / video_id
-    if not args.refresh:
-        existing = resolve_existing_archive(video_dir, args.lang)
-        if existing:
-            existing["status"] = "reused"
-            existing["notes"] = "complete existing archive reused; use --refresh to reprocess"
-            print(json.dumps(existing, indent=2, ensure_ascii=False))
-            return 0
-
+def archive_resolved_video(
+    args: argparse.Namespace,
+    yt_dlp: str,
+    info: dict[str, Any],
+    video_id: str,
+    video_dir: Path,
+) -> int:
     subtitles_text: str | None = None
+    metadata_descriptor: dict[str, Any] | None = None
 
     def ensure_base_artifacts() -> None:
-        nonlocal subtitles_text
+        nonlocal subtitles_text, metadata_descriptor
         if subtitles_text is None:
             subtitles_text = list_subs(yt_dlp, args.url)
-        if args.refresh or not (video_dir / "metadata.json").exists() or not (video_dir / "subtitles-list.txt").exists():
-            write_base_artifacts(video_dir, info, subtitles_text)
+        metadata_descriptor = write_base_artifacts(
+            video_dir,
+            info,
+            subtitles_text,
+            refresh=args.refresh,
+            metadata_storage_mode=args.metadata_storage,
+        )
 
     try:
         choices = caption_candidates(info, args.lang)
@@ -629,6 +926,7 @@ def main() -> int:
                 info,
                 yt_dlp_version_text=yt_dlp_version(yt_dlp),
                 duplicate_policy="refresh" if args.refresh else "reuse-existing-complete-archive",
+                metadata_descriptor=metadata_descriptor,
             )
             print(json.dumps(manifest, indent=2, ensure_ascii=False))
             return 0
@@ -639,7 +937,11 @@ def main() -> int:
 
     if args.lang == "best" and not args.refresh:
         for candidate_lang, _candidate_source, _entries in choices:
-            existing = resolve_existing_archive(video_dir, candidate_lang)
+            existing = resolve_existing_archive(
+                video_dir,
+                candidate_lang,
+                metadata_storage_mode=args.metadata_storage,
+            )
             if existing:
                 existing["status"] = "reused"
                 existing["notes"] = "complete existing archive reused after resolving best language; use --refresh to reprocess"
@@ -647,12 +949,13 @@ def main() -> int:
                 return 0
 
     ensure_base_artifacts()
+    plaintext_metadata_files = validated_optional_plaintext_metadata_files(video_dir)
 
-    def download_selected(candidate_lang: str, candidate_source: str) -> Path:
+    def download_selected(candidate_lang: str, candidate_source: str) -> CaptionDownload:
         return download_caption_vtt(yt_dlp, args.url, video_id, candidate_lang, candidate_source, video_dir)
 
     try:
-        lang, source, raw_vtt, attempt_errors = select_caption_vtt(
+        lang, source, raw_vtt, caption_bytes, attempt_errors = select_caption_vtt(
             choices,
             args.lang,
             args.no_caption_fallback,
@@ -661,14 +964,11 @@ def main() -> int:
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
 
-    transcript_dir = video_dir / "transcript" / lang
-    reports_dir = video_dir / "reports"
-    manifests_dir = video_dir / "manifests"
-    transcript_dir.mkdir(parents=True, exist_ok=True)
-    reports_dir.mkdir(exist_ok=True)
-    manifests_dir.mkdir(exist_ok=True)
+    transcript_dir = ensure_real_subdirectories(video_dir, "transcript", lang)
+    reports_dir = ensure_real_subdirectories(video_dir, "reports")
+    manifests_dir = ensure_real_subdirectories(video_dir, "manifests")
 
-    clean_lines, timestamped = parse_vtt(raw_vtt)
+    clean_lines, timestamped = parse_vtt_bytes(caption_bytes)
     timestamped_deduped = deoverlap_caption_stream(dedupe_consecutive(timestamped))
     clean_deduped = [text for _, text in timestamped_deduped]
 
@@ -681,7 +981,7 @@ def main() -> int:
     lang_report = reports_dir / f"{lang}.md"
     rel_files = [
         "manifest.json",
-        "metadata.json",
+        *plaintext_metadata_files,
         "subtitles-list.txt",
         str(lang_manifest.relative_to(video_dir)),
         str(raw_vtt.relative_to(video_dir)),
@@ -709,16 +1009,85 @@ def main() -> int:
     if attempt_errors:
         manifest["notes"] += f"; selected {lang} after caption download fallback"
         manifest["caption_fallback_errors"] = attempt_errors
+    if metadata_descriptor is not None:
+        manifest = metadata_storage.prepare_manifest_with_storage(manifest, metadata_descriptor)
     summary = Path(args.summary_file).read_text(encoding="utf-8") if args.summary_file else None
     report = report_markdown(info, manifest, summary, "\n".join(f"[{ts}] {text}" for ts, text in timestamped_deduped))
-    manifest_json = json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True)
     safe_write(lang_report, report)
     safe_write(video_dir / "report.md", report)
-    safe_write(lang_manifest, manifest_json)
-    safe_write(video_dir / "manifest.json", manifest_json)
+    commit_archive_manifests(video_dir, lang_manifest, manifest, metadata_descriptor)
 
     print(json.dumps(manifest, indent=2, ensure_ascii=False))
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("url", help="YouTube URL or video ID")
+    parser.add_argument("--archive-root", required=True, help="Trusted archive root directory")
+    parser.add_argument("--lang", default="best", help="Caption language preference, e.g. en, fr, fr-orig, or best")
+    parser.add_argument("--refresh", action="store_true", help="Refresh an existing complete archive in place")
+    parser.add_argument("--yt-dlp-bin", default=os.environ.get("YT_DLP", "yt-dlp"), help="yt-dlp binary path")
+    parser.add_argument("--summary-file", help="Optional Markdown summary to inject into report.md")
+    parser.add_argument(
+        "--no-caption-fallback",
+        action="store_true",
+        help="Do not retry alternate caption tracks when --lang best selects a track that yt-dlp cannot download",
+    )
+    parser.add_argument(
+        "--max-caption-candidates",
+        type=int,
+        default=12,
+        help="Maximum best-mode caption tracks to try before failing; ignored for explicit --lang values",
+    )
+    parser.add_argument(
+        "--metadata-only-on-no-captions",
+        action="store_true",
+        help="Create a metadata-only archive instead of failing when YouTube exposes no captions",
+    )
+    parser.add_argument(
+        "--metadata-storage",
+        choices=["legacy", "dual", "compressed"],
+        default="compressed",
+        help="Metadata storage mode. compressed is the canonical deterministic-gzip default and never removes an existing plaintext rollback twin.",
+    )
+    # The canonical queue owns the writer lock and projection refresh. Accept
+    # its explicit carrier context so this sibling script can be deployed as a
+    # drop-in helper without loading or mutating those coordinator resources.
+    parser.add_argument("--state-root", help="Coordinator-owned state root; accepted for queue compatibility")
+    parser.add_argument("--projection-root", help="Coordinator-owned projection root; accepted for queue compatibility")
+    parser.add_argument("--storage-module", help="Coordinator storage module path; accepted for queue compatibility")
+    parser.add_argument("--writer-lock-held", action="store_true", help="Asserted by the coordinator-held writer lock")
+    args = parser.parse_args()
+
+    yt_dlp = shutil.which(args.yt_dlp_bin) or args.yt_dlp_bin
+    if not shutil.which(yt_dlp) and not Path(yt_dlp).exists():
+        raise SystemExit(f"yt-dlp binary not found: {args.yt_dlp_bin}")
+
+    archive_root = Path(args.archive_root).expanduser().resolve()
+    archive_root.mkdir(parents=True, exist_ok=True)
+
+    info = load_json_from_yt_dlp(yt_dlp, args.url)
+    video_id = info.get("id")
+    if not video_id:
+        raise SystemExit("Could not resolve YouTube video ID")
+    video_id = validate_video_id(video_id)
+
+    video_dir = archive_root / video_id
+    video_dir.mkdir(parents=False, exist_ok=True)
+    with metadata_storage.writer_lock(video_dir):
+        if not args.refresh:
+            existing = resolve_existing_archive(
+                video_dir,
+                args.lang,
+                metadata_storage_mode=args.metadata_storage,
+            )
+            if existing:
+                existing["status"] = "reused"
+                existing["notes"] = "complete existing archive reused; use --refresh to reprocess"
+                print(json.dumps(existing, indent=2, ensure_ascii=False))
+                return 0
+        return archive_resolved_video(args, yt_dlp, info, video_id, video_dir)
 
 
 if __name__ == "__main__":

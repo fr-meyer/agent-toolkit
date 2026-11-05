@@ -242,9 +242,9 @@ class ProcessInterruptionTests(unittest.TestCase):
             calls.append(lang)
             if lang == 'en':
                 raise subprocess.CalledProcessError(1, ['synthetic'], stderr='ERROR: selected caption unavailable')
-            return Path('fixture.vtt')
+            return Path('fixture.vtt'), b'WEBVTT\n'
         selected = archive.select_caption_vtt(CHOICES, 'best', False, download)
-        self.assertEqual(selected[:3], ('fr', 'automatic', Path('fixture.vtt')))
+        self.assertEqual(selected[:4], ('fr', 'automatic', Path('fixture.vtt'), b'WEBVTT\n'))
         self.assertEqual(calls, ['en', 'fr'])
 
     def test_fatal_error_line_survives_warning_prefix_and_bound(self):

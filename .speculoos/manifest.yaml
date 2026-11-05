@@ -96,5 +96,5 @@ gates:
     - hosted-review-fallback-pilot-separate-approval
     - composite-review-gate-consumers-validated
     - required-check-migration-separate-approval
-current_task: pr-089-youtube-windows-interruption
-current_task_metadata: .speculoos/tasks/pr-089-youtube-windows-interruption.yaml
+current_task: youtube-metadata-g5-cutover
+current_task_metadata: .speculoos/tasks/youtube-metadata-g5-cutover.yaml

@@ -34,8 +34,9 @@ Use this canonical layout under `archive_root/<video_id>/`:
 ```text
 <video_id>/
 ├── report.md                  # alias for the latest/default language report
-├── manifest.json              # alias for the latest/default language manifest
-├── metadata.json
+├── manifest.json              # selects the canonical metadata generation
+├── metadata.<raw-sha256>.json.gz
+├── metadata.json              # optional preserved rollback twin on migrated archives
 ├── subtitles-list.txt
 ├── reports/
 │   └── <lang>.md
@@ -52,7 +53,7 @@ Use this canonical layout under `archive_root/<video_id>/`:
         └── timestamped-deduped.txt
 ```
 
-Do not create parallel near-duplicate folders for the same video ID. Language variants belong in language-specific subfolders inside the same video folder unless the user explicitly requests a different archive structure.
+Do not create parallel near-duplicate folders for the same video ID. Language variants belong in language-specific subfolders inside the same video folder unless the user explicitly requests a different archive structure. Resolve metadata only through `manifest.json` and the shared storage helper; never require or fall back to `metadata.json` when the manifest declares compressed storage.
 
 ## Duplicate policy
 
@@ -96,7 +97,7 @@ Useful flags:
 - `--summary-file <path>` — inject an already-written Markdown summary into `report.md`
 - `--no-caption-fallback` — fail immediately if the selected `best` caption track cannot be downloaded
 - `--max-caption-candidates <n>` — cap the number of `best` caption tracks tried before failing; default is `12`
-- `--metadata-only-on-no-captions` — write `metadata.json`, `subtitles-list.txt`, `manifest.json`, and a metadata-only `report.md` instead of failing when YouTube exposes no captions
+- `--metadata-only-on-no-captions` — write manifest-selected compressed metadata, `subtitles-list.txt`, `manifest.json`, and a metadata-only `report.md` instead of failing when YouTube exposes no captions
 
 The helper must call `yt-dlp` in skip-download mode and must not download video/audio streams.
 
@@ -165,8 +166,8 @@ If the helper generated a placeholder report, read the transcript and replace th
 ### 4. Validate
 
 Before final response:
-- confirm `manifest.json`, `metadata.json`, `subtitles-list.txt`, raw subtitle file, cleaned transcript, and `report.md` exist
-- for metadata-only no-caption entries, confirm `manifest.json`, `metadata.json`, `subtitles-list.txt`, and `report.md` exist and the manifest status is `metadata-only-no-captions`
+- validate the metadata generation selected by `manifest.json` through the shared storage helper, then confirm `subtitles-list.txt`, raw subtitle file, cleaned transcript, and `report.md` exist
+- for metadata-only no-caption entries, validate the manifest-selected metadata through the shared storage helper, then confirm `subtitles-list.txt` and `report.md` exist and the manifest status is `metadata-only-no-captions`
 - confirm `report.md` identifies source URL, video ID, title, channel, language, transcript source, and archival timestamp
 - confirm no video/audio file was downloaded for transcript-only requests
 - for batches, validate from the batch manifest instead of a hand-written video-ID list; confirm `needs_summary` is empty after summary writing/syncing, transcript paths exist for caption-backed entries, metadata-only entries say no transcript is available because YouTube exposed no captions, and no audio/video files are present

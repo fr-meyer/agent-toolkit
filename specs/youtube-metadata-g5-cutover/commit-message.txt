@@ -1,0 +1,5 @@
+chore(speculoos): bind YouTube metadata G5 PR
+
+Bind task `youtube-metadata-g5-cutover` to the exact-head CI and review gate for PR #102. Feature PRs target `dev`; release/promotion PRs target `main`.
+
+This metadata-only remediation does not authorize deployment, production cutover, plaintext deletion, G6, worktree retirement, release, settings, credentials, or billing changes.
