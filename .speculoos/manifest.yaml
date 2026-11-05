@@ -96,5 +96,5 @@ gates:
     - hosted-review-fallback-pilot-separate-approval
     - composite-review-gate-consumers-validated
     - required-check-migration-separate-approval
-current_task: retire-legacy-coderabbit-assets-20261102
-current_task_metadata: .speculoos/tasks/retire-legacy-coderabbit-assets-20261102.yaml
+current_task: pr-089-youtube-windows-interruption
+current_task_metadata: .speculoos/tasks/pr-089-youtube-windows-interruption.yaml

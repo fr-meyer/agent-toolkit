@@ -1,0 +1,5 @@
+fix(youtube): supersede draft interruption guard
+
+Apply the reviewed behavior from draft PR #89 onto current dev without rewriting its legacy branch, preserve caption interruption and shared-source circuit guards, and bind task `pr-089-youtube-windows-interruption` to Pullfrog and Speculoos exact-head review gates.
+
+Feature PRs target `dev`. Release/promotion PRs target `main`.
