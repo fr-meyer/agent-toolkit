@@ -4,7 +4,7 @@ status: preparing_publication
 owner: fr-meyer
 branch: fix/youtube-windows-archiver-20261102
 base_branch: dev
-base_sha: b54c2f06d7e72fadf405ed38aae92e198d19da65
+base_sha: 4f6a2b3ece4de162353410abf6754b26635fd193
 github:
   issue: null
   pull_request: 100
@@ -33,19 +33,19 @@ acceptance:
 delivery_policy:
   mode: inherit_branch_policy
 publication_boundary:
-  statement: 'The user explicitly authorized finishing PR #89 through guarded feature-to-dev merge and cleanup. Stable promotion, release, deployment, settings, billing, credentials, force-push, and archive-retention changes remain excluded.'
+  statement: 'The user explicitly authorized finishing replacement PR #100 through guarded fixes, publication, exact-head review, and validation. Merge, stable promotion, release, deployment, settings, billing, credentials, force-push, and archive-retention changes remain separately gated or excluded.'
 documentation_impact:
   status: task-packet-only
   rationale: The behavior is internal failure classification and is fully covered by focused tests; no user-facing command or archive schema changes.
 validation:
   - python3 -m unittest -v skills/youtube-transcript-archive/tests/test_archive_youtube_transcript.py skills/youtube-transcript-archive/tests/test_process_interruption.py
   - python3 -m py_compile skills/youtube-transcript-archive/scripts/archive_youtube_transcript.py skills/youtube-transcript-archive/tests/test_archive_youtube_transcript.py skills/youtube-transcript-archive/tests/test_process_interruption.py
-  - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task pr-089-youtube-windows-interruption --expected-head-ref fix/youtube-windows-archiver-20261102 --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha b54c2f06d7e72fadf405ed38aae92e198d19da65
+  - python3 -I scripts/github/speculoos_pr_contract.py --repo . --repo-slug fr-meyer/agent-toolkit --task pr-089-youtube-windows-interruption --expected-head-ref fix/youtube-windows-archiver-20261102 --expected-head-sha "$(git rev-parse HEAD)" --expected-base-ref dev --expected-base-sha 4f6a2b3ece4de162353410abf6754b26635fd193
   - git diff --check
 private_data_scan: required
-publish_authority: 'User-authorized PR #89 feature-to-dev completion through the protected Mergeguez lane, with exact-head review and hosted gates required before merge and exact-SHA cleanup afterward.'
+publish_authority: 'User-authorized PR #100 fix publication through the protected Mergeguez lane, with exact-head review and hosted gates required before any separately approved merge and exact-SHA cleanup afterward.'
 functional_review:
-  author_cases_passed: 39
+  author_cases_passed: 40
   windows_native_cases_passed: not_run_source_only_merge
   findings: 0
   named_hosted_review_satisfied: false
