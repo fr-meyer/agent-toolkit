@@ -1,0 +1,5 @@
+id: speculoos-shadow-canary-20261106
+branch: test/speculoos-shadow-canary-20261106
+base_branch: dev
+delivery_policy:
+  mode: inherit_branch_policy
