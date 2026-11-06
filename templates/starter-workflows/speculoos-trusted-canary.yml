@@ -30,6 +30,8 @@ jobs:
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'test/speculoos-shadow-') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout trusted default-branch validator
@@ -123,3 +125,24 @@ jobs:
           path: artifacts/speculoos
           if-no-files-found: warn
           retention-days: 90
+
+  sign:
+    name: speculoos-sign-evidence
+    needs: speculoos
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download successful validator evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: speculoos-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/speculoos
+
+      - name: Sign exact-revision binding with GitHub provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: artifacts/speculoos/attestation.json
+          show-summary: false
