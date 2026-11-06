@@ -1,0 +1,52 @@
+id: pullfrog-dualref-custody-current-dev-20261105
+title: Prepare fail-closed atomic reviewed-dev merge transport
+status: preparing_publication
+owner: fr-meyer
+branch: feat/pullfrog-dualref-custody-20261105
+base_branch: dev
+base_sha: 425e1bcfda11c511a0b43004942452a7344597d5
+github:
+  issue: null
+  pull_request: null
+  url: null
+scope:
+  - .speculoos/manifest.yaml
+  - .speculoos/tasks/pullfrog-dualref-custody-current-dev-20261105.yaml
+  - docs/pullfrog-atomic-merge.md
+  - scripts/github/pullfrog_atomic_merge.py
+  - scripts/github/pullfrog_dev_auto_merge.py
+  - scripts/github/pullfrog_trusted_author_policy.py
+  - scripts/github/pullfrog_trusted_author_policy.json
+  - scripts/github/tests/test_pullfrog_atomic_merge.py
+  - scripts/github/tests/test_pullfrog_dev_auto_merge.py
+  - scripts/github/tests/test_pullfrog_trusted_author_policy.py
+  - scripts/github/tests/test_pullfrog_cloud_remediation_workflow_policy.py
+  - specs/pullfrog-dualref-custody-current-dev-20261105/commit-message.txt
+  - specs/pullfrog-dualref-custody-current-dev-20261105/pr-body.md
+non_goals:
+  - publishing, merging, deploying or activating any controller
+  - changing credentials, permissions, protections, billing or settings
+  - changing current-dev coordinator, cycle, destination or review-contract schemas
+  - replacing the separate historical integration-bootstrap policy
+acceptance:
+  - real bare Git validates one atomic base update plus literal source no-op guard
+  - exact author, repository, reviewed refs and fixed policy remain bound at action time
+  - final admission, durable custody and no-replay recovery remain mandatory
+  - legacy base-only CLI and mutation leaves fail closed without downstream effects
+  - current-dev coordinator, cycle, destination and review contract bytes are unchanged
+  - real workspace producer and custody composition passes without canonical module replacement
+  - applicable offline tests, compilation, workflow validation and Speculoos contract pass
+delivery_policy:
+  mode: inherit_branch_policy
+publication_boundary:
+  statement: Local preparation only. Exact source publication and hosted activation require their applicable authority and gates. No production or access change is included.
+documentation_impact:
+  status: documented
+  rationale: The new library boundary and intentional legacy mutation stop are documented in docs/pullfrog-atomic-merge.md.
+validation:
+  - python3 -m unittest discover -s scripts/github/tests -p 'test_pullfrog_*.py' -v
+  - python3 -m py_compile scripts/github/pullfrog_atomic_merge.py scripts/github/pullfrog_dev_auto_merge.py scripts/github/pullfrog_trusted_author_policy.py
+  - scripts/github/validate_pullfrog_workflow.sh
+  - git diff --check origin/dev...HEAD
+private_data_scan: required
+publish_authority: Local preparation and independent review only; no remote publication authorized by this packet.
