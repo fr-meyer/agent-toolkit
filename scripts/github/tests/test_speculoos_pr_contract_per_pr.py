@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import unittest
 import zipfile
+from unittest import mock
 from argparse import Namespace
 from pathlib import Path
 
@@ -152,12 +153,12 @@ Feature PRs target `dev`. Release/promotion PRs target `main`.
             "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
             "expired": False, "expires_at": instant(3600),
             "workflow_run": {"id": 111, "repository_id": 42,
-                             "head_repository_id": 42, "head_branch": "main",
-                             "head_sha": source_sha},
+                             "head_repository_id": 42, "head_branch": HEAD_REF,
+                             "head_sha": head_sha},
         }
         run = {"id": 111, "run_attempt": 2, "event": "pull_request_target",
-               "path": attestation.WORKFLOW_PATH, "head_sha": source_sha,
-               "head_branch": "main", "status": "completed", "conclusion": "success",
+               "path": attestation.WORKFLOW_PATH, "head_sha": head_sha,
+               "head_branch": HEAD_REF, "status": "completed", "conclusion": "success",
                "created_at": instant(-86400), "run_started_at": instant(-120),
                "updated_at": instant(-60),
                "repository": {"id": 42, "full_name": attestation.REPO}}
@@ -179,10 +180,11 @@ Feature PRs target `dev`. Release/promotion PRs target `main`.
         class Client:
             def get(self, path):
                 return json.loads(json.dumps(paths[path]))
-        receipt = attestation.collect_verified(
-            Client(), lambda _: raw, pr_number=106, run_id=111,
-            artifact_id=222, repository_id=42, trusted_app_id=444,
-            expected_source_sha=source_sha, now=now.timestamp())
+        with mock.patch.object(attestation, "verify_signed_source"):
+            receipt = attestation.collect_verified(
+                Client(), lambda _: raw, pr_number=106, run_id=111,
+                artifact_id=222, repository_id=42, trusted_app_id=444,
+                expected_source_sha=source_sha, now=now.timestamp())
         self.assertEqual(receipt["status"], "verified")
         self.assertEqual(receipt["head_sha"], head_sha)
         self.assertEqual(receipt["run_attempt"], 2)
@@ -313,7 +315,7 @@ Feature PRs target `dev`. Release/promotion PRs target `main`.
         self.assert_blocked("manifest mode requires an explicit task id", task_source="manifest")
         self.assert_blocked("missing or unsafe file", task_source="manifest", task=TASK)
 
-    def test_workflow_uses_trusted_default_validator_and_has_no_write_permission(self):
+    def test_workflow_uses_trusted_validator_with_attestation_only_write(self):
         workflow = (SOURCE / "templates/starter-workflows/speculoos-trusted-canary.yml").read_text()
         self.assertIn("pull_request_target:", workflow)
         self.assertIn("startsWith(github.event.pull_request.head.ref, 'test/speculoos-shadow-')", workflow)
@@ -324,6 +326,11 @@ Feature PRs target `dev`. Release/promotion PRs target `main`.
         self.assertIn("--trusted-repo trusted", workflow)
         self.assertIn("--task-source per-pr", workflow)
         self.assertIn("contents: read", workflow)
+        self.assertIn("id-token: write", workflow)
+        self.assertIn("attestations: write", workflow)
+        self.assertNotIn("contents: write", workflow)
+        self.assertNotIn("checks: write", workflow)
+        self.assertNotIn("pull-requests: write", workflow)
         self.assertNotIn("scripts/github/validate_pullfrog_workflow.sh", workflow)
         self.assertEqual(workflow, (SOURCE / ".github/workflows/speculoos-trusted-canary.yml").read_text())
 

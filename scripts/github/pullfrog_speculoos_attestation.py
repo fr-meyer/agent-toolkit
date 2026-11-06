@@ -14,7 +14,9 @@ import io
 import json
 import re
 import stat
+import subprocess
 import sys
+import tempfile
 import time
 import zipfile
 from pathlib import Path
@@ -24,6 +26,7 @@ REPO = "fr-meyer/agent-toolkit"
 WORKFLOW_PATH = ".github/workflows/speculoos-trusted-canary.yml"
 SCHEMA = "agent-toolkit-speculoos-run-binding.v1"
 CHECK_NAME = "speculoos-exact-head"
+SIGNER_IDENTITY = "https://github.com/fr-meyer/agent-toolkit/" + WORKFLOW_PATH + "@refs/heads/main"
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 HEX = re.compile(r"[0-9a-f]{64}\Z")
 MAX_ARCHIVE = 4_000_000
@@ -147,9 +150,70 @@ def _archive_members(raw: bytes) -> tuple[bytes, bytes]:
         raise EvidenceError("artifact_archive_invalid") from exc
 
 
-def verify_source_bundle(raw: bytes, *, artifact: dict[str, Any], run: dict[str, Any],
+def verify_signed_source(attestation_raw: bytes, *, source_sha: str,
+                         repository_id: int, run_id: int, run_attempt: int) -> None:
+    """Require a GitHub/Sigstore certificate over the exact binding bytes.
+
+    gh performs signature, subject-digest, issuer and timestamp verification.
+    Only certificate fields are used for identity; the SLSA predicate is
+    workflow-authored and is never a source of authority here.
+    """
+    if not SHA.fullmatch(source_sha) or len(attestation_raw) > MAX_MEMBER:
+        raise EvidenceError("signed_source_identity_invalid")
+    with tempfile.TemporaryDirectory(prefix="speculoos-attest-") as folder:
+        subject = Path(folder) / "attestation.json"
+        subject.write_bytes(attestation_raw)
+        command = ["gh", "attestation", "verify", str(subject), "--hostname", "github.com",
+                   "--repo", REPO,
+                   "--cert-identity", SIGNER_IDENTITY,
+                   "--source-digest", source_sha, "--signer-digest", source_sha,
+                   "--deny-self-hosted-runners", "--format", "json"]
+        try:
+            completed = subprocess.run(command, capture_output=True, timeout=30,
+                                       check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise EvidenceError("signed_source_verification_unavailable") from exc
+    if completed.returncode != 0 or len(completed.stdout) > MAX_MEMBER:
+        raise EvidenceError("signed_source_unverified")
+    try:
+        results = json.loads(completed.stdout)
+    except (UnicodeError, ValueError) as exc:
+        raise EvidenceError("signed_source_output_invalid") from exc
+    if not isinstance(results, list) or len(results) != 1 or not isinstance(results[0], dict):
+        raise EvidenceError("signed_source_output_invalid")
+    result = results[0].get("verificationResult")
+    if not isinstance(result, dict):
+        raise EvidenceError("signed_source_output_invalid")
+    signature = result.get("signature")
+    cert = signature.get("certificate") if isinstance(signature, dict) else None
+    if not isinstance(cert, dict):
+        raise EvidenceError("signed_source_certificate_missing")
+    expected_run = (f"https://github.com/{REPO}/actions/runs/{run_id}"
+                    f"/attempts/{run_attempt}")
+    san = cert.get("subjectAlternativeName")
+    # gh/sigstore-go versions serialize this as either a string or typed URI.
+    valid_san = (san == SIGNER_IDENTITY
+                 or san == {"type": "URI", "value": SIGNER_IDENTITY})
+    if (cert.get("sourceRepositoryDigest") != source_sha
+            or cert.get("buildSignerDigest") != source_sha
+            or cert.get("sourceRepositoryRef") != "refs/heads/main"
+            or cert.get("sourceRepositoryURI") != "https://github.com/" + REPO
+            or str(cert.get("sourceRepositoryIdentifier")) != str(repository_id)
+            or cert.get("buildSignerURI") != SIGNER_IDENTITY
+            or cert.get("issuer") != "https://token.actions.githubusercontent.com"
+            or not valid_san
+            or cert.get("runInvocationURI") != expected_run
+            or cert.get("buildTrigger") != "pull_request_target"
+            or cert.get("runnerEnvironment") != "github-hosted"
+            or not isinstance(result.get("verifiedTimestamps"), list)
+            or not result["verifiedTimestamps"]):
+        raise EvidenceError("signed_source_certificate_mismatch")
+
+
+def _source_bundle_parts(raw: bytes, *, artifact: dict[str, Any], run: dict[str, Any],
                          pr: dict[str, Any], repository_id: int,
-                         expected_source_sha: str, now: float) -> dict[str, Any]:
+                         expected_source_sha: str, now: float) -> tuple[dict[str, Any], bytes]:
+    """Pure structural verification; never use this alone to authorize a check."""
     report_raw, attestation_raw = _archive_members(raw)
     attestation = _strict_json(attestation_raw)
     binding = attestation.get("binding")
@@ -171,7 +235,8 @@ def verify_source_bundle(raw: bytes, *, artifact: dict[str, Any], run: dict[str,
             or type(run.get("run_attempt")) is not int or run["run_attempt"] != binding["run_attempt"]
             or run.get("event") != "pull_request_target"
             or run.get("path") not in (WORKFLOW_PATH, WORKFLOW_PATH + "@main")
-            or run.get("head_sha") != binding["source_sha"] or run.get("head_branch") != "main"
+            or run.get("head_sha") != binding["head_sha"]
+            or run.get("head_branch") != binding["head_ref"]
             or run.get("status") != "completed" or run.get("conclusion") != "success"
             or type(repo.get("id")) is not int or repo["id"] != repository_id
             or repo.get("full_name") != REPO):
@@ -192,8 +257,8 @@ def verify_source_bundle(raw: bytes, *, artifact: dict[str, Any], run: dict[str,
             or type(artifact_run.get("repository_id")) is not int or artifact_run["repository_id"] != repository_id
             or type(artifact_run.get("head_repository_id")) is not int
             or artifact_run["head_repository_id"] != repository_id
-            or artifact_run.get("head_branch") != "main"
-            or artifact_run.get("head_sha") != binding["source_sha"]):
+            or artifact_run.get("head_branch") != binding["head_ref"]
+            or artifact_run.get("head_sha") != binding["head_sha"]):
         raise EvidenceError("artifact_provenance_invalid")
     if _timestamp(artifact.get("expires_at")) <= now:
         raise EvidenceError("artifact_expired")
@@ -208,11 +273,30 @@ def verify_source_bundle(raw: bytes, *, artifact: dict[str, Any], run: dict[str,
             or type(head_repo.get("id")) is not int or head_repo["id"] != repository_id
             or type(base_repo.get("id")) is not int or base_repo["id"] != repository_id):
         raise EvidenceError("live_pr_revision_drift")
-    return {"schema": SCHEMA, "status": "source_verified", "repository": REPO,
+    source = {"schema": SCHEMA, "status": "source_verified", "repository": REPO,
             "pr_number": binding["pr_number"], "head_sha": binding["head_sha"],
             "base_sha": binding["base_sha"], "source_sha": binding["source_sha"],
             "run_id": binding["run_id"], "run_attempt": binding["run_attempt"],
             "artifact_id": artifact["id"], "binding_digest": attestation["binding_digest"]}
+    return source, attestation_raw
+
+
+def verify_source_bundle(raw: bytes, *, artifact: dict[str, Any], run: dict[str, Any],
+                         pr: dict[str, Any], repository_id: int,
+                         expected_source_sha: str, now: float) -> dict[str, Any]:
+    started_monotonic = time.monotonic()
+    source, attestation_raw = _source_bundle_parts(
+        raw, artifact=artifact, run=run, pr=pr, repository_id=repository_id,
+        expected_source_sha=expected_source_sha, now=now)
+    verify_signed_source(attestation_raw, source_sha=expected_source_sha,
+                         repository_id=repository_id, run_id=source["run_id"],
+                         run_attempt=source["run_attempt"])
+    final_now = now + max(0.0, time.monotonic() - started_monotonic)
+    if not 0 <= final_now - _timestamp(run["updated_at"]) <= MAX_RUN_AGE_SECONDS:
+        raise EvidenceError("workflow_run_stale")
+    if _timestamp(artifact["expires_at"]) <= final_now:
+        raise EvidenceError("artifact_expired")
+    return source
 
 
 def prepare_head_check_intent(raw: bytes, *, artifact: dict[str, Any], run: dict[str, Any],
@@ -233,6 +317,12 @@ def verify_archive(raw: bytes, *, artifact: dict[str, Any], run: dict[str, Any],
     source = verify_source_bundle(raw, artifact=artifact, run=run, pr=pr,
                                   repository_id=repository_id,
                                   expected_source_sha=expected_source_sha, now=now)
+    return _verify_head_check(source, check, trusted_app_id)
+
+
+def _verify_head_check(source: dict[str, Any], check: dict[str, Any],
+                       trusted_app_id: int) -> dict[str, Any]:
+    """Pure check binding after signed-source verification."""
     app = check.get("app") if isinstance(check.get("app"), dict) else {}
     if (type(trusted_app_id) is not int or trusted_app_id < 1
             or type(check.get("id")) is not int or check["id"] < 1
@@ -303,10 +393,18 @@ def collect_verified(client, download, *, pr_number: int, run_id: int,
             or final_pr.get("base") != first.get("base")):
         raise EvidenceError("live_pr_changed_during_evidence_collection")
     finished_now = now + max(0.0, time.monotonic() - started_monotonic)
-    final_receipt = verify_archive(raw, artifact=final_artifact, run=final_run,
-                                   check=matches[0], pr=final_pr, repository_id=repository_id,
-                                   trusted_app_id=trusted_app_id,
-                                   expected_source_sha=expected_source_sha, now=finished_now)
+    # The signature was verified above. Keep this last server-state fence pure:
+    # another network signature lookup here would reopen the PR/check race.
+    final_source, _ = _source_bundle_parts(
+        raw, artifact=final_artifact, run=final_run, pr=final_pr,
+        repository_id=repository_id, expected_source_sha=expected_source_sha,
+        now=finished_now)
+    final_receipt = _verify_head_check(final_source, matches[0], trusted_app_id)
+    return_now = now + max(0.0, time.monotonic() - started_monotonic)
+    if not 0 <= return_now - _timestamp(final_run["updated_at"]) <= MAX_RUN_AGE_SECONDS:
+        raise EvidenceError("workflow_run_stale")
+    if _timestamp(final_artifact["expires_at"]) <= return_now:
+        raise EvidenceError("artifact_expired")
     if final_receipt != receipt:
         raise EvidenceError("evidence_changed_during_collection")
     return final_receipt

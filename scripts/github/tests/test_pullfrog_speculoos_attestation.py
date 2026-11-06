@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import subprocess
 import unittest
 import zipfile
 from pathlib import Path
@@ -34,6 +35,9 @@ def zipped(report_raw, attestation_raw):
 
 class BindingTest(unittest.TestCase):
     def setUp(self):
+        self.signed_source = mock.patch.object(A, "verify_signed_source")
+        self.signed_source.start()
+        self.addCleanup(self.signed_source.stop)
         self.report = {"schema": "agent-toolkit-speculoos-pr-contract/v1", "status": "ok",
                        "repository": A.REPO, "task": "public-canary", "task_source": "per-pr",
                        "head_ref": "test/public-canary", "head_sha": HEAD,
@@ -50,10 +54,12 @@ class BindingTest(unittest.TestCase):
                          "expired": False, "digest": "sha256:" + hashlib.sha256(self.raw).hexdigest(),
                          "expires_at": time_at(3600),
                          "workflow_run": {"id": 111, "repository_id": 42,
-                                          "head_repository_id": 42, "head_branch": "main",
-                                          "head_sha": SOURCE_SHA}}
+                                          "head_repository_id": 42,
+                                          "head_branch": "test/public-canary",
+                                          "head_sha": HEAD}}
         self.run = {"id": 111, "run_attempt": 1, "event": "pull_request_target",
-                    "path": A.WORKFLOW_PATH, "head_sha": SOURCE_SHA, "head_branch": "main",
+                    "path": A.WORKFLOW_PATH, "head_sha": HEAD,
+                    "head_branch": "test/public-canary",
                     "status": "completed", "conclusion": "success",
                     "created_at": time_at(-120), "run_started_at": time_at(-120),
                     "updated_at": time_at(-60),
@@ -78,6 +84,24 @@ class BindingTest(unittest.TestCase):
         self.assertEqual(result["status"], "verified")
         self.assertEqual(result["head_sha"], HEAD)
         self.assertEqual(result["source_sha"], SOURCE_SHA)
+        self.assertNotEqual(self.run["head_sha"], result["source_sha"])
+
+    def test_source_sha_remains_independently_pinned(self):
+        with self.assertRaisesRegex(A.EvidenceError, "attestation_binding_invalid"):
+            self.verify(expected_source_sha=HEAD)
+
+    def test_unverified_signature_blocks_head_check_intent(self):
+        self.signed_source.stop()
+        with mock.patch.object(A, "verify_signed_source",
+                               side_effect=A.EvidenceError("signed_source_unverified")) as verify:
+            with self.assertRaisesRegex(A.EvidenceError, "signed_source_unverified"):
+                A.prepare_head_check_intent(self.raw, artifact=self.artifact, run=self.run,
+                                            pr=self.pr, repository_id=42,
+                                            expected_source_sha=SOURCE_SHA, now=NOW.timestamp())
+            verify.assert_called_once()
+            self.assertEqual(verify.call_args.kwargs["source_sha"], SOURCE_SHA)
+            self.assertEqual(verify.call_args.kwargs["run_id"], 111)
+        self.signed_source.start()
 
     def test_workflow_path_accepts_main_suffix_only(self):
         self.assertEqual(self.verify(run=dict(self.run, path=A.WORKFLOW_PATH + "@main"))["status"],
@@ -126,7 +150,8 @@ class BindingTest(unittest.TestCase):
                 self.verify(pr=pr)
 
     def test_wrong_run_source_attempt_or_event_fails(self):
-        for field, value in (("head_sha", "d" * 40), ("run_attempt", 2),
+        for field, value in (("head_sha", "d" * 40),
+                             ("head_branch", "main"), ("run_attempt", 2),
                              ("event", "pull_request"), ("path", "other.yml"),
                              ("conclusion", "failure")):
             run = dict(self.run, **{field: value})
@@ -137,6 +162,14 @@ class BindingTest(unittest.TestCase):
         run = dict(self.run, updated_at=time_at(-7200))
         with self.assertRaisesRegex(A.EvidenceError, "workflow_run_stale"):
             self.verify(run=run)
+
+    def test_signature_verification_time_cannot_cross_freshness_or_expiry(self):
+        with mock.patch.object(A.time, "monotonic", side_effect=[0.0, 3601.0]):
+            with self.assertRaisesRegex(A.EvidenceError, "workflow_run_stale"):
+                self.verify()
+        with mock.patch.object(A.time, "monotonic", side_effect=[0.0, 20.0]):
+            with self.assertRaisesRegex(A.EvidenceError, "artifact_expired"):
+                self.verify(artifact=dict(self.artifact, expires_at=time_at(10)))
 
     def test_old_run_recent_second_attempt_uses_attempt_start(self):
         run = dict(self.run, created_at=time_at(-86400), run_started_at=time_at(-120),
@@ -211,6 +244,17 @@ class BindingTest(unittest.TestCase):
         self.assertIn("--run-attempt \"$GITHUB_RUN_ATTEMPT\"", workflow)
         self.assertIn("speculoos-shadow-${{ github.repository_id }}", workflow)
         self.assertIn("-${{ github.run_id }}-${{ github.run_attempt }}", workflow)
+        self.assertIn("id-token: write", workflow)
+        self.assertIn("attestations: write", workflow)
+        self.assertIn("uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6", workflow)
+        self.assertIn("subject-path: artifacts/speculoos/attestation.json", workflow)
+        validator, signer = workflow.split("  sign:\n", 1)
+        self.assertNotIn("id-token: write", validator)
+        self.assertNotIn("attestations: write", validator)
+        self.assertIn("needs: speculoos", signer)
+        self.assertIn("uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093", signer)
+        self.assertNotIn("actions/checkout", signer)
+        self.assertNotIn("candidate", signer)
         self.assertNotIn("scripts/github/validate_pullfrog_workflow.sh", workflow)
 
     def test_collector_binds_existing_server_objects_and_rereads_pr(self):
@@ -279,7 +323,8 @@ class BindingTest(unittest.TestCase):
                 if path == f"{prefix}/commits/{HEAD}/check-runs?per_page=100":
                     return {"total_count": 1, "check_runs": [copy.deepcopy(parent.check)]}
                 raise AssertionError(path)
-        with mock.patch.object(A.time, "monotonic", side_effect=[0.0, 3601.0]):
+        with mock.patch.object(A.time, "monotonic",
+                               side_effect=[0.0, 0.0, 0.0, 3601.0, 3601.0]):
             with self.assertRaisesRegex(A.EvidenceError, "workflow_run_stale"):
                 A.collect_verified(Client(), lambda _: self.raw, pr_number=106, run_id=111,
                                    artifact_id=222, repository_id=42, trusted_app_id=444,
@@ -307,6 +352,96 @@ class BindingTest(unittest.TestCase):
             A.collect_verified(Client(), lambda _: self.raw, pr_number=106, run_id=111,
                                artifact_id=222, repository_id=42, trusted_app_id=444,
                                expected_source_sha=SOURCE_SHA, now=NOW.timestamp())
+
+    def test_collector_does_not_reopen_server_race_after_final_read(self):
+        parent = self
+        prefix = "/repos/" + A.REPO
+        class Client:
+            def get(self, path):
+                if path == f"{prefix}/pulls/106": return copy.deepcopy(parent.pr)
+                if path == f"{prefix}/actions/runs/111": return copy.deepcopy(parent.run)
+                if path == f"{prefix}/actions/artifacts/222": return copy.deepcopy(parent.artifact)
+                if path == f"{prefix}/commits/{HEAD}/check-runs?per_page=100":
+                    return {"total_count": 1, "check_runs": [copy.deepcopy(parent.check)]}
+                raise AssertionError(path)
+        with mock.patch.object(A, "verify_signed_source") as signed:
+            receipt = A.collect_verified(Client(), lambda _: self.raw, pr_number=106,
+                                         run_id=111, artifact_id=222, repository_id=42,
+                                         trusted_app_id=444, expected_source_sha=SOURCE_SHA,
+                                         now=NOW.timestamp())
+        self.assertEqual(receipt["status"], "verified")
+        signed.assert_called_once()
+
+
+class SignedSourceTest(unittest.TestCase):
+    def setUp(self):
+        self.binding = b'{"binding":"test"}\n'
+        self.cert = {
+            "sourceRepositoryDigest": SOURCE_SHA,
+            "buildSignerDigest": SOURCE_SHA,
+            "sourceRepositoryRef": "refs/heads/main",
+            "sourceRepositoryURI": "https://github.com/" + A.REPO,
+            "sourceRepositoryIdentifier": "42",
+            "buildSignerURI": A.SIGNER_IDENTITY,
+            "issuer": "https://token.actions.githubusercontent.com",
+            "subjectAlternativeName": {"type": "URI", "value": A.SIGNER_IDENTITY},
+            "runInvocationURI": f"https://github.com/{A.REPO}/actions/runs/111/attempts/1",
+            "buildTrigger": "pull_request_target",
+            "runnerEnvironment": "github-hosted",
+        }
+
+    def invoke(self, cert=None, *, status=0, output=None):
+        cert = self.cert if cert is None else cert
+        result = [{"verificationResult": {"signature": {"certificate": cert},
+                                          "verifiedTimestamps": [{"timestamp": "signed"}]}}]
+        payload = json.dumps(result).encode() if output is None else output
+        def fake_run(command, **kwargs):
+            self.assertEqual(command[:3], ["gh", "attestation", "verify"])
+            self.assertEqual(Path(command[3]).read_bytes(), self.binding)
+            self.assertIn("--deny-self-hosted-runners", command)
+            for key, expected in (("--repo", A.REPO),
+                                  ("--cert-identity", A.SIGNER_IDENTITY),
+                                  ("--source-digest", SOURCE_SHA),
+                                  ("--signer-digest", SOURCE_SHA)):
+                self.assertEqual(command[command.index(key) + 1], expected)
+            self.assertNotIn("--source-ref", command)
+            self.assertEqual(command[command.index("--hostname") + 1], "github.com")
+            return subprocess.CompletedProcess(command, status, payload, b"")
+        with mock.patch.object(A.subprocess, "run", side_effect=fake_run):
+            A.verify_signed_source(self.binding, source_sha=SOURCE_SHA,
+                                   repository_id=42, run_id=111, run_attempt=1)
+
+    def test_certificate_binds_exact_source_and_run(self):
+        self.invoke()
+        self.invoke(dict(self.cert, subjectAlternativeName=A.SIGNER_IDENTITY))
+
+    def test_wrong_signed_identity_fails(self):
+        for key, wrong in (("sourceRepositoryDigest", HEAD),
+                           ("buildSignerDigest", HEAD),
+                           ("sourceRepositoryRef", "refs/heads/Main"),
+                           ("sourceRepositoryIdentifier", "43"),
+                           ("subjectAlternativeName", A.SIGNER_IDENTITY + "-other"),
+                           ("runInvocationURI", "https://github.com/" + A.REPO + "/actions/runs/111/attempts/2"),
+                           ("buildTrigger", "pull_request"),
+                           ("runnerEnvironment", "self-hosted")):
+            with self.subTest(key=key):
+                cert = dict(self.cert, **{key: wrong})
+                with self.assertRaisesRegex(A.EvidenceError, "signed_source_certificate_mismatch"):
+                    self.invoke(cert)
+
+    def test_unverified_or_ambiguous_result_fails(self):
+        with self.assertRaisesRegex(A.EvidenceError, "signed_source_unverified"):
+            self.invoke(status=1)
+        for raw in (b'[]', b'{}', b'[{"verificationResult":{}}]', b'not json'):
+            with self.subTest(raw=raw):
+                with self.assertRaises(A.EvidenceError):
+                    self.invoke(output=raw)
+
+    def test_missing_cli_fails_closed(self):
+        with mock.patch.object(A.subprocess, "run", side_effect=FileNotFoundError):
+            with self.assertRaisesRegex(A.EvidenceError, "signed_source_verification_unavailable"):
+                A.verify_signed_source(self.binding, source_sha=SOURCE_SHA,
+                                       repository_id=42, run_id=111, run_attempt=1)
 
 
 if __name__ == "__main__":
