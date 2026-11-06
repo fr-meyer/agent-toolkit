@@ -1,0 +1,3 @@
+docs: validate trusted Speculoos shadow evidence
+
+Feature PRs target `dev`. Release/promotion PRs target `main`.
