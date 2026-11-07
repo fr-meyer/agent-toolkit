@@ -1,3 +1,4 @@
+import copy
 import importlib.util
 import io
 import json
@@ -685,6 +686,153 @@ class PullfrogCloudRemediationTests(unittest.TestCase):
         try:
             with self.assertRaisesRegex(
                 MODULE.RemediationError, "expired_remediation_artifact"
+            ):
+                MODULE.load_hosted_ledger(
+                    api_url="https://api.github.com",
+                    token="test",
+                    repository_slug="fr-meyer/agent-toolkit",
+                    pr_number=94,
+                )
+        finally:
+            MODULE.GitHubArtifactClient = original
+
+    def test_transient_inventory_count_race_recovers_without_filtering_history(self):
+        def page(total, ids):
+            return {
+                "total_count": total,
+                "artifacts": [
+                    {"id": item, "name": f"unrelated-{item}"} for item in ids
+                ],
+            }
+
+        responses = [
+            page(101, range(1, 101)),
+            page(102, (101, 102)),
+            page(102, range(1, 101)),
+            page(102, (101, 102)),
+            page(102, range(1, 101)),
+            page(102, (101, 102)),
+        ]
+
+        class Client:
+            def get(self, path):
+                self.assert_path(path)
+                return responses.pop(0)
+
+            def assert_path(self, path):
+                if "/actions/artifacts?" not in path:
+                    raise AssertionError(path)
+
+        artifacts = MODULE._consistent_artifact_inventory(Client(), "/repos/owner/repo")
+        self.assertEqual(len(artifacts), 102)
+        self.assertEqual({item["id"] for item in artifacts}, set(range(1, 103)))
+        self.assertEqual(responses, [])
+
+    def test_inventory_page_shift_and_same_count_replacement_retry(self):
+        def artifact(item, name=None):
+            return {"id": item, "name": name or f"unrelated-{item}"}
+
+        for responses, expected in [
+            (
+                [
+                    {"total_count": 101, "artifacts": [artifact(i) for i in range(1, 101)]},
+                    {"total_count": 101, "artifacts": [artifact(100)]},
+                    {"total_count": 101, "artifacts": [artifact(i) for i in range(1, 101)]},
+                    {"total_count": 101, "artifacts": [artifact(101)]},
+                    {"total_count": 101, "artifacts": [artifact(i) for i in range(1, 101)]},
+                    {"total_count": 101, "artifacts": [artifact(101)]},
+                ],
+                101,
+            ),
+            (
+                [
+                    {"total_count": 1, "artifacts": [artifact(1)]},
+                    {"total_count": 1, "artifacts": [artifact(1, "changed-metadata")]},
+                    {"total_count": 1, "artifacts": [artifact(1, "changed-metadata")]},
+                    {"total_count": 1, "artifacts": [artifact(1, "changed-metadata")]},
+                ],
+                1,
+            ),
+        ]:
+            with self.subTest(expected=expected, pages=len(responses)):
+                class Client:
+                    def get(self, path):
+                        return responses.pop(0)
+
+                artifacts = MODULE._consistent_artifact_inventory(
+                    Client(), "/repos/owner/repo"
+                )
+                self.assertEqual(len(artifacts), expected)
+                self.assertEqual(responses, [])
+
+    def test_persistent_inventory_churn_fails_closed_after_bounded_reads(self):
+        class Client:
+            def __init__(self):
+                self.calls = 0
+
+            def get(self, path):
+                self.calls += 1
+                return {
+                    "total_count": 1,
+                    "artifacts": [{"id": self.calls, "name": "unrelated"}],
+                }
+
+        client = Client()
+        with self.assertRaisesRegex(MODULE.RemediationError, "artifact_inventory_changed"):
+            MODULE._consistent_artifact_inventory(client, "/repos/owner/repo")
+        self.assertEqual(client.calls, 2 * MODULE.MAX_INVENTORY_ATTEMPTS)
+
+    def test_inventory_retry_keeps_all_claims_for_conflict_detection(self):
+        first_claim = make_claim()
+        conflicting_claim = copy.deepcopy(first_claim)
+        conflicting_claim["review_id"] += 1
+        filler = [{"id": i, "name": f"unrelated-{i}"} for i in range(1, 101)]
+        claims = [
+            {
+                "id": i,
+                "name": "pullfrog-remediation-claim-pr-94-123-a1",
+                "expired": False,
+                "workflow_run": {"id": 123},
+            }
+            for i in (101, 102)
+        ]
+        added = {"id": 103, "name": "unrelated-103"}
+        original = MODULE.GitHubArtifactClient
+
+        class Client:
+            def __init__(self, api_url, token, repository_slug):
+                self.repository_slug = repository_slug
+                self.page_calls = 0
+
+            def get(self, path):
+                if "/actions/artifacts?" in path:
+                    self.page_calls += 1
+                    if self.page_calls == 1:
+                        return {"total_count": 102, "artifacts": filler}
+                    if self.page_calls % 2 == 1:
+                        return {"total_count": 103, "artifacts": filler}
+                    return {"total_count": 103, "artifacts": claims + [added]}
+                if path.endswith("/actions/runs/123"):
+                    return {
+                        "id": 123,
+                        "path": MODULE.WORKFLOW_PATH,
+                        "status": "completed",
+                        "conclusion": "failure",
+                    }
+                if path.endswith("/pulls/94"):
+                    return pull_request()
+                raise AssertionError(path)
+
+            def get_bytes(self, path, maximum=MODULE.MAX_ARTIFACT_BYTES):
+                artifact_id = int(path.rsplit("/", 2)[-2])
+                return artifact_zip(
+                    "claim.json", first_claim if artifact_id == 101 else conflicting_claim
+                )
+
+        MODULE.GitHubArtifactClient = Client
+        try:
+            with self.assertRaisesRegex(
+                MODULE.RemediationError, "conflicting_claim_artifacts"
             ):
                 MODULE.load_hosted_ledger(
                     api_url="https://api.github.com",
