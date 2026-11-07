@@ -46,6 +46,7 @@ PULLFROG_ACTION_VERSION = "0.1.102"
 WORKFLOW_PATH = ".github/workflows/pullfrog-cloud-remediation-loop.yml"
 MAX_ATTEMPTS = 3
 MAX_ARTIFACTS = 60
+MAX_INVENTORY_ATTEMPTS = 3
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
 MAX_PATCH_BYTES = 4 * 1024 * 1024
 HISTORY_RETENTION_DAYS = 90
@@ -591,16 +592,10 @@ def build_ledger(
     }
 
 
-def load_hosted_ledger(
-    *,
-    api_url: str,
-    token: str,
-    repository_slug: str,
-    pr_number: int,
-    workflow_path: str = WORKFLOW_PATH,
-) -> dict[str, Any]:
-    client = GitHubArtifactClient(api_url, token, repository_slug)
-    prefix = f"/repos/{client.repository_slug}"
+def _artifact_inventory_pass(
+    client: GitHubArtifactClient, prefix: str
+) -> tuple[list[dict[str, Any]], str]:
+    """Read the whole repository inventory, including unrelated PR history."""
     artifacts: list[dict[str, Any]] = []
     total_count: int | None = None
     for page in range(1, coordinator.MAX_PAGES + 1):
@@ -622,6 +617,48 @@ def load_hosted_ledger(
             raise RemediationError("artifact_inventory_incomplete")
     if total_count is None or len(artifacts) != total_count:
         raise RemediationError("artifact_inventory_incomplete")
+    artifact_ids = [_integer(item.get("id")) for item in artifacts]
+    if any(item is None or item <= 0 for item in artifact_ids):
+        raise RemediationError("invalid_artifact_inventory")
+    if len(set(artifact_ids)) != len(artifact_ids):
+        raise RemediationError("artifact_inventory_changed")
+    # Sort by ID so harmless page ordering does not change the snapshot. Full
+    # metadata is compared so a same-count replacement or expiry cannot hide.
+    return artifacts, _digest(sorted(artifacts, key=lambda item: item["id"]))
+
+
+def _consistent_artifact_inventory(
+    client: GitHubArtifactClient, prefix: str
+) -> list[dict[str, Any]]:
+    """Retry transient pagination races, but fail closed on sustained churn."""
+    for attempt in range(MAX_INVENTORY_ATTEMPTS):
+        try:
+            _, first_digest = _artifact_inventory_pass(client, prefix)
+            second, second_digest = _artifact_inventory_pass(client, prefix)
+        except RemediationError as exc:
+            if exc.code not in {"artifact_inventory_changed", "artifact_inventory_incomplete"}:
+                raise
+            if attempt == MAX_INVENTORY_ATTEMPTS - 1:
+                raise
+            continue
+        if first_digest == second_digest:
+            return second
+        if attempt == MAX_INVENTORY_ATTEMPTS - 1:
+            raise RemediationError("artifact_inventory_changed")
+    raise RemediationError("artifact_inventory_changed")
+
+
+def load_hosted_ledger(
+    *,
+    api_url: str,
+    token: str,
+    repository_slug: str,
+    pr_number: int,
+    workflow_path: str = WORKFLOW_PATH,
+) -> dict[str, Any]:
+    client = GitHubArtifactClient(api_url, token, repository_slug)
+    prefix = f"/repos/{client.repository_slug}"
+    artifacts = _consistent_artifact_inventory(client, prefix)
     relevant: list[tuple[str, dict[str, Any], int, int]] = []
     for artifact in artifacts:
         name = _text(artifact.get("name"))
