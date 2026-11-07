@@ -35,6 +35,7 @@ class PerPrStagingTest(unittest.TestCase):
         self.git("config", "user.email", "test@example.invalid")
         self.git("config", "user.name", "Test")
         self.write(".speculoos/manifest.yaml", "current_task: unrelated-global-task\n")
+        self.write("obsolete.txt", "old public fixture\n")
         self.write(".speculoos/actors.json", json.dumps({
             "branch_policies": [{"name": "feature_to_non_stable", "auto_merge": {
                 "enabled": True, "forbidden_base_refs": ["main", "master"],
@@ -131,6 +132,30 @@ class PerPrStagingTest(unittest.TestCase):
         result = self.report()
         self.assertEqual(result["status"], "blocked")
         self.assertTrue(any("private_data_scan" in b for b in result["blockers"]))
+
+    def test_leading_colon_binary_path_is_not_mistaken_for_deletion(self):
+        self.write_bytes(":foo", b"\x00ghp_" + b"A" * 30 + b"\n")
+        self.packet([DOC, TASK_PATH, BODY_PATH, MESSAGE_PATH, ":foo"])
+        self.commit()
+        result = self.report()
+        self.assertEqual(result["status"], "blocked")
+        self.assertTrue(any("private_data_scan" in b for b in result["blockers"]))
+
+    def test_magic_pathspec_named_binary_file_is_not_skipped(self):
+        path = ":(literal)foo"
+        self.write_bytes(path, b"\x00ghp_" + b"A" * 30 + b"\n")
+        self.packet([DOC, TASK_PATH, BODY_PATH, MESSAGE_PATH, path])
+        self.commit()
+        result = self.report()
+        self.assertEqual(result["status"], "blocked")
+        self.assertTrue(any("private_data_scan" in b for b in result["blockers"]))
+
+    def test_actual_deletion_remains_skippable(self):
+        (self.repo / "obsolete.txt").unlink()
+        self.packet([DOC, TASK_PATH, BODY_PATH, MESSAGE_PATH, "obsolete.txt"])
+        self.commit()
+        result = self.report()
+        self.assertEqual(result["status"], "ok", result["blockers"])
 
     def test_invalid_utf8_diff_returns_blocked_report(self):
         self.write_bytes(DOC, b"\xff\n")

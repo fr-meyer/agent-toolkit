@@ -60,7 +60,9 @@ def _git_bytes(repo: Path, *args: str, check: bool = True) -> subprocess.Complet
 
 
 def _head_blob(repo: Path, relative: str) -> bytes | None:
-    entries = _git_bytes(repo, "ls-tree", "-r", "-z", "HEAD", "--", relative).stdout
+    entries = _git_bytes(
+        repo, "--literal-pathspecs", "ls-tree", "-r", "-z", "HEAD", "--", relative
+    ).stdout
     matching = []
     for entry in entries.split(b"\x00"):
         if not entry:

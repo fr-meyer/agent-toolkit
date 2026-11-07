@@ -8,7 +8,8 @@ legacy check therefore reports a packet mismatch for that canary; its failure
 must not be reinterpreted as approval.
 
 This change stages the `speculoos_per_pr_contract.py` previously merged on
-`main`, with a NUL-delimited changed-path correction, on the `dev` line.
+`main`, with NUL-delimited changed paths and literal committed-blob lookups,
+on the `dev` line.
 Its `per-pr` mode selects exactly one newly added task packet on
 the PR, requires a same-repository head and matching changed-file inventory,
 and rejects changes to governed workflow or policy paths. Its `manifest` mode
