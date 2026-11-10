@@ -42,6 +42,14 @@ For exact source-to-target bindings, also consult:
 | Pullfrog cloud coordinator (dry run) | Starter | `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml` | `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml` | Provider-free exact-head state-machine evaluator with read-only GitHub collection and sanitized receipts |
 | Speculoos PR gate | Starter | `templates/starter-workflows/speculoos.yml` | `.github/workflows/speculoos.yml` | Read-only exact-head Speculoos policy and publication-contract evidence for non-stable PRs |
 
+## C04 synthetic runtime pilot (not activated)
+
+`templates/starter-workflows/c04-runtime-pilot.yml` materializes to
+`.github/workflows/c04-runtime-pilot.yml`. This exact-branch creation-push
+experiment is synthetic-only, bounded and provider-free; publication immediately
+starts the pilot and requires explicit combined upload/run approval. No reusable
+ref binding is needed. See [limits, teardown and remaining gaps](c04-runtime-pilot.md).
+
 ## Asset details
 
 ---

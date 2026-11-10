@@ -53,6 +53,10 @@
     {
       "source": "templates/starter-workflows/speculoos.yml",
       "target": ".github/workflows/speculoos.yml"
+    },
+    {
+      "source": "templates/starter-workflows/c04-runtime-pilot.yml",
+      "target": ".github/workflows/c04-runtime-pilot.yml"
     }
   ]
 }

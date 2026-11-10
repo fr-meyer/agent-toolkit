@@ -1,0 +1,54 @@
+name: C04 synthetic runtime pilot
+
+# Publishing this exact new branch starts one pilot. Owner upload/run approval required.
+on:
+  push:
+    branches:
+      - feat/c04-provider-free-pilot-20261110
+
+permissions:
+  contents: read
+
+concurrency:
+  group: c04-synthetic-runtime-pilot
+  cancel-in-progress: false
+
+jobs:
+  pilot:
+    if: ${{ github.event.created == true && github.event.deleted == false && fromJSON(github.run_attempt) <= 3 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout only the approved public pilot commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          submodules: false
+          lfs: false
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/github/c04_runtime_pilot.py
+
+      - name: Run only fixed synthetic probes under the host supervisor
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=10s 180s \
+            python3 -I -B scripts/github/c04_runtime_pilot.py \
+              --execute-hosted-pilot --receipt "$RUNNER_TEMP/c04-pilot-receipt.json"
+
+      - name: Verify removal of only this pilot run and attempt
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=5s 30s \
+            python3 -I -B scripts/github/c04_runtime_pilot.py --cleanup-hosted-pilot
+
+      - name: Keep synthetic evidence separate from worker qualification
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          printf '%s\n' 'Synthetic pilot only. No provider calls or real candidate admission; no runtime qualification or deployment authority.' >> "$GITHUB_STEP_SUMMARY"

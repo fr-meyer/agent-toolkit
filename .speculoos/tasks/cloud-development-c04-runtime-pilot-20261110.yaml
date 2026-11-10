@@ -1,0 +1,28 @@
+id: cloud-development-c04-runtime-pilot-20261110
+title: Prepare bounded provider-free GitHub Actions synthetic runtime pilot
+status: awaiting_exact_publication_and_execution_approval
+owner: fr-meyer
+branch: feat/c04-provider-free-pilot-20261110
+base_branch: dev
+base_sha: d59277166070dcff82cea88adae15c51d2782b2a
+delivery_policy:
+  mode: stop_after_review
+  reason: Local source preparation only; exact publication plus immediate run require separate approval. No merge or deployment.
+scope:
+  - .speculoos/tasks/cloud-development-c04-runtime-pilot-20261110.yaml
+  - scripts/github/c04_runtime_pilot.py
+  - scripts/github/tests/test_c04_runtime_pilot.py
+  - templates/starter-workflows/c04-runtime-pilot.yml
+  - .github/workflows/c04-runtime-pilot.yml
+  - templates/repo-workflow-materialization-manifest.json
+  - docs/c04-runtime-pilot.md
+  - docs/github-actions-template-catalog.md
+non_goals:
+  - private candidate source, provider login/calls or new spending
+  - general worker qualification, lease issuance/revocation, merge or deployment
+validation:
+  - python3 -I scripts/github/tests/test_c04_runtime_pilot.py -v
+  - git diff --check
+documentation_impact:
+  status: documented
+  rationale: Activation, resource/attempt limits, synthetic-only evidence and remaining gaps are explicit.
