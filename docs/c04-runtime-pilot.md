@@ -1,5 +1,14 @@
 # C04 synthetic runtime pilot — source prepared, execution not authorized
 
+The original a5df6681 experiment ran once and failed baseline with cleanup proved.
+Its collector omitted failed-exit fixture details; the exact isolation cause is
+unknown. No retry of the failed source was requested. This follow-up branch is
+LOCAL ONLY, NOT covered by the original exact-head publication approval. It
+adds known-key boolean failure reports and sanitized exception stage/type/errno,
+never raw logs or messages. Passing checks and resource limits are unchanged.
+The remaining two-execution allowance requires fresh exact upload/run approval;
+combined with the original attempt this preserves the proposed total of three.
+
 This public, provider-free experiment is NOT general worker qualification. Original
 C04 boundary code, C03 integration and C05 providers remain separate checkpoints.
 No real candidate source, private Speculoos code, model calls, credentials, lease
@@ -12,13 +21,13 @@ Canonical source: templates/starter-workflows/c04-runtime-pilot.yml. Runtime cop
 .github/workflows/c04-runtime-pilot.yml. Materialization is explicit; there is no
 reusable-workflow ref to diffuse, so ref-sync bindings remain unchanged.
 
-The workflow triggers only on pushes to feat/c04-provider-free-pilot-20261110. The job
+The workflow triggers only on pushes to feat/c04-pilot-diagnostics-20261110. The job
 runs only for the original branch creation event (not subsequent pushes), and
-only for run attempts 1–3. No automatic retry, schedule, dispatch or PR trigger
+only for diagnostic run attempts 1–2. No automatic retry, schedule, dispatch or PR trigger
 exists. Publishing the new branch starts its first run immediately; therefore
 exact branch/head publication AND that immediate run must be approved together.
-At most two reruns of that same original event are within the proposed three-run
-cap; do not delete/recreate the branch to reset the limit. No PR or merge is
+At most one rerun of this new diagnostic event is within the proposed remaining
+two-run cap; do not delete/recreate the branch to reset the limit. No PR or merge is
 needed for this feature-branch push pilot. Repository policy still requires a
 separate feature-to-dev PR before any eventual integration; this experiment
 authorizes neither integration nor a bypass of default-branch protections.

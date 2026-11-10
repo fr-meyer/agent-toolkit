@@ -18,7 +18,7 @@ import subprocess
 import tempfile
 
 REPOSITORY = "fr-meyer/agent-toolkit"
-BRANCH = "refs/heads/feat/c04-provider-free-pilot-20261110"
+BRANCH = "refs/heads/feat/c04-pilot-diagnostics-20261110"
 # Official Python linux/amd64 manifest observed read-only, 2026-11-10. Not qualified.
 IMAGE = "docker.io/library/python@sha256:0f086103b026048cc50cb5da25ec435c023c5241a83fc44daea593377abc61c4"
 PROBES = ("baseline", "pids", "oom", "timeout")
@@ -27,28 +27,42 @@ DOCKER = "/usr/bin/docker"
 FIXTURE = r'''
 import errno,json,os,pathlib,socket,subprocess,sys,time
 mode=sys.argv[1]
+stage='startup'
+def safe_exception(kind,error,traceback):
+    allowed={'OSError','PermissionError','FileNotFoundError','ValueError','KeyError'}
+    code=getattr(error,'errno',None)
+    print(json.dumps({'probe':mode,'checks':{},'error':{'stage':stage,
+         'kind':kind.__name__ if kind.__name__ in allowed else 'FixtureError',
+         'errno':code if type(code) is int and 0<=code<=4095 else None}}),flush=True)
+sys.excepthook=safe_exception
 if mode == 'baseline':
+    stage='identity-check'
     checks={'nonroot':os.getuid()==65534,
             'no_control_socket':not pathlib.Path('/var/run/docker.sock').exists(),
             'no_host_sentinel':not pathlib.Path(sys.argv[2]).exists(),
             'no_credentials':not any(k for k in os.environ if any(s in k.upper() for s in ('TOKEN','SECRET','API_KEY','PASSWORD')))}
+    stage='proc-status-check'
     status=pathlib.Path('/proc/self/status').read_text()
     fields=dict(line.split(':',1) for line in status.splitlines() if ':' in line)
     checks['no_caps']=int(fields.get('CapEff','1').strip(),16)==0
     checks['no_new_privileges']=fields.get('NoNewPrivs','0').strip()=='1'
+    stage='readonly-check'
     try:
         with open('/probe.py','a') as stream:stream.write('# forbidden')
         checks['fixture_readonly']=False
     except OSError as error:
         checks['fixture_readonly']=error.errno==errno.EROFS
+    stage='scratch-check'
     pathlib.Path('/tmp/synthetic-write').write_text('dummy')
     checks['bounded_scratch_writable']=True
+    stage='network-check'
     sock=socket.socket();sock.settimeout(1)
     try:
         sock.connect(('1.1.1.1',443));checks['external_network_denied']=False
     except OSError:
         checks['external_network_denied']=True
     finally:sock.close()
+    stage='cgroup-check'
     try:
         cg=pathlib.Path('/sys/fs/cgroup')
         quota,period=(cg/'cpu.max').read_text().split()
@@ -60,6 +74,7 @@ if mode == 'baseline':
     print(json.dumps({'probe':mode,'checks':checks}),flush=True)
     sys.exit(0 if all(checks.values()) else 1)
 elif mode == 'pids':
+    stage='pids-check'
     children=[];denied=False
     try:
         for _ in range(40):
@@ -99,7 +114,7 @@ def hosted_context(env, event):
             "workflow and head identities are not the same immutable commit")
     for key in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"):
         require(bool(re.fullmatch(r"[1-9][0-9]{0,19}", env.get(key, ""))), "invalid numeric run identity")
-    require(1 <= int(env["GITHUB_RUN_ATTEMPT"]) <= 3, "pilot attempt allowance exhausted")
+    require(1 <= int(env["GITHUB_RUN_ATTEMPT"]) <= 2, "pilot attempt allowance exhausted")
     require(isinstance(event, dict) and event.get("created") is True and event.get("deleted") is False
             and event.get("ref") == BRANCH and event.get("after") == sha, "not the approved branch creation event")
     repository = event.get("repository", {})
@@ -111,7 +126,7 @@ def hosted_context(env, event):
 
 
 def create_command(identity, probe, fixture):
-    require(bool(re.fullmatch(r"[1-9][0-9]{0,19}-[1-3]", identity)) and probe in PROBES, "invalid fixed pilot selection")
+    require(bool(re.fullmatch(r"[1-9][0-9]{0,19}-[1-2]", identity)) and probe in PROBES, "invalid fixed pilot selection")
     fixture = Path(fixture)
     require(fixture.is_absolute() and fixture.name == "probe.py" and "," not in str(fixture)
             and chr(10) not in str(fixture), "invalid synthetic fixture mount")
@@ -218,16 +233,35 @@ def run_probe(docker, identity, probe, fixture):
         row["passed"] = exit_code == 137 and state.get("OOMKilled") is True and not timed_out
     elif probe == "timeout":
         row["passed"] = timed_out and exit_code == 137 and state.get("OOMKilled") is False
-    elif not timed_out and exit_code == 0:
-        report = json.loads(docker.call(["logs", name]))
-        checks = report.get("checks", {})
+    elif not timed_out:
         expected = ({"nonroot", "no_control_socket", "no_host_sentinel", "no_credentials", "no_caps",
                      "no_new_privileges", "fixture_readonly", "bounded_scratch_writable", "external_network_denied",
                      "cpu_cgroup_bound", "memory_cgroup_bound", "pids_cgroup_bound"} if probe == "baseline"
                     else {"pids_enforced"})
-        row["passed"] = (report.get("probe") == probe and set(checks) == expected
-                         and all(v is True for v in checks.values()) and state.get("OOMKilled") is False)
-        row["checks"] = {key: checks.get(key) is True for key in sorted(expected)}
+        row["diagnostic_status"] = "fixture-report-unavailable"
+        try:
+            report = json.loads(docker.call(["logs", name]))
+            require(isinstance(report, dict) and report.get("probe") == probe, "invalid fixture report")
+            checks = report.get("checks", {})
+            require(isinstance(checks, dict), "invalid fixture check map")
+            # Preserve failed-exit diagnostics without echoing arbitrary logs.
+            row["checks"] = {key: checks.get(key) is True for key in sorted(expected)}
+            if set(checks) == expected and all(type(v) is bool for v in checks.values()):
+                row["diagnostic_status"] = "known-checks-collected"
+                row["passed"] = (exit_code == 0 and all(checks.values()) and "error" not in report
+                                 and state.get("OOMKilled") is False)
+            error = report.get("error")
+            if isinstance(error, dict):
+                stages = {"startup", "identity-check", "proc-status-check", "readonly-check", "scratch-check",
+                          "network-check", "cgroup-check", "pids-check"}
+                kinds = {"OSError", "PermissionError", "FileNotFoundError", "ValueError", "KeyError", "FixtureError"}
+                code = error.get("errno")
+                if error.get("stage") in stages and error.get("kind") in kinds and (code is None or (type(code) is int and 0 <= code <= 4095)):
+                    row["fixture_error"] = {"stage": error["stage"], "kind": error["kind"], "errno": code}
+                    row["diagnostic_status"] = "structured-fixture-error"
+                row["passed"] = False
+        except (PilotError, OSError, ValueError, TypeError, subprocess.TimeoutExpired):
+            row["passed"] = False
     return row
 
 

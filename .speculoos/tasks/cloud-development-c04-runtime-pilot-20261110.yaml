@@ -1,13 +1,14 @@
 id: cloud-development-c04-runtime-pilot-20261110
-title: Prepare bounded provider-free GitHub Actions synthetic runtime pilot
+title: Preserve bounded failed-fixture diagnostics after first synthetic pilot failure
 status: awaiting_exact_publication_and_execution_approval
 owner: fr-meyer
-branch: feat/c04-provider-free-pilot-20261110
+branch: feat/c04-pilot-diagnostics-20261110
 base_branch: dev
 base_sha: d59277166070dcff82cea88adae15c51d2782b2a
+local_parent_sha: a5df6681d2483246c2927344d3761a0ff572d465
 delivery_policy:
   mode: stop_after_review
-  reason: Local source preparation only; exact publication plus immediate run require separate approval. No merge or deployment.
+  reason: Local diagnostic delta only; original exact upload approval does not cover this changed head/new branch. Fresh approval for at most two further executions required. No merge or deployment.
 scope:
   - .speculoos/tasks/cloud-development-c04-runtime-pilot-20261110.yaml
   - scripts/github/c04_runtime_pilot.py

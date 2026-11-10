@@ -8,6 +8,7 @@ from unittest.mock import patch
 import subprocess
 import contextlib
 import io
+import errno
 
 ROOT = Path(__file__).resolve().parents[3]
 SPEC = importlib.util.spec_from_file_location("c04_runtime_pilot", ROOT / "scripts/github/c04_runtime_pilot.py")
@@ -18,7 +19,7 @@ SPEC.loader.exec_module(pilot)
 def environment():
     return {"GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": "push", "RUNNER_ENVIRONMENT": "github-hosted",
             "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "GITHUB_REPOSITORY": "fr-meyer/agent-toolkit",
-            "GITHUB_REF": "refs/heads/feat/c04-provider-free-pilot-20261110", "GITHUB_SHA": "a" * 40,
+            "GITHUB_REF": "refs/heads/feat/c04-pilot-diagnostics-20261110", "GITHUB_SHA": "a" * 40,
             "GITHUB_WORKFLOW_SHA": "a" * 40, "GITHUB_RUN_ID": "1234", "GITHUB_RUN_ATTEMPT": "1"}
 
 
@@ -104,10 +105,10 @@ class RuntimePilotTests(unittest.TestCase):
                 pilot.hosted_context(environment(), {**event(), **delta})
 
     def test_attempt_limit_is_enforced_before_docker(self):
-        for attempt in ("0", "4", "true", "1.0", "-1"):
+        for attempt in ("0", "3", "4", "true", "1.0", "-1"):
             with self.subTest(attempt=attempt), self.assertRaises(pilot.PilotError):
                 pilot.hosted_context({**environment(), "GITHUB_RUN_ATTEMPT": attempt}, event())
-        self.assertEqual(pilot.hosted_context({**environment(), "GITHUB_RUN_ATTEMPT": "3"}, event())["run_attempt"], 3)
+        self.assertEqual(pilot.hosted_context({**environment(), "GITHUB_RUN_ATTEMPT": "2"}, event())["run_attempt"], 2)
 
     def test_command_uses_immutable_image_no_network_or_credentials(self):
         command = pilot.create_command("1234-1", "baseline", Path("/tmp/fixture/probe.py"))
@@ -251,12 +252,87 @@ class RuntimePilotTests(unittest.TestCase):
                     docker.call(['version'])
                 self.assertNotIn('xxx',str(error.exception))
 
+    def test_failed_baseline_preserves_only_known_boolean_checks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture=Path(directory)/'probe.py'
+            docker=FakeDocker(fixture)
+            docker.probe='baseline'
+            original_call=docker.call
+            original_inspect=docker.inspect
+            def call(command,timeout=12):
+                if command[0]=='wait':return '1'
+                if command[0]=='logs':
+                    row=json.loads(original_call(command,timeout))
+                    row['checks']['fixture_readonly']=False
+                    return json.dumps(row)
+                return original_call(command,timeout)
+            def inspect(name):
+                row=original_inspect(name)
+                row['State']['ExitCode']=1
+                return row
+            with patch.object(docker,'call',side_effect=call),patch.object(docker,'inspect',side_effect=inspect):
+                row=pilot.run_probe(docker,'1234-1','baseline',fixture)
+            self.assertFalse(row['passed'])
+            self.assertEqual(row['diagnostic_status'],'known-checks-collected')
+            self.assertIs(row['checks']['fixture_readonly'],False)
+            self.assertIs(row['checks']['no_control_socket'],True)
+
+    def test_failed_fixture_exception_is_structured_without_private_message(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture=Path(directory)/'probe.py';docker=FakeDocker(fixture);docker.probe='baseline'
+            original_call=docker.call;original_inspect=docker.inspect
+            def call(command,timeout=12):
+                if command[0]=='wait':return '1'
+                if command[0]=='logs':
+                    return json.dumps({'probe':'baseline','checks':{},'error':{'stage':'cgroup-check','kind':'FileNotFoundError','errno':2,'message':'private-candidate-text'}})
+                return original_call(command,timeout)
+            def inspect(name):
+                row=original_inspect(name);row['State']['ExitCode']=1;return row
+            with patch.object(docker,'call',side_effect=call),patch.object(docker,'inspect',side_effect=inspect):
+                row=pilot.run_probe(docker,'1234-1','baseline',fixture)
+            self.assertFalse(row['passed'])
+            self.assertEqual(row['diagnostic_status'],'structured-fixture-error')
+            self.assertEqual(row['fixture_error'],{'stage':'cgroup-check','kind':'FileNotFoundError','errno':2})
+            self.assertNotIn('private-candidate-text',json.dumps(row))
+
+    def test_non_json_failure_never_echoes_logs_or_invents_cause(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture=Path(directory)/'probe.py';docker=FakeDocker(fixture);docker.probe='baseline'
+            original_call=docker.call;original_inspect=docker.inspect
+            def call(command,timeout=12):
+                if command[0]=='wait':return '1'
+                if command[0]=='logs':return 'private-untrusted-log-body'
+                return original_call(command,timeout)
+            def inspect(name):
+                row=original_inspect(name);row['State']['ExitCode']=1;return row
+            with patch.object(docker,'call',side_effect=call),patch.object(docker,'inspect',side_effect=inspect):
+                row=pilot.run_probe(docker,'1234-1','baseline',fixture)
+            self.assertFalse(row['passed'])
+            self.assertEqual(row['diagnostic_status'],'fixture-report-unavailable')
+            self.assertNotIn('private-untrusted-log-body',json.dumps(row))
+
+    def test_fixture_emits_only_whitelisted_exception_metadata(self):
+        namespace={}
+        prefix=pilot.FIXTURE.split("if mode == 'baseline':",1)[0]
+        with patch('sys.argv',['probe.py','baseline','/unmounted/sentinel']), \
+             patch.object(pilot.os,'environ',{}),patch('sys.excepthook'):
+            exec(compile(prefix,'synthetic-fixture-prefix','exec'),namespace)
+        for kind in (PermissionError,RuntimeError):
+            output=io.StringIO()
+            error=PermissionError(errno.EACCES,'private-path-or-message') if kind is PermissionError else RuntimeError('private-path-or-message')
+            namespace['stage']='scratch-check'
+            with contextlib.redirect_stdout(output):
+                namespace['safe_exception'](kind,error,None)
+            report=json.loads(output.getvalue())
+            self.assertEqual(report['error']['kind'],'PermissionError' if kind is PermissionError else 'FixtureError')
+            self.assertNotIn('private-path-or-message',output.getvalue())
+
     def test_workflow_is_only_exact_branch_create_push(self):
         text = (ROOT / "templates/starter-workflows/c04-runtime-pilot.yml").read_text()
         self.assertEqual(text, (ROOT / ".github/workflows/c04-runtime-pilot.yml").read_text())
-        self.assertIn("      - feat/c04-provider-free-pilot-20261110", text)
+        self.assertIn("      - feat/c04-pilot-diagnostics-20261110", text)
         self.assertIn("github.event.created == true", text)
-        self.assertIn("fromJSON(github.run_attempt) <= 3", text)
+        self.assertIn("fromJSON(github.run_attempt) <= 2", text)
         self.assertIn("timeout-minutes: 5", text)
         self.assertIn("permissions:\n  contents: read", text)
         self.assertIn("persist-credentials: false", text)
