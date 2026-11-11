@@ -4,7 +4,7 @@ name: C04 synthetic runtime pilot
 on:
   push:
     branches:
-      - feat/c04-pilot-diagnostics-20261110
+      - feat/c04-readonly-mount-probe-20261111
 
 permissions:
   contents: read
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   pilot:
-    if: ${{ github.event.created == true && github.event.deleted == false && fromJSON(github.run_attempt) <= 2 }}
+    if: ${{ github.event.created == true && github.event.deleted == false && fromJSON(github.run_attempt) <= 1 }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

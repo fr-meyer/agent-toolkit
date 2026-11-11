@@ -21,7 +21,7 @@ Canonical source: templates/starter-workflows/c04-runtime-pilot.yml. Runtime cop
 .github/workflows/c04-runtime-pilot.yml. Materialization is explicit; there is no
 reusable-workflow ref to diffuse, so ref-sync bindings remain unchanged.
 
-The workflow triggers only on pushes to feat/c04-pilot-diagnostics-20261110. The job
+The workflow triggers only on pushes to feat/c04-readonly-mount-probe-20261111. The job
 runs only for the original branch creation event (not subsequent pushes), and
 only for diagnostic run attempts 1–2. No automatic retry, schedule, dispatch or PR trigger
 exists. Publishing the new branch starts its first run immediately; therefore
@@ -95,3 +95,28 @@ they do NOT pull an image or run hosted/resource probes. Full actionlint is stil
 a separate validation if unavailable locally; YAML/shell checks are not its
 equivalent. The CLI refuses ordinary local use; never forge Actions context to
 run it in the live Gateway.
+
+## Latest mount-only probe correction (local, unexecuted)
+
+Diagnostic run42952460920 at491507da reported11 known baseline checks true and
+only fixture_readonly=false, exit1, no OOM/timeout; cleanup verified natively.
+Its fixture mode0444 can deny append with EACCES before mount enforcement. A
+controlled local UID1000 file test reproduced EACCES13 for0444;666 permits the
+control write without a read-only mount. The hosted failure did not report its
+errno, so EACCES is the demonstrated local explanation, not a measured hosted
+errno. Do not claim a filesystem isolation failure or proven hosted fix yet.
+
+This local delta uses0666 only on the fixed dummy script so UID65534 can reach
+the actual read-only bind constraint. It STILL requires EROFS30, retains the
+independently checked read-only bind/root, and adds host-supervisor fixture hash
+verification after every probe. Accepting EACCES as mount proof is forbidden.
+Receipt may expose only numeric readonly errno, never raw exception bodies.
+
+Two actual executions have been consumed (original42758580189 and diagnostic
+42952460920). This new local branch is capped to attempt1 only: one remaining
+five-minute execution, total3. It is NOT published or covered by the previous
+exact491507da publication scope; current programme approval permits local
+implementation but retains the exact-source external-action gate. Do not update
+old published branches, rerun known-failing source, reset budget by recreation or
+remove preserved evidence. Exact changed-head publication requires its scope
+to be resolved before execution. Existing private/provider/cost/merge gates stay.

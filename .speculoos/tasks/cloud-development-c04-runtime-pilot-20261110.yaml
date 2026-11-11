@@ -1,14 +1,14 @@
 id: cloud-development-c04-runtime-pilot-20261110
-title: Preserve bounded failed-fixture diagnostics after first synthetic pilot failure
+title: Isolate read-only mount enforcement from Unix permission denial
 status: awaiting_exact_publication_and_execution_approval
 owner: fr-meyer
-branch: feat/c04-pilot-diagnostics-20261110
+branch: feat/c04-readonly-mount-probe-20261111
 base_branch: dev
 base_sha: d59277166070dcff82cea88adae15c51d2782b2a
-local_parent_sha: a5df6681d2483246c2927344d3761a0ff572d465
+local_parent_sha: 491507daa5decd1734ca090ca72dbe335e179b94
 delivery_policy:
   mode: stop_after_review
-  reason: Local diagnostic delta only; original exact upload approval does not cover this changed head/new branch. Fresh approval for at most two further executions required. No merge or deployment.
+  reason: Local mount-only probe correction; published diagnostic evidence retained. New exact head scope needed before one remaining execution. No merge or deployment.
 scope:
   - .speculoos/tasks/cloud-development-c04-runtime-pilot-20261110.yaml
   - scripts/github/c04_runtime_pilot.py

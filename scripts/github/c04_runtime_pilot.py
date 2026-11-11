@@ -18,7 +18,7 @@ import subprocess
 import tempfile
 
 REPOSITORY = "fr-meyer/agent-toolkit"
-BRANCH = "refs/heads/feat/c04-pilot-diagnostics-20261110"
+BRANCH = "refs/heads/feat/c04-readonly-mount-probe-20261111"
 # Official Python linux/amd64 manifest observed read-only, 2026-11-10. Not qualified.
 IMAGE = "docker.io/library/python@sha256:0f086103b026048cc50cb5da25ec435c023c5241a83fc44daea593377abc61c4"
 PROBES = ("baseline", "pids", "oom", "timeout")
@@ -37,6 +37,7 @@ def safe_exception(kind,error,traceback):
 sys.excepthook=safe_exception
 if mode == 'baseline':
     stage='identity-check'
+    readonly_errno=None
     checks={'nonroot':os.getuid()==65534,
             'no_control_socket':not pathlib.Path('/var/run/docker.sock').exists(),
             'no_host_sentinel':not pathlib.Path(sys.argv[2]).exists(),
@@ -51,6 +52,7 @@ if mode == 'baseline':
         with open('/probe.py','a') as stream:stream.write('# forbidden')
         checks['fixture_readonly']=False
     except OSError as error:
+        readonly_errno=error.errno
         checks['fixture_readonly']=error.errno==errno.EROFS
     stage='scratch-check'
     pathlib.Path('/tmp/synthetic-write').write_text('dummy')
@@ -71,7 +73,7 @@ if mode == 'baseline':
         checks['pids_cgroup_bound']=int((cg/'pids.max').read_text())==32
     except (OSError,ValueError):
         checks['cgroup_v2_observed']=False
-    print(json.dumps({'probe':mode,'checks':checks}),flush=True)
+    print(json.dumps({'probe':mode,'checks':checks,'readonly_probe_errno':readonly_errno}),flush=True)
     sys.exit(0 if all(checks.values()) else 1)
 elif mode == 'pids':
     stage='pids-check'
@@ -114,7 +116,7 @@ def hosted_context(env, event):
             "workflow and head identities are not the same immutable commit")
     for key in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"):
         require(bool(re.fullmatch(r"[1-9][0-9]{0,19}", env.get(key, ""))), "invalid numeric run identity")
-    require(1 <= int(env["GITHUB_RUN_ATTEMPT"]) <= 2, "pilot attempt allowance exhausted")
+    require(1 <= int(env["GITHUB_RUN_ATTEMPT"]) <= 1, "pilot attempt allowance exhausted")
     require(isinstance(event, dict) and event.get("created") is True and event.get("deleted") is False
             and event.get("ref") == BRANCH and event.get("after") == sha, "not the approved branch creation event")
     repository = event.get("repository", {})
@@ -126,7 +128,7 @@ def hosted_context(env, event):
 
 
 def create_command(identity, probe, fixture):
-    require(bool(re.fullmatch(r"[1-9][0-9]{0,19}-[1-2]", identity)) and probe in PROBES, "invalid fixed pilot selection")
+    require(bool(re.fullmatch(r"[1-9][0-9]{0,19}-1", identity)) and probe in PROBES, "invalid fixed pilot selection")
     fixture = Path(fixture)
     require(fixture.is_absolute() and fixture.name == "probe.py" and "," not in str(fixture)
             and chr(10) not in str(fixture), "invalid synthetic fixture mount")
@@ -246,6 +248,9 @@ def run_probe(docker, identity, probe, fixture):
             require(isinstance(checks, dict), "invalid fixture check map")
             # Preserve failed-exit diagnostics without echoing arbitrary logs.
             row["checks"] = {key: checks.get(key) is True for key in sorted(expected)}
+            code = report.get("readonly_probe_errno")
+            if probe == "baseline" and type(code) is int and 0 <= code <= 4095:
+                row["readonly_probe_errno"] = code
             if set(checks) == expected and all(type(v) is bool for v in checks.values()):
                 row["diagnostic_status"] = "known-checks-collected"
                 row["passed"] = (exit_code == 0 and all(checks.values()) and "error" not in report
@@ -278,10 +283,16 @@ def execute(docker, context, scratch):
         fixture = scratch / "probe.py"
         (scratch / "host-only-sentinel").write_text("synthetic-host-marker-not-mounted")
         fixture.write_text(FIXTURE)
-        fixture.chmod(0o444)
+        # Unix permissions must allow UID65534 to write, otherwise EACCES masks
+        # read-only mount enforcement. This is dummy data, never credentials.
+        # The independently inspected read-only bind must still yield EROFS.
+        fixture.chmod(0o666)
         scratch.chmod(0o755)
         for probe in PROBES:
             row = run_probe(docker, identity, probe, fixture)
+            row["fixture_integrity_verified"] = hashlib.sha256(fixture.read_bytes()).hexdigest() == hashlib.sha256(FIXTURE.encode()).hexdigest()
+            if not row["fixture_integrity_verified"]:
+                row["passed"] = False
             probes.append(row)
             if not row["passed"]:
                 break

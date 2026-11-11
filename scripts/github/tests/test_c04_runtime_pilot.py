@@ -19,7 +19,7 @@ SPEC.loader.exec_module(pilot)
 def environment():
     return {"GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": "push", "RUNNER_ENVIRONMENT": "github-hosted",
             "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "GITHUB_REPOSITORY": "fr-meyer/agent-toolkit",
-            "GITHUB_REF": "refs/heads/feat/c04-pilot-diagnostics-20261110", "GITHUB_SHA": "a" * 40,
+            "GITHUB_REF": "refs/heads/feat/c04-readonly-mount-probe-20261111", "GITHUB_SHA": "a" * 40,
             "GITHUB_WORKFLOW_SHA": "a" * 40, "GITHUB_RUN_ID": "1234", "GITHUB_RUN_ATTEMPT": "1"}
 
 
@@ -105,10 +105,10 @@ class RuntimePilotTests(unittest.TestCase):
                 pilot.hosted_context(environment(), {**event(), **delta})
 
     def test_attempt_limit_is_enforced_before_docker(self):
-        for attempt in ("0", "3", "4", "true", "1.0", "-1"):
+        for attempt in ("0", "2", "3", "4", "true", "1.0", "-1"):
             with self.subTest(attempt=attempt), self.assertRaises(pilot.PilotError):
                 pilot.hosted_context({**environment(), "GITHUB_RUN_ATTEMPT": attempt}, event())
-        self.assertEqual(pilot.hosted_context({**environment(), "GITHUB_RUN_ATTEMPT": "2"}, event())["run_attempt"], 2)
+        self.assertEqual(pilot.hosted_context({**environment(), "GITHUB_RUN_ATTEMPT": "1"}, event())["run_attempt"], 1)
 
     def test_command_uses_immutable_image_no_network_or_credentials(self):
         command = pilot.create_command("1234-1", "baseline", Path("/tmp/fixture/probe.py"))
@@ -327,12 +327,38 @@ class RuntimePilotTests(unittest.TestCase):
             self.assertEqual(report['error']['kind'],'PermissionError' if kind is PermissionError else 'FixtureError')
             self.assertNotIn('private-path-or-message',output.getvalue())
 
+    def test_probe_input_is_unix_writable_so_readonly_mount_is_really_exercised(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);docker=FakeDocker(root/'probe.py')
+            result=pilot.execute(docker,pilot.hosted_context(environment(),event()),root)
+            self.assertEqual(result['status'],'synthetic-pilot-passed')
+            self.assertEqual((root/'probe.py').stat().st_mode&0o777,0o666)
+            self.assertIn('readonly',pilot.create_command('1234-1','baseline',root/'probe.py')[-8])
+
+    def test_failed_fixture_write_does_not_become_success_when_unix_permissions_deny_it(self):
+        self.assertIn("checks['fixture_readonly']=error.errno==errno.EROFS",pilot.FIXTURE)
+        self.assertNotIn('error.errno in (errno.EACCES',pilot.FIXTURE)
+
+    def test_supervisor_detects_modified_probe_file_even_if_fixture_claims_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);docker=FakeDocker(root/'probe.py');original=docker.call
+            def call(command,timeout=12):
+                result=original(command,timeout)
+                if command[0]=='wait' and docker.probe=='baseline':
+                    (root/'probe.py').write_text('# synthetic tamper')
+                return result
+            with patch.object(docker,'call',side_effect=call):
+                result=pilot.execute(docker,pilot.hosted_context(environment(),event()),root)
+            self.assertEqual(result['status'],'blocked')
+            self.assertTrue(docker.cleaned)
+            self.assertEqual(result['probes'][0]['fixture_integrity_verified'],False)
+
     def test_workflow_is_only_exact_branch_create_push(self):
         text = (ROOT / "templates/starter-workflows/c04-runtime-pilot.yml").read_text()
         self.assertEqual(text, (ROOT / ".github/workflows/c04-runtime-pilot.yml").read_text())
-        self.assertIn("      - feat/c04-pilot-diagnostics-20261110", text)
+        self.assertIn("      - feat/c04-readonly-mount-probe-20261111", text)
         self.assertIn("github.event.created == true", text)
-        self.assertIn("fromJSON(github.run_attempt) <= 2", text)
+        self.assertIn("fromJSON(github.run_attempt) <= 1", text)
         self.assertIn("timeout-minutes: 5", text)
         self.assertIn("permissions:\n  contents: read", text)
         self.assertIn("persist-credentials: false", text)
