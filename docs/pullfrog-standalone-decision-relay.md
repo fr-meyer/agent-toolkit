@@ -43,7 +43,12 @@ HMAC secret. Python client independently verifies server SO_PEERCRED. Same UID i
 the trust boundary, not a sandbox. No secret should be provisioned in Actions.
 No remote ingress. Whole request/reply/validator message maximum131072 bytes;
 original codec tighter limits still apply. Deadline at most30 seconds including
-validation. Default4 connections and4 active owned evaluations maximum; configurable
+validation. The authenticated original timeoutMs must be an integer1..30 seconds
+in exact1000ms increments consistent with a codec-valid encoding time at or
+before receipt, including request issued/expiry bounds. Transport delay does not
+require this original duration to equal newly remaining time. Actual SDK timeout
+is always derived from the remaining absolute deadline, never caller duration.
+Default4 connections and4 active owned evaluations maximum; configurable
 only1..4. Replay cache1024 (configurable1..4096), refuses when full, retains nonce
 until deadline. Restart clears replay state; this is not cross-process exactly-once
 or billing deduplication. Deployment must not replay requests after restart.

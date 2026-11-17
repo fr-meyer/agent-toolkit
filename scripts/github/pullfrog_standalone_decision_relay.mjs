@@ -31,8 +31,18 @@ assert type(r['nonce']) is str and len(r['nonce'])==64 and all(x in '0123456789a
 p=r['batch']['state']
 a=dict(now=now,deadline=deadline,destination_authorized=True)
 b,o=c.encode(p,**a)
-assert b==r['batch'] and o==r['options']
-assert all(type(r['options'][x]) is type(o[x]) for x in o)
+assert b==r['batch']
+options=r['options']
+assert type(options) is dict and set(options)==set(o)
+assert all(type(options[x]) is type(o[x]) for x in o)
+# timeoutMs is a duration recorded at client encoding, not server receipt time.
+# Validate its original epoch-second origin, without weakening current freshness.
+timeout=options['timeoutMs']
+assert 1000 <= timeout <= 30000 and timeout % 1000 == 0
+encoded_at=deadline-timeout//1000
+assert encoded_at <= now
+_,original=c.encode(p,now=encoded_at,deadline=deadline,destination_authorized=True)
+assert options==original
 assert r['payload_digest']==k.digest(p)
 assert c.SOURCE_PIN==sys.argv[2]
 if 'outcome' in v:

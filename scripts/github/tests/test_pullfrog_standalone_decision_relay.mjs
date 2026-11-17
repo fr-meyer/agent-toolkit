@@ -119,3 +119,21 @@ test('missing codec interpreter fails closed and shutdown completes',async t=>{
  assert.equal(await exchange(r.path,wire(await run(fixtureCode,[root]))),'');
  await r.service.close();assert.equal(r.calls(),0);
 });
+
+test('valid delayed request survives second boundary and SDK uses remaining deadline',async t=>{
+ let dispatchedTimeout;
+ const r=await setup(t,async(b,o)=>{dispatchedTimeout=o.timeoutMs;return {status:'unavailable',reason:'not-configured'};});
+ const body=await run(fixtureCode,[root]);
+ await new Promise(resolve=>setTimeout(resolve,1100));
+ const response=await exchange(r.path,wire(body));
+ assert.ok(response,'unexpired authenticated request must be admitted after transport delay');
+ assert.equal(r.calls(),1);assert.ok(dispatchedTimeout>0 && dispatchedTimeout<=19000);
+});
+test('timeout origin must be bounded integer and consistent with issued request',async t=>{
+ const r=await setup(t);const original=JSON.parse(await run(fixtureCode,[root]));
+ for (const timeout of [0,-1000,true,'20000',30001,31000,20500,1.5,1000,30000]) {
+  const request=structuredClone(original);request.options.timeoutMs=timeout;
+  assert.equal(await exchange(r.path,wire(JSON.stringify(request))),'');
+ }
+ assert.equal(r.calls(),0);
+});
