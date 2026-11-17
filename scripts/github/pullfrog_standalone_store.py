@@ -14,6 +14,9 @@ MAX_BYTES = 2 * 1024 * 1024
 MAX_DEPTH = 48
 MAX_RECORDS = 1024
 
+# In-process capability only, never a sandbox against hostile Python.
+_CONTROLLER = object()
+
 
 class StoreError(ValueError):
     pass
@@ -114,6 +117,7 @@ class Store:
         self.reducers = tuple(trusted_reducers)
         require(all(callable(fn) for fn in self.reducers), 'untrusted_reducer')
         self.generation = generation
+        self._controller_scope = None
 
     def transaction(self, expected_digest, transform):
         require(any(transform is fn for fn in self.reducers), 'untrusted_reducer')
@@ -177,9 +181,47 @@ class Store:
             require(receipt.get('status') == 'published'
                     and receipt.get('binding') == prior['binding'], 'unknown_effect_hold')
         if prior.get('phase') in ('decision_started', 'publication_pending'):
-            require(all(updated.get('artifacts', {}).get(k) == v
-                        for k, v in prior.get('artifacts', {}).items()),
-                    'effect_evidence_lost')
+            before, after = prior.get('artifacts', {}), updated.get('artifacts', {})
+            replaceable = set()
+            # Fixed controller transitions alone may advance prior-attempt slots.
+            # The complete earlier documents remain in the immutable chain.
+            scope = self._controller_scope
+            if (scope == (_CONTROLLER, 'decide')
+                    and prior['phase'] == 'decision_started'
+                    and updated.get('phase') in ('worker_ready', 'terminal')):
+                evidence = before.get('evidence', {})
+                previous_plan = before.get('worker_plan', {})
+                if (evidence.get('binding') == prior['binding']
+                        and evidence.get('worker', {}).get('usage', {}).get('attempts') == old['attempts'] - 1
+                        and previous_plan.get('attempt') == old['attempts'] - 1
+                        and before.get('publication_receipt', {}).get('status') == 'published'
+                        and before.get('publication_receipt', {}).get('result_head_sha') == prior['binding'].get('head_sha')
+                        and previous_plan.get('binding') != prior['binding']
+                        and before.get('decision', {}).get('binding') == previous_plan.get('binding')
+                        and before.get('decision', {}).get('evidence_digest') == previous_plan.get('evidence_digest')):
+                    for key in ('decision', 'worker_plan'):
+                        value = after.get(key)
+                        if (type(value) is dict and value.get('binding') == prior['binding']
+                                and value.get('evidence_digest') == evidence.get('evidence_digest')
+                                and (key != 'worker_plan' or value.get('attempt') == old['attempts'])):
+                            replaceable.add(key)
+            if (scope == (_CONTROLLER, 'reconcile')
+                    and prior['phase'] == 'publication_pending'
+                    and updated.get('phase') in ('admitted', 'terminal')):
+                plan = before.get('publication_plan', {})
+                receipt = after.get('publication_receipt', {})
+                previous_receipt = before.get('publication_receipt', {})
+                if (plan.get('attempt') == old['attempts']
+                        and previous_receipt.get('usage', {}).get('attempts') == old['attempts'] - 1
+                        and previous_receipt.get('result_head_sha') == plan.get('parent_sha')
+                        and previous_receipt.get('status') == 'published'
+                        and previous_receipt.get('binding') != prior['binding']
+                        and receipt.get('status') == 'published'
+                        and receipt.get('binding') == plan.get('binding') == prior['binding']
+                        and receipt.get('publication_plan_digest') == plan.get('plan_digest')):
+                    replaceable.add('publication_receipt')
+            require(all(k in replaceable or (k in after and after[k] == v)
+                        for k, v in before.items()), 'effect_evidence_lost')
 
     def _result(self, record, output, changed):
         require(bool(record.get('ack_id')), 'missing_durable_ack')
@@ -194,15 +236,17 @@ class Store:
 
 class _ControllerTransaction:
     """Private, synchronous, operation-scoped reducer registration."""
-    def __init__(self, backend, generation):
+    def __init__(self, backend, generation, operation):
         self.backend = backend
         self.generation = generation
+        self.operation = operation
         self.active = True
 
     def transaction(self, expected_digest, transform):
         require(self.active, 'controller_operation_closed')
-        return Store(self.backend, trusted_reducers=(transform,),
-                     generation=self.generation).transaction(expected_digest, transform)
+        store = Store(self.backend, trusted_reducers=(transform,), generation=self.generation)
+        store._controller_scope = (_CONTROLLER, self.operation)
+        return store.transaction(expected_digest, transform)
 
 
 class ControllerAdapter:
@@ -220,7 +264,7 @@ class ControllerAdapter:
 
     def advance(self, request, event, policy, *, expected_digest, now):
         import pullfrog_standalone_controller as controller
-        proxy = _ControllerTransaction(self._backend, self._generation)
+        proxy = _ControllerTransaction(self._backend, self._generation, 'advance')
         try:
             return controller.advance(proxy, request, event, policy,
                                       expected_digest=expected_digest, now=now)
@@ -230,7 +274,7 @@ class ControllerAdapter:
     def decide(self, policy, context, execution, destination, *, expected_digest,
                now, provider=None, clock=None):
         import pullfrog_standalone_controller as controller
-        proxy = _ControllerTransaction(self._backend, self._generation)
+        proxy = _ControllerTransaction(self._backend, self._generation, 'decide')
         try:
             return controller.decide(proxy, policy, context, execution, destination,
                                      expected_digest=expected_digest, now=now,
@@ -240,7 +284,7 @@ class ControllerAdapter:
 
     def bind_publication(self, candidate, *, expected_digest, now):
         import pullfrog_standalone_controller as controller
-        proxy = _ControllerTransaction(self._backend, self._generation)
+        proxy = _ControllerTransaction(self._backend, self._generation, 'bind_publication')
         try:
             return controller.bind_publication(proxy, candidate,
                                                expected_digest=expected_digest, now=now)
@@ -249,7 +293,7 @@ class ControllerAdapter:
 
     def reconcile(self, observation, policy, *, expected_digest, now):
         import pullfrog_standalone_controller as controller
-        proxy = _ControllerTransaction(self._backend, self._generation)
+        proxy = _ControllerTransaction(self._backend, self._generation, 'reconcile')
         try:
             return controller.reconcile(proxy, observation, policy,
                                         expected_digest=expected_digest, now=now)
