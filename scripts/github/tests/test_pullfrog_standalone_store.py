@@ -136,5 +136,87 @@ class Conformance(unittest.TestCase):
             s.canonical(nested)
 
 
+class ControllerAdapterTests(unittest.TestCase):
+    def setUp(self):
+        import test_pullfrog_standalone_controller as fixture
+        self.f = fixture.ControllerTests()
+        self.f.setUp()
+        self.addCleanup(self.f.doCleanups)
+        self.backend = s.FixtureBackend(self.f.request['repository_slug'], self.f.request['pr_number'])
+        self.adapter = s.ControllerAdapter(self.backend)
+
+    def admit(self):
+        return self.adapter.advance(self.f.request, self.f.event, self.f.policy,
+                                    expected_digest=None, now=110)
+
+    def test_real_controller_complete_flow(self):
+        import copy
+        import test_pullfrog_standalone_decision as bf
+        first = self.admit()
+        decided = self.adapter.decide(self.f.policy, self.f.context, self.f.execution,
+            self.f.destination, expected_digest=first['journal_digest'], now=111,
+            provider=bf.response, clock=lambda: 0.0)
+        plan = decided['output']['worker_plan']
+        candidate = copy.deepcopy(self.f.f.c)
+        candidate.update(binding=plan['binding'], plan_digest=plan['plan_digest'],
+                         evidence_digest=plan['evidence_digest'])
+        intent = self.adapter.bind_publication(candidate,
+            expected_digest=decided['journal_digest'], now=120)
+        publication = intent['output']['publication_plan']
+        observation = dict(binding=publication['binding'], plan_digest=publication['plan_digest'],
+            read_status='ok', repository_slug=self.f.request['repository_slug'],
+            head_ref=self.f.request['head_ref'], head_sha=publication['result_head_sha'],
+            parent_sha=publication['parent_sha'], patch_digest=publication['patch_digest'])
+        result = self.adapter.reconcile(observation, self.f.policy,
+            expected_digest=intent['journal_digest'], now=121)
+        state = self.backend.read()['document']['state']
+        self.assertEqual(state['attempts'], 1)
+        self.assertEqual(state['cost_microusd'], 7)
+        self.assertFalse(state['in_flight'])
+        self.assertFalse(result['hosted_effect_allowed'])
+        self.assertEqual(state['current_head'], publication['result_head_sha'])
+
+    def test_no_public_transaction_or_unknown_operation(self):
+        self.assertFalse(hasattr(self.adapter, 'transaction'))
+        with self.assertRaises(AttributeError):
+            self.adapter.reset()
+        with self.assertRaisesRegex(s.StoreError, 'untrusted_reducer'):
+            s.Store(self.backend).transaction(None, initial)
+
+    def test_lost_ack_does_not_invoke_fixture_provider_or_refund(self):
+        first = self.admit()
+        self.backend.lose_next_ack = True
+        calls = []
+        with self.assertRaisesRegex(s.StoreError, 'ambiguous_ack'):
+            self.adapter.decide(self.f.policy, self.f.context, self.f.execution,
+                self.f.destination, expected_digest=first['journal_digest'], now=111,
+                provider=lambda payload: calls.append(payload), clock=lambda: 0.0)
+        record = self.backend.read()
+        self.assertEqual(record['document']['phase'], 'decision_started')
+        self.assertEqual(record['document']['state']['attempts'], 1)
+        self.assertEqual(calls, [])
+        with self.assertRaisesRegex(Exception, 'already_started'):
+            self.adapter.decide(self.f.policy, self.f.context, self.f.execution,
+                self.f.destination, expected_digest=record['digest'], now=112,
+                provider=lambda payload: calls.append(payload), clock=lambda: 0.0)
+        self.assertEqual(calls, [])
+
+    def test_fence_takeover_preserves_budget_and_denies_old_adapter(self):
+        first = self.admit()
+        newer = s.ControllerAdapter(self.backend, generation=2)
+        cancel = dict(kind='cancel', delivery_id='cancel', actor=self.f.request['initiator'],
+                      head_sha=self.f.request['head_sha'])
+        second = newer.advance(self.f.request, cancel, self.f.policy,
+                              expected_digest=first['journal_digest'], now=112)
+        with self.assertRaisesRegex(s.StoreError, 'stale_fence'):
+            self.adapter.advance(self.f.request, cancel, self.f.policy,
+                                 expected_digest=second['journal_digest'], now=113)
+        state = self.backend.read()['document']['state']
+        self.assertTrue(state['terminal'])
+        self.assertTrue(state['in_flight'])
+        self.assertEqual(state['attempts'], 1)
+        self.assertEqual(state['started_at'], 110)
+
+
 if __name__ == '__main__':
     unittest.main()

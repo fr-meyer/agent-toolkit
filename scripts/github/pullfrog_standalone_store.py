@@ -190,3 +190,68 @@ class Store:
 
     def authorize_hosted_effect(self, acknowledgement):
         raise StoreError('hosted_store_unqualified')
+
+
+class _ControllerTransaction:
+    """Private, synchronous, operation-scoped reducer registration."""
+    def __init__(self, backend, generation):
+        self.backend = backend
+        self.generation = generation
+        self.active = True
+
+    def transaction(self, expected_digest, transform):
+        require(self.active, 'controller_operation_closed')
+        return Store(self.backend, trusted_reducers=(transform,),
+                     generation=self.generation).transaction(expected_digest, transform)
+
+
+class ControllerAdapter:
+    """Fixed trusted Python entrypoints, not a wire dispatcher or sandbox.
+
+    The private proxy exists only during a synchronous call into the imported
+    controller function and is revoked even on failure. No public transaction or
+    arbitrary callable operation argument exists. Injected provider/clock code
+    is trusted fixture code, never a wire-selected plugin or hosted authority.
+    """
+    def __init__(self, backend, *, generation=1):
+        Store(backend, generation=generation)  # Validate without registering reducers.
+        self._backend = backend
+        self._generation = generation
+
+    def advance(self, request, event, policy, *, expected_digest, now):
+        import pullfrog_standalone_controller as controller
+        proxy = _ControllerTransaction(self._backend, self._generation)
+        try:
+            return controller.advance(proxy, request, event, policy,
+                                      expected_digest=expected_digest, now=now)
+        finally:
+            proxy.active = False
+
+    def decide(self, policy, context, execution, destination, *, expected_digest,
+               now, provider=None, clock=None):
+        import pullfrog_standalone_controller as controller
+        proxy = _ControllerTransaction(self._backend, self._generation)
+        try:
+            return controller.decide(proxy, policy, context, execution, destination,
+                                     expected_digest=expected_digest, now=now,
+                                     provider=provider, clock=clock)
+        finally:
+            proxy.active = False
+
+    def bind_publication(self, candidate, *, expected_digest, now):
+        import pullfrog_standalone_controller as controller
+        proxy = _ControllerTransaction(self._backend, self._generation)
+        try:
+            return controller.bind_publication(proxy, candidate,
+                                               expected_digest=expected_digest, now=now)
+        finally:
+            proxy.active = False
+
+    def reconcile(self, observation, policy, *, expected_digest, now):
+        import pullfrog_standalone_controller as controller
+        proxy = _ControllerTransaction(self._backend, self._generation)
+        try:
+            return controller.reconcile(proxy, observation, policy,
+                                        expected_digest=expected_digest, now=now)
+        finally:
+            proxy.active = False
