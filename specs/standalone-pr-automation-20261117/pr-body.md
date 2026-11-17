@@ -20,7 +20,7 @@ Feature PRs target `dev`; release/promotion PRs target `main`.
 
 ## Validation
 
-- Full Pullfrog regression and contribution-contract fixtures are run on the exact successor candidate; final counts are recorded before publication.
+- 436 full Pullfrog regression tests and 10 contribution-contract tests passed on the integrated source successor. Exact committed-candidate validation is recorded before publication.
 - Canonical/materialized workflow equality, checksum-pinned actionlint and protected workflow-policy validator passed.
 - Python compilation and whitespace/privacy checks are required on the exact source candidate before publication.
 - Original and subsequent independent/Pullfrog findings are reproduced and repaired; focused successor verification is recorded before publication. No fixture result qualifies hosted isolation, billing or provider custody.
