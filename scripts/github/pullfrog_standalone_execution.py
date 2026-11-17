@@ -51,7 +51,8 @@ def _child(connection, adapter, payload):
 def _stop(process):
     if process.pid:
         try:
-            # Kill the entire adapter session, including ordinary descendants.
+            # The leader has not been reaped: its PID/PGID cannot be reused.
+            # Kill ordinary same-group descendants, not detached/remote work.
             if os.getpgid(process.pid) == process.pid:
                 os.killpg(process.pid, signal.SIGKILL)
             elif process.is_alive():
@@ -86,7 +87,10 @@ def _invoke(adapter, payload, seconds, cancelled):
                     return result if isinstance(result, dict) else {'status': 'malformed_output'}
                 except (EOFError, OSError, ValueError):
                     return {'status': 'malformed_output'}
-            if not process.is_alive():
+            # WNOWAIT observes exit without reaping the session leader. Keep its PID
+            # owned until _stop has killed the group, avoiding both lost PGIDs
+            # and unsafe signalling of a potentially reused PID after reaping.
+            if os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT):
                 return {'status': 'runner_lost'}
     finally:
         _stop(process)

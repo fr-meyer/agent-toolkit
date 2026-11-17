@@ -46,7 +46,10 @@ def evaluate(request, event, policy, state=None, *, now):
         _require(not s['in_flight'] or s['attempts'] > 0, 'invalid_attempt_state')
         if s['terminal']:
             return result('terminal', 'none', s['reason'])
-    if not r['issued_at'] <= now < r['expires_at']:
+    publication = s is not None and event.get('kind') == 'publication_completed'
+    # Reconciliation records an already-observed effect, never authorizes work.
+    # Validate and bind that effect before applying wall-clock stop gates.
+    if not publication and not r['issued_at'] <= now < r['expires_at']:
         if s:
             s.update(terminal=True, reason='request_expired')
         return result('blocked', 'none', 'request_expired')
@@ -76,7 +79,7 @@ def evaluate(request, event, policy, state=None, *, now):
         return result('terminal', 'none', s['reason'])
     s['deliveries'].append(delivery)
     s['events'].append(fingerprint)
-    if now < s['started_at'] or now - s['started_at'] >= r['budget']['max_seconds']:
+    if not publication and (now < s['started_at'] or now - s['started_at'] >= r['budget']['max_seconds']):
         s.update(terminal=True, reason='time_exhausted')
         return result('terminal', 'none', s['reason'])
     if kind in ('decision_completed', 'worker_failed'):
@@ -102,10 +105,13 @@ def evaluate(request, event, policy, state=None, *, now):
                 or usage['cost_microusd'] < s['cost_microusd']):
             return result('blocked', 'reconcile', 'usage_unknown_or_regressed')
         s['cost_microusd'] = usage['cost_microusd']
-        s['seconds'] = usage['seconds']
+        s['seconds'] = max(usage['seconds'], now - s['started_at'])
         s.update(current_head=receipt['result_head_sha'], in_flight=False, evidence_digest=None)
-        if s['cost_microusd'] > r['budget']['max_cost_microusd'] or s['seconds'] >= r['budget']['max_seconds']:
-            s.update(terminal=True, reason='cost_exhausted')
+        stop = ('request_expired' if not r['issued_at'] <= now < r['expires_at'] else
+                'time_exhausted' if now < s['started_at'] or s['seconds'] >= r['budget']['max_seconds'] else
+                'cost_exhausted' if s['cost_microusd'] > r['budget']['max_cost_microusd'] else None)
+        if stop:
+            s.update(terminal=True, reason=stop)
             return result('terminal', 'none', s['reason'])
         return result('waiting', 'review', 'successor_head_bound')
     if event.get('head_sha') != s['current_head']:
@@ -148,7 +154,8 @@ def evaluate(request, event, policy, state=None, *, now):
         s['finding_digests'].append(findings_digest)
     else:
         return result('ignored', 'none', 'non_advancing_event')
-    if s['attempts'] >= r['budget']['max_attempts'] or (s['attempts'] and s['cost_microusd'] >= r['budget']['max_cost_microusd']):
+    if s['attempts'] >= r['budget']['max_attempts'] or (s['attempts'] and (s['cost_microusd'] > r['budget']['max_cost_microusd'] or
+            0 < r['budget']['max_cost_microusd'] == s['cost_microusd'])):
         s.update(terminal=True, reason='budget_exhausted')
         return result('terminal', 'none', s['reason'])
     s['attempts'] += 1
