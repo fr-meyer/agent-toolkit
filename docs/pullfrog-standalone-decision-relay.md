@@ -48,7 +48,14 @@ only1..4. Replay cache1024 (configurable1..4096), refuses when full, retains non
 until deadline. Restart clears replay state; this is not cross-process exactly-once
 or billing deduplication. Deployment must not replay requests after restart.
 Aborted noncooperative SDK promises retain an active admission slot until settled;
-physical provider cancellation remains host/provider responsibility.
+physical provider cancellation remains host/provider responsibility. Every close
+caller shares one cleanup promise. Shutdown aborts sockets, awaits all owned
+handlers (including codec child reaping and SDK settlement), then releases its
+lifecycle binding exactly once. A noncooperative SDK leaves close pending and
+the binding held, not a successful cleanup or resource-release receipt. Startup
+failures after qualification use the same cleanup, including partial listeners;
+preexisting unrelated paths are never removed. Cleanup errors remain observable
+to the owning operation awaiting close, not silently converted into acceptance.
 
 Tests: Node built-in suite, Python client to Node fake SDK roundtrip, replay,
 agent/purpose/rubric/deadline override, duplicate/nonfinite JSON, MAC and size

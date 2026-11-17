@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm} from 'node:fs/promises';
+import fs, {mkdtemp,rm} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {createHmac} from 'node:crypto';
 import net from 'node:net';
@@ -20,7 +20,7 @@ async function setup(t,evaluate=async()=>({status:'unavailable',reason:'not-conf
  const service=await startDecisionRelay({socketPath:dir+'/s',relaySecret:secret,api,owningSignal:owner.signal,
  pythonExecutable:python,qualifyBinding:async()=>({assertAdmissible:async()=>{},release:async()=>{}}),...extra});
  t.after(async()=>{await service.close();await rm(dir,{recursive:true,force:true});});
- return {path:dir+'/s',owner,api,calls:()=>calls};
+ return {path:dir+'/s',owner,api,service,calls:()=>calls};
 }
 function wire(body) {return JSON.stringify({body,mac:createHmac('sha256',secret).update(body).digest('hex')})+'\n';}
 function exchange(path,data) {return new Promise(resolve=>{const s=net.connect(path);let out='';s.on('connect',()=>s.write(data));s.on('data',x=>out+=x);s.on('error',()=>{});s.on('close',()=>resolve(out));});}
@@ -60,4 +60,62 @@ test('owner abort cancels call and capacity refuses second connection',async t=>
 test('oversize and wrong MAC never dispatch',async t=>{
  const r=await setup(t);assert.equal(await exchange(r.path,'x'.repeat(131073)+String.fromCharCode(10)),'');
  assert.equal(await exchange(r.path,JSON.stringify({body:'{}',mac:'0'.repeat(64)})+String.fromCharCode(10)),'');assert.equal(r.calls(),0);
+});
+
+async function startupOptions(socketPath,released) {
+ return {socketPath,relaySecret:secret,api:{runtime:{decisions:{evaluate:async()=>{throw Error('must_not_dispatch');}}}},
+  owningSignal:new AbortController().signal,pythonExecutable:python,
+  qualifyBinding:async()=>({assertAdmissible:async()=>{},release:async()=>released()})};
+}
+test('failed startup releases binding and preserves an existing unrelated path',async t=>{
+ const dir=await mkdtemp('/tmp/relay-startup-');t.after(()=>rm(dir,{recursive:true,force:true}));
+ let releases=0;const released=()=>releases++;
+ await assert.rejects(startDecisionRelay(await startupOptions(dir+'/missing/s',released)));
+ assert.equal(releases,1);
+ const existing=dir+'/existing';await fs.writeFile(existing,'unrelated');
+ await assert.rejects(startDecisionRelay(await startupOptions(existing,released)));
+ assert.equal(releases,2);assert.equal(await fs.readFile(existing,'utf8'),'unrelated');
+});
+test('post-listen startup failure removes only owned socket and releases binding',async t=>{
+ const dir=await mkdtemp('/tmp/relay-startup-');t.after(()=>rm(dir,{recursive:true,force:true}));
+ const socketPath=dir+'/s';let releases=0;const chmod=fs.chmod;
+ t.mock.method(fs,'chmod',async(p,...args)=>{if(p===socketPath) throw Error('fixture_chmod_failure');return chmod(p,...args);});
+ await assert.rejects(startDecisionRelay(await startupOptions(socketPath,()=>releases++)),/fixture_chmod_failure/);
+ assert.equal(releases,1);await assert.rejects(fs.lstat(socketPath),{code:'ENOENT'});
+});
+test('close shares cleanup promise and retains binding until aborted SDK settles',async t=>{
+ let started,observeAbort,finish;let releases=0;
+ const ready=new Promise(resolve=>started=resolve);const aborted=new Promise(resolve=>observeAbort=resolve);
+ const pending=new Promise(resolve=>finish=resolve);
+ const r=await setup(t,async(b,o)=>{started();o.signal.addEventListener('abort',observeAbort,{once:true});await pending;return {status:'unavailable',reason:'not-configured'};},
+  {qualifyBinding:async()=>({assertAdmissible:async()=>{},release:async()=>{releases++;}})});
+ const socket=net.connect(r.path);await new Promise(resolve=>socket.once('connect',resolve));
+ socket.write(wire(await run(fixtureCode,[root])));await ready;
+ const first=r.service.close(),second=r.service.close();let finished=false;first.then(()=>finished=true);
+ try {
+  assert.equal(first,second);await aborted;await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(releases,0);assert.equal(finished,false);
+ } finally {finish();}
+ await Promise.all([first,second]);assert.equal(releases,1);
+ await r.service.close();assert.equal(releases,1);
+});
+
+test('release failure is shared and never retried',async t=>{
+ let releases=0;const failure=Error('fixture_release_failure');const dir=await mkdtemp('/tmp/relay-release-');
+ t.after(()=>rm(dir,{recursive:true,force:true}));
+ const options=await startupOptions(dir+'/s',()=>{releases++;throw failure;});
+ const service=await startDecisionRelay(options);const first=service.close(),second=service.close();
+ assert.equal(first,second);await assert.rejects(first,error=>error===failure);
+ await assert.rejects(second,error=>error===failure);assert.equal(releases,1);
+ await assert.rejects(service.close(),error=>error===failure);assert.equal(releases,1);
+});
+test('nonfinite SDK outcome refuses without leaving validator work',async t=>{
+ const r=await setup(t,async()=>({status:'unavailable',reason:'not-configured',invalid:NaN}));
+ assert.equal(await exchange(r.path,wire(await run(fixtureCode,[root]))),'');
+ await r.service.close();assert.equal(r.calls(),1);
+});
+test('missing codec interpreter fails closed and shutdown completes',async t=>{
+ const r=await setup(t,undefined,{pythonExecutable:'/nonexistent-fixture-python-relay'});
+ assert.equal(await exchange(r.path,wire(await run(fixtureCode,[root]))),'');
+ await r.service.close();assert.equal(r.calls(),0);
 });

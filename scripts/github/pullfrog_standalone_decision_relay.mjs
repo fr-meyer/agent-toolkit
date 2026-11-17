@@ -45,26 +45,28 @@ else:
 `;
 
 function validate(python, value, signal) {
+  // Refuse serialization failures before acquiring a subprocess.
+  const input = JSON.stringify(value, (key,item) => {
+    requireThat(typeof item !== 'number' || Number.isFinite(item));
+    return item;
+  });
+  requireThat(Buffer.byteLength(input) <= MAX);
   return new Promise((resolve, reject) => {
     const child = spawn(python, ['-I', '-B', '-c', VALIDATE, ROOT, PIN], {
       env: {PATH: '/usr/bin:/bin', PYTHONDONTWRITEBYTECODE: '1'},
       stdio: ['pipe','pipe','ignore'], signal, killSignal: 'SIGKILL'});
-    let data = Buffer.alloc(0);
-    child.on('error', reject);
+    let data = Buffer.alloc(0), failure;
+    // AbortError precedes close; keep the handler owned until the child is reaped.
+    child.on('error', error => { failure = error; });
     child.stdout.on('data', chunk => {
       data = Buffer.concat([data,chunk]);
       if (data.length > MAX) child.kill('SIGKILL');
     });
     child.on('close', code => {
-      if (code !== 0 || data.length > MAX) reject(Error('codec_refused'));
+      if (failure || code !== 0 || data.length > MAX) reject(failure ?? Error('codec_refused'));
       else { try { resolve(JSON.parse(data)); } catch { reject(Error('codec_refused')); } }
     });
     child.stdin.on('error', () => {});
-    const input = JSON.stringify(value, (key,item) => {
-      requireThat(typeof item !== 'number' || Number.isFinite(item));
-      return item;
-    });
-    if (Buffer.byteLength(input) > MAX) { child.kill('SIGKILL'); reject(Error('codec_refused')); return; }
     child.stdin.end(input);
   });
 }
@@ -85,102 +87,137 @@ export async function startDecisionRelay({socketPath, relaySecret, api, owningSi
   const binding = await qualifyBinding({api, evaluate: api.runtime.decisions.evaluate,
     agentId:'franck', purpose:'pullfrog.standalone.recommendation', sourcePin:PIN,
     signal:owningSignal});
-  requireThat(binding && typeof binding.assertAdmissible === 'function' && typeof binding.release === 'function');
-  const parent = path.dirname(socketPath);
-  let current = '/';
-  for (const part of parent.split('/').slice(1)) {
-    current = path.join(current,part);
-    requireThat(!(await fs.lstat(current)).isSymbolicLink());
-  }
-  const directory = await fs.stat(parent);
-  requireThat(directory.uid === process.geteuid() && (directory.mode & 0o077) === 0);
-  try { await fs.lstat(socketPath); throw Error('existing_path_refused'); }
-  catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const peers = new Set(), seen = new Map();
-  let ready = false;
-  let closing = false, active = 0;
-  const server = net.createServer(socket => {
-    if (!ready || closing || active >= maxConnections || peers.size >= maxConnections || owningSignal.aborted) return socket.destroy();
-    peers.add(socket);
-    const controller = new AbortController();
-    const abort = () => {controller.abort(); socket.destroy();};
-    const timer = setTimeout(abort,30000);
-    owningSignal.addEventListener('abort',abort,{once:true});
-    socket.once('close', () => {
-      controller.abort(); clearTimeout(timer); peers.delete(socket);
-      owningSignal.removeEventListener('abort',abort);
-    });
-    socket.on('error',abort);
-    let data = Buffer.alloc(0), dispatched = false;
-    socket.on('data', async chunk => {
-      let ownsSlot = false;
+  const peers = new Set(), seen = new Map(), inFlight = new Set();
+  let server, identity, closePromise;
+  let ready = false, closing = false, active = 0;
+  const onOwnerAbort = () => { void close().catch(() => {}); };
+  // Every caller observes the same cleanup, including failures and unresolved holds.
+  const close = () => {
+    if (closePromise) return closePromise;
+    closing = true; ready = false;
+    owningSignal.removeEventListener('abort',onOwnerAbort);
+    closePromise = (async () => {
+      for (const peer of peers) peer.destroy();
+      if (server?.listening) await new Promise((resolve,reject) =>
+        server.close(error => error ? reject(error) : resolve()));
+      // Socket shutdown/AbortSignal delivery is not owned SDK settlement.
+      // A noncooperative call keeps this promise pending and the binding held.
+      await Promise.allSettled([...inFlight]);
+      let cleanupError;
       try {
-        requireThat(!dispatched && active < maxConnections);
-        data = Buffer.concat([data,chunk]);
-        requireThat(data.length <= MAX);
-        if (!data.includes(10)) return;
-        requireThat(data.at(-1) === 10 && data.indexOf(10) === data.length-1);
-        dispatched = true;
-        active++; ownsSlot = true;
-        // Python parser catches duplicates in both JSON layers before SDK call.
-        // Envelope contains only two strings; enforce unique keys lexically by
-        // exact reserialization shape after parsing, allowing normal whitespace.
-        const text = new TextDecoder('utf-8',{fatal:true}).decode(data);
-        const envelope = JSON.parse(text);
-        requireThat(!duplicateKeys(text));
-        requireThat(exact(envelope,['body','mac']) && typeof envelope.body === 'string' &&
-          typeof envelope.mac === 'string' && /^[0-9a-f]{64}$/.test(envelope.mac));
-        const expected = createHmac('sha256',relaySecret).update(envelope.body).digest();
-        requireThat(timingSafeEqual(expected,Buffer.from(envelope.mac,'hex')));
-        const request = JSON.parse(envelope.body);
-        const now = Math.floor(Date.now()/1000);
-        await validate(pythonExecutable,{raw:envelope.body,now},controller.signal);
-        // Validate original body too: JSON.parse alone would erase duplicate keys.
-        requireThat(!duplicateKeys(envelope.body));
-        const left = request.deadline*1000-Date.now();
-        requireThat(left > 0 && left <= 30000);
-        clearTimeout(timer);
-        const deadlineTimer = setTimeout(abort,left);
-        socket.once('close',()=>clearTimeout(deadlineTimer));
-        for (const [nonce,expires] of seen) if (expires <= Date.now()) seen.delete(nonce);
-        requireThat(!seen.has(request.nonce) && seen.size < replayCapacity);
-        seen.set(request.nonce,request.deadline*1000);
-        await binding.assertAdmissible({api,sourcePin:PIN,agentId:'franck',signal:controller.signal});
-        requireThat(!controller.signal.aborted && Date.now() < request.deadline*1000);
-        const outcome = await evaluate(request.batch, {...request.options,
-          timeoutMs:Math.max(1,request.deadline*1000-Date.now()),signal:controller.signal});
-        requireThat(!controller.signal.aborted && Date.now() < request.deadline*1000);
-        const trusted_receipt = await validate(pythonExecutable,{raw:envelope.body,now,outcome},controller.signal);
-        requireThat(!controller.signal.aborted && Date.now() < request.deadline*1000);
-        const reply = {operation:OP,nonce:request.nonce,deadline:request.deadline,
-          payload_digest:request.payload_digest,outcome,trusted_receipt};
-        const body = JSON.stringify(reply);
-        const wire = JSON.stringify({body,mac:createHmac('sha256',relaySecret).update(body).digest('hex')})+'\n';
-        requireThat(Buffer.byteLength(wire) <= MAX);
-        socket.end(wire);
-      } catch { abort(); }
-      finally { if (ownsSlot) active--; }
-    });
-  });
-  await new Promise((resolve,reject) => {
-    server.once('error',reject);
-    server.listen(socketPath,resolve);
-  });
-  await fs.chmod(socketPath,0o600);
-  const inode = (await fs.lstat(socketPath)).ino;
-  ready = true;
-  const close = async () => {
-    if (closing) return;
-    closing = true;
-    for (const peer of peers) peer.destroy();
-    await new Promise(resolve => server.close(resolve));
-    try { if ((await fs.lstat(socketPath)).ino === inode) await fs.unlink(socketPath); }
-    catch(error) { if(error.code !== 'ENOENT') throw error; }
-    await binding.release();
+        if (identity) {
+          const current = await fs.lstat(socketPath);
+          if (current.dev === identity.dev && current.ino === identity.ino) await fs.unlink(socketPath);
+        }
+      } catch (error) { if (error.code !== 'ENOENT') cleanupError = error; }
+      try { if (typeof binding?.release === 'function') await binding.release(); }
+      catch (error) {
+        if (cleanupError) throw new AggregateError([cleanupError,error],'relay_cleanup_failed');
+        throw error;
+      }
+      if (cleanupError) throw cleanupError;
+    })();
+    return closePromise;
   };
-  owningSignal.addEventListener('abort',()=>{void close().catch(()=>{});},{once:true});
-  if (owningSignal.aborted) { await close(); throw Error('owner_closed'); }
-  return {close};
+  try {
+    requireThat(binding && typeof binding.assertAdmissible === 'function' && typeof binding.release === 'function');
+    const parent = path.dirname(socketPath);
+    let current = '/';
+    for (const part of parent.split('/').slice(1)) {
+      current = path.join(current,part);
+      requireThat(!(await fs.lstat(current)).isSymbolicLink());
+    }
+    const directory = await fs.stat(parent);
+    requireThat(directory.uid === process.geteuid() && (directory.mode & 0o077) === 0);
+    try { await fs.lstat(socketPath); throw Error('existing_path_refused'); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    requireThat(!owningSignal.aborted);
+    server = net.createServer(socket => {
+      if (!ready || closing || active >= maxConnections || peers.size >= maxConnections || owningSignal.aborted) return socket.destroy();
+      peers.add(socket);
+      const controller = new AbortController();
+      const abort = () => {controller.abort(); socket.destroy();};
+      const timer = setTimeout(abort,30000);
+      owningSignal.addEventListener('abort',abort,{once:true});
+      socket.once('close', () => {
+        controller.abort(); clearTimeout(timer); peers.delete(socket);
+        owningSignal.removeEventListener('abort',abort);
+      });
+      socket.on('error',abort);
+      let data = Buffer.alloc(0), dispatched = false;
+      const handleData = async chunk => {
+        let ownsSlot = false;
+        try {
+          requireThat(!dispatched && active < maxConnections);
+          data = Buffer.concat([data,chunk]);
+          requireThat(data.length <= MAX);
+          if (!data.includes(10)) return;
+          requireThat(data.at(-1) === 10 && data.indexOf(10) === data.length-1);
+          dispatched = true;
+          active++; ownsSlot = true;
+          // Python parser catches duplicates in both JSON layers before SDK call.
+          // Envelope contains only two strings; enforce unique keys lexically by
+          // exact reserialization shape after parsing, allowing normal whitespace.
+          const text = new TextDecoder('utf-8',{fatal:true}).decode(data);
+          const envelope = JSON.parse(text);
+          requireThat(!duplicateKeys(text));
+          requireThat(exact(envelope,['body','mac']) && typeof envelope.body === 'string' &&
+            typeof envelope.mac === 'string' && /^[0-9a-f]{64}$/.test(envelope.mac));
+          const expected = createHmac('sha256',relaySecret).update(envelope.body).digest();
+          requireThat(timingSafeEqual(expected,Buffer.from(envelope.mac,'hex')));
+          const request = JSON.parse(envelope.body);
+          const now = Math.floor(Date.now()/1000);
+          await validate(pythonExecutable,{raw:envelope.body,now},controller.signal);
+          // Validate original body too: JSON.parse alone would erase duplicate keys.
+          requireThat(!duplicateKeys(envelope.body));
+          const left = request.deadline*1000-Date.now();
+          requireThat(left > 0 && left <= 30000);
+          clearTimeout(timer);
+          const deadlineTimer = setTimeout(abort,left);
+          socket.once('close',()=>clearTimeout(deadlineTimer));
+          for (const [nonce,expires] of seen) if (expires <= Date.now()) seen.delete(nonce);
+          requireThat(!seen.has(request.nonce) && seen.size < replayCapacity);
+          seen.set(request.nonce,request.deadline*1000);
+          await binding.assertAdmissible({api,sourcePin:PIN,agentId:'franck',signal:controller.signal});
+          requireThat(!controller.signal.aborted && Date.now() < request.deadline*1000);
+          const outcome = await evaluate(request.batch, {...request.options,
+            timeoutMs:Math.max(1,request.deadline*1000-Date.now()),signal:controller.signal});
+          requireThat(!controller.signal.aborted && Date.now() < request.deadline*1000);
+          const trusted_receipt = await validate(pythonExecutable,{raw:envelope.body,now,outcome},controller.signal);
+          requireThat(!controller.signal.aborted && Date.now() < request.deadline*1000);
+          const reply = {operation:OP,nonce:request.nonce,deadline:request.deadline,
+            payload_digest:request.payload_digest,outcome,trusted_receipt};
+          const body = JSON.stringify(reply);
+          const wire = JSON.stringify({body,mac:createHmac('sha256',relaySecret).update(body).digest('hex')})+'\n';
+          requireThat(Buffer.byteLength(wire) <= MAX);
+          socket.end(wire);
+        } catch { abort(); }
+        finally { if (ownsSlot) active--; }
+      };
+      socket.on('data', chunk => {
+        const task = handleData(chunk);
+        inFlight.add(task);
+        task.then(() => inFlight.delete(task), () => inFlight.delete(task));
+      });
+    });
+    await new Promise((resolve,reject) => {
+      server.once('error',reject);
+      server.listen(socketPath,resolve);
+    });
+    // Record ownership before chmod so post-listen failures still clean up.
+    identity = await fs.lstat(socketPath);
+    await fs.chmod(socketPath,0o600);
+    owningSignal.addEventListener('abort',onOwnerAbort,{once:true});
+    requireThat(!owningSignal.aborted);
+    ready = true;
+    return {close};
+  } catch (startupError) {
+    try { await close(); }
+    catch (cleanupError) {
+      throw new AggregateError([startupError,cleanupError],'relay_startup_cleanup_failed');
+    }
+    throw startupError;
+  }
 }
 
 // Tokenizer tracks object key sets; JSON.parse validates the actual grammar.
