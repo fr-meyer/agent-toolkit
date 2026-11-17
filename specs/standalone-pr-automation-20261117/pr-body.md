@@ -6,6 +6,7 @@
 - Add atomic local CAS/restart journal, an explicitly disabled read-only admission diagnostic and credential-free contract CI.
 - Add a pure typed Decision codec pinned to trusted OpenClaw source, transactional-state conformance and a fail-closed execution-profile verification seam.
 - Repair observed Pullfrog findings for ordinary descendant cleanup, late publication reconciliation and a second proven-free attempt.
+- Preserve prior-attempt artifact history while completing a new authorized attempt, and represent verified zero-charge profiles without weakening resource bounds.
 
 ## Scope and limitations
 
@@ -20,7 +21,7 @@ Feature PRs target `dev`; release/promotion PRs target `main`.
 
 ## Validation
 
-- 436 full Pullfrog regression tests and 10 contribution-contract tests passed on the integrated source successor. Exact committed-candidate validation is recorded before publication.
+- 447 full Pullfrog regression tests and 10 contribution-contract tests passed on the integrated source successor. Exact committed-candidate validation is recorded before publication.
 - Canonical/materialized workflow equality, checksum-pinned actionlint and protected workflow-policy validator passed.
 - Python compilation and whitespace/privacy checks are required on the exact source candidate before publication.
 - Original and subsequent independent/Pullfrog findings are reproduced and repaired; focused successor verification is recorded before publication. No fixture result qualifies hosted isolation, billing or provider custody.
