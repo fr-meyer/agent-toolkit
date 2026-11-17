@@ -70,6 +70,82 @@ class ReceiptTests(af.Tests):
         result = self.run_event(self.receipt(state), terminal, now=1000)
         self.assertEqual(result['state'], terminal)
 
+    def saturated(self):
+        state = self.admitted()
+        state['deliveries'] = ['delivery:'+str(i) for i in range(256)]
+        state['events'] = [contract.digest({'event': i}) for i in range(256)]
+        return state
+
+    def test_capacity_receipt_binds_before_terminal_without_audit_growth(self):
+        for now in (102, 1000):
+            state = self.saturated()
+            event = self.receipt(state, seconds=899 if now == 1000 else 5)
+            result = self.run_event(event, state, now=now)
+            bound = result['state']
+            self.assertEqual(bound['current_head'], 'c'*40)
+            self.assertEqual(result['binding']['head_sha'], 'c'*40)
+            self.assertEqual(bound['seconds'], event['observation']['usage']['seconds'])
+            self.assertFalse(bound['in_flight'])
+            self.assertTrue(bound['terminal'])
+            self.assertEqual(result['action'], 'none')
+            self.assertEqual(result['reason'], 'event_limit')
+            self.assertEqual(bound['deliveries'], state['deliveries'])
+            self.assertEqual(bound['events'], state['events'])
+            self.assertEqual(bound['attempts'], 1)
+            self.assertEqual(self.run_event(event, bound, now=now+1)['state'], bound)
+
+    def test_capacity_nonpublication_stops_without_new_reservation(self):
+        state = self.saturated()
+        result = self.run_event(self.e | dict(delivery_id='overflow'), state)
+        self.assertEqual(result['reason'], 'event_limit')
+        self.assertEqual(result['state']['attempts'], 1)
+        self.assertEqual(result['state']['deliveries'], state['deliveries'])
+        self.assertEqual(result['state']['events'], state['events'])
+
+    def test_capacity_invalid_receipts_refuse_without_effect(self):
+        for terminal in (False, True):
+            state = self.saturated()
+            state.update(terminal=terminal, reason='event_limit' if terminal else '')
+            for field, value in [('status', 'unknown'), ('usage', None), ('publication_plan_digest', 'forged')]:
+                event = self.receipt(state)
+                event['observation'][field] = value
+                result = self.run_event(event, state, now=1000)
+                self.assertEqual(result['status'], 'blocked')
+                self.assertEqual(result['action'], 'reconcile')
+                self.assertEqual(result['state'], state)
+            for field, value in [('head_sha', 'f'*40), ('request_digest', 'f'*64)]:
+                event = self.receipt(state)
+                event['observation']['binding'][field] = value
+                with self.assertRaises(contract.ContractError):
+                    self.run_event(event, state, now=1000)
+
+    def test_capacity_retains_dedup(self):
+        state = self.saturated()
+        event = self.receipt(state)
+        for key, value in [('deliveries', event['delivery_id']),
+                           ('events', contract.digest({k:v for k,v in event.items() if k != 'delivery_id'}))]:
+            duplicate = copy.deepcopy(state)
+            duplicate[key][0] = value
+            result = self.run_event(event, duplicate, now=1000)
+            self.assertEqual(result['reason'], 'duplicate_event')
+            self.assertEqual(result['state'], duplicate)
+
+    def test_only_event_limit_terminal_can_record_pending_receipt(self):
+        state = self.saturated()
+        stopped = self.run_event(self.e | dict(delivery_id='overflow'), state)['state']
+        result = self.run_event(self.receipt(stopped), stopped)
+        self.assertEqual(result['state']['current_head'], 'c'*40)
+        self.assertEqual(result['reason'], 'event_limit')
+        self.assertEqual(result['action'], 'none')
+        for reason in ('cancelled', 'worker_failed', 'request_expired', 'time_exhausted', 'ready_for_human'):
+            terminal = copy.deepcopy(state)
+            terminal.update(terminal=True, reason=reason)
+            result = self.run_event(self.receipt(terminal), terminal)
+            self.assertEqual(result['state'], terminal)
+            self.assertEqual(result['action'], 'none')
+        stopped['in_flight'] = False
+        self.assertEqual(self.run_event(self.receipt(stopped), stopped)['state'], stopped)
+
     def test_positive_cap_still_refuses(self):
         state = self.admitted()
         state = self.run_event(self.receipt(state, cost_microusd=100), state)['state']
@@ -87,6 +163,49 @@ class LateControllerTests(cf.ControllerTests):
         self.assertFalse(result['changed'])
         self.assertEqual(self.load(), before)
         self.assertEqual(result['output']['receipt']['status'], 'reconcile_required')
+
+    def test_controller_capacity_receipt_updates_canonical_journal(self):
+        intent = self.publish()
+        def saturate(prior):
+            prior['state']['deliveries'] = ['delivery:'+str(i) for i in range(256)]
+            prior['state']['events'] = [contract.digest({'event': i}) for i in range(256)]
+            return prior, {}
+        saturated = self.journal.transaction(intent['journal_digest'], saturate)
+        before = self.load()
+        plan = intent['output']['publication_plan']
+        observation = dict(binding=plan['binding'], plan_digest=plan['plan_digest'],
+            read_status='ok', repository_slug=self.request['repository_slug'],
+            head_ref=self.request['head_ref'], head_sha=plan['result_head_sha'],
+            parent_sha=plan['parent_sha'], patch_digest=plan['patch_digest'])
+        for field, value in [('read_status', 'unavailable'), ('head_sha', plan['parent_sha']),
+                             ('head_sha', 'f'*40)]:
+            refused = ctl.reconcile(self.journal, observation | {field: value}, self.policy,
+                expected_digest=saturated['journal_digest'], now=1000)
+            self.assertFalse(refused['changed'])
+            self.assertEqual(self.load(), before)
+        for field, value in [('plan_digest', 'f'*64), ('patch_digest', 'f'*64)]:
+            with self.assertRaises(ctl.worker.WorkerError):
+                ctl.reconcile(self.journal, observation | {field: value}, self.policy,
+                    expected_digest=saturated['journal_digest'], now=1000)
+            self.assertEqual(self.load(), before)
+        result = ctl.reconcile(self.journal, observation, self.policy,
+            expected_digest=saturated['journal_digest'], now=1000)
+        stored = self.load()
+        self.assertEqual(stored['binding']['head_sha'], plan['result_head_sha'])
+        self.assertEqual(stored['state']['current_head'], plan['result_head_sha'])
+        self.assertEqual(stored['state']['cost_microusd'], 7)
+        self.assertEqual(stored['state']['seconds'], 890)
+        self.assertEqual(stored['state']['attempts'], 1)
+        self.assertFalse(stored['state']['in_flight'])
+        self.assertEqual(stored['state']['reason'], 'event_limit')
+        self.assertEqual(stored['phase'], 'terminal')
+        self.assertEqual(stored['artifacts']['publication_receipt'], result['output']['receipt'])
+        for key in ('deliveries', 'events'):
+            self.assertEqual(stored['state'][key], before['state'][key])
+        with self.assertRaises(contract.ContractError):
+            ctl.reconcile(self.journal, observation, self.policy,
+                expected_digest=result['journal_digest'], now=1001)
+        self.assertEqual(self.load(), stored)
 
     def test_late_exact_effect_is_canonical(self):
         for expiry in ('seconds', 'request'):

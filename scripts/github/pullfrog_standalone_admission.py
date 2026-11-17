@@ -44,7 +44,12 @@ def evaluate(request, event, policy, state=None, *, now):
                  and _int(s.get('seconds'), 0)
                  and (s.get('evidence_digest') is None or type(s.get('evidence_digest')) is str), 'invalid_state')
         _require(not s['in_flight'] or s['attempts'] > 0, 'invalid_attempt_state')
-        if s['terminal']:
+        # Only a retained event-limit stop with an unresolved writer may record
+        # its trusted publication effect. This never reopens work or cancellation.
+        capacity_reconciliation = (s['reason'] == 'event_limit' and s['in_flight']
+                                   and len(s['deliveries']) == 256
+                                   and event.get('kind') == 'publication_completed')
+        if s['terminal'] and not capacity_reconciliation:
             return result('terminal', 'none', s['reason'])
     publication = s is not None and event.get('kind') == 'publication_completed'
     # Reconciliation records an already-observed effect, never authorizes work.
@@ -74,11 +79,15 @@ def evaluate(request, event, policy, state=None, *, now):
     fingerprint = digest({k: v for k, v in event.items() if k != 'delivery_id'})
     if delivery in s['deliveries'] or fingerprint in s['events']:
         return result('ignored', 'none', 'duplicate_event')
-    if len(s['deliveries']) >= 256:
+    at_capacity = len(s['deliveries']) >= 256
+    if at_capacity and not publication:
         s.update(terminal=True, reason='event_limit')
         return result('terminal', 'none', s['reason'])
-    s['deliveries'].append(delivery)
-    s['events'].append(fingerprint)
+    # Preserve the bounded audit prefix unchanged at capacity. The controller
+    # journals the exact receipt; in_flight=False prevents another application.
+    if not at_capacity:
+        s['deliveries'].append(delivery)
+        s['events'].append(fingerprint)
     if not publication and (now < s['started_at'] or now - s['started_at'] >= r['budget']['max_seconds']):
         s.update(terminal=True, reason='time_exhausted')
         return result('terminal', 'none', s['reason'])
@@ -107,7 +116,8 @@ def evaluate(request, event, policy, state=None, *, now):
         s['cost_microusd'] = usage['cost_microusd']
         s['seconds'] = max(usage['seconds'], now - s['started_at'])
         s.update(current_head=receipt['result_head_sha'], in_flight=False, evidence_digest=None)
-        stop = ('request_expired' if not r['issued_at'] <= now < r['expires_at'] else
+        stop = ('event_limit' if at_capacity or s['terminal'] else
+                'request_expired' if not r['issued_at'] <= now < r['expires_at'] else
                 'time_exhausted' if now < s['started_at'] or s['seconds'] >= r['budget']['max_seconds'] else
                 'cost_exhausted' if s['cost_microusd'] > r['budget']['max_cost_microusd'] else None)
         if stop:
