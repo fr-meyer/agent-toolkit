@@ -96,3 +96,13 @@ Integration fixtures cover real A/B/C/D contracts, publication/restart, unchange
 immutable request, unknown effects, no-provider pause, CAS collision, duplicate
 comment, exact-head review, tampering and forbidden authority paths. They do not
 contact GitHub, a model, a credential service or a publisher.
+
+## Offline runtime-seam follow-up
+
+The next local-only source slice adds a typed OpenClaw Decision codec, a transactional-state conformance seam and an execution-profile verification seam. These are source contracts and deterministic fixture boundaries, not a deployed ingress, durable hosted service, sandbox or billing controller. The published foundation PR stays frozen until any exact successor publication is separately authorized.
+
+- The Decision codec must follow a pinned trusted OpenClaw runtime API source contract. Owning-agent identity is fixed by trusted adapter code, not task text. Model aliases do not prove checkpoint custody; missing usage and cost remain unknown. There is no provider invocation, broad Gateway HTTP transport or credential in this module.
+- The state seam exercises trusted in-process reducers, slot/request identity, CAS, sequence/fence and acknowledgement continuity. Its memory-only fixture backend is not durable across restart and cannot authorize a hosted effect. Missing or unavailable history is never evidence of an empty slot. Unknown effects retain their hold and spent reservations.
+- The execution-profile seam requires trusted independent receipt verification and atomic reservation consumption ports. Its default registry is empty; it implements no CLI, sandbox, quota account or remote cancellation. Self-attested booleans, a JSON digest and post-response cost checks do not establish security or billing enforcement.
+
+Before a live pilot, select and authorize exact hosting/ingress/storage, destination disclosure, coding CLI/build/model/custody and entitlement, enforceable aggregate usage/cost limits, isolation/resource envelope, separate publisher and a finite repository/PR/head activation. No provider call, additional spending, credential/configuration change, deployment, autonomous publisher or merge is authorized by source tests.

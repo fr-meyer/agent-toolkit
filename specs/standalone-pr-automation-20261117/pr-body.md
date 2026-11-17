@@ -4,6 +4,8 @@
 - Compose real admission, recommendation-only Decision, credential-separated execution plans, exact-head review collection and publication reconciliation.
 - Enforce immutable original deadlines, Decision elapsed time, conserved usage and pre-provider destination binding; fix both independent review findings.
 - Add atomic local CAS/restart journal, an explicitly disabled read-only admission diagnostic and credential-free contract CI.
+- Add a pure typed Decision codec pinned to trusted OpenClaw source, transactional-state conformance and a fail-closed execution-profile verification seam.
+- Repair observed Pullfrog findings for ordinary descendant cleanup, late publication reconciliation and a second proven-free attempt.
 
 ## Scope and limitations
 
@@ -18,10 +20,10 @@ Feature PRs target `dev`; release/promotion PRs target `main`.
 
 ## Validation
 
-- 351 full Pullfrog regression tests passed after review fixes.
+- Full Pullfrog regression and contribution-contract fixtures are run on the exact successor candidate; final counts are recorded before publication.
 - Canonical/materialized workflow equality, checksum-pinned actionlint and protected workflow-policy validator passed.
 - Python compilation and whitespace/privacy checks are required on the exact source candidate before publication.
-- Independent source review identified two bugs; focused verification is recorded before publication.
+- Original and subsequent independent/Pullfrog findings are reproduced and repaired; focused successor verification is recorded before publication. No fixture result qualifies hosted isolation, billing or provider custody.
 
 ## Documentation Impact
 
@@ -54,10 +56,13 @@ recovery branches and evidence. Existing unrelated task holds are unchanged.
 - scripts/github/pullfrog_standalone_contract.py
 - scripts/github/pullfrog_standalone_controller.py
 - scripts/github/pullfrog_standalone_decision.py
+- scripts/github/pullfrog_standalone_decision_codec.py
 - scripts/github/pullfrog_standalone_execution.py
+- scripts/github/pullfrog_standalone_execution_profile.py
 - scripts/github/pullfrog_standalone_github.py
 - scripts/github/pullfrog_standalone_policy.json
 - scripts/github/pullfrog_standalone_review.py
+- scripts/github/pullfrog_standalone_store.py
 - scripts/github/pullfrog_standalone_worker.py
 - scripts/github/speculoos_pr_contract.py
 - scripts/github/tests/test_pullfrog_standalone_a.py
@@ -65,9 +70,13 @@ recovery branches and evidence. Existing unrelated task holds are unchanged.
 - scripts/github/tests/test_pullfrog_standalone_collector.py
 - scripts/github/tests/test_pullfrog_standalone_controller.py
 - scripts/github/tests/test_pullfrog_standalone_decision.py
+- scripts/github/tests/test_pullfrog_standalone_decision_codec.py
 - scripts/github/tests/test_pullfrog_standalone_execution_c.py
+- scripts/github/tests/test_pullfrog_standalone_execution_profile.py
 - scripts/github/tests/test_pullfrog_standalone_github.py
+- scripts/github/tests/test_pullfrog_standalone_pullfrog_fixes.py
 - scripts/github/tests/test_pullfrog_standalone_review.py
+- scripts/github/tests/test_pullfrog_standalone_store.py
 - scripts/github/tests/test_speculoos_pr_contract.py
 - scripts/github/validate_pullfrog_workflow.sh
 - specs/standalone-pr-automation-20261117/commit-message.txt
