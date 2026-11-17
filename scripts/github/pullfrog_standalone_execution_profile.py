@@ -55,7 +55,9 @@ def context(request, plan, profile, *, current_head_sha, now):
     _need(profile['recipe_id'] == p['execution']['recipe_id'])
     limits = profile.get('limits', {})
     _need(isinstance(limits, dict) and set(limits) == set(LIMITS))
-    _need(all(type(limits[k]) is int and limits[k] > 0 for k in LIMITS))
+    # A proven-free route may reserve zero money, never zero resources.
+    _need(all(type(limits[k]) is int and
+              limits[k] >= (0 if k == 'cost_microusd' else 1) for k in LIMITS))
     _need(limits['seconds'] <= p['deadline'] - now)
     _need(limits['cost_microusd'] <= p['cost_remaining_microusd'])
     _need(p['usage_before']['attempts'] + 1 == p['attempt'] <= request['budget']['max_attempts'])
@@ -85,11 +87,12 @@ def invoke_offline(request, plan, profile, evidence, *, adapter_id,
         port = registry.get(adapter_id)
         _need(type(port) is VerificationPort and all(callable(x) for x in (port.verify, port.claim, port.invoke)))
         receipt = port.verify(copy.deepcopy(ctx), copy.deepcopy(evidence))
-        _need(isinstance(receipt, dict) and receipt.get('context') == ctx)
+        # Canonical comparison keeps False/0.0 distinct from exact integer zero.
+        _need(isinstance(receipt, dict) and worker.contract.digest(receipt.get('context')) == worker.contract.digest(ctx))
         _need(set(receipt.get('capabilities', [])) == CAPABILITIES)
         reservation = receipt.get('reservation', {})
         _need(isinstance(reservation.get('id'), str) and 0 < len(reservation['id']) <= 200)
-        _need(reservation.get('limits') == profile['limits'])
+        _need(worker.contract.digest(reservation.get('limits')) == worker.contract.digest(profile['limits']))
         _need(reservation.get('expires_at') == ctx['expires_at'])
         digest = worker.contract.digest(ctx)
         result['status'] = 'reconcile_required'

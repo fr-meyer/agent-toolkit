@@ -85,7 +85,7 @@ class ProfileTests(unittest.TestCase):
     def test_limits_missing_unbounded_and_original_budget(self):
         for key in gate.LIMITS:
             old = self.profile['limits'][key]
-            for value in (None, True, 0, -1, float('inf')):
+            for value in (None, True, False, -1, 0.0, float('inf'), float('nan'), '0') + ((0,) if key != 'cost_microusd' else ()):
                 self.profile['limits'][key] = value
                 self.refused()
             self.profile['limits'][key] = old
@@ -130,6 +130,129 @@ class ProfileTests(unittest.TestCase):
                 self.assertFalse(result['retry_allowed'])
                 self.run_gate()
                 self.assertEqual(self.calls, 1)
+
+    def zero_charge(self):
+        # Rebuild the worker contract, including the original zero-budget binding.
+        f = fixtures.WorkerTests()
+        f.setUp()
+        f.r['budget']['max_cost_microusd'] = 0
+        f.b = gate.worker.contract.binding(f.r)
+        f.e['binding'] = f.b
+        f.e['worker']['admitted_binding'] = f.b
+        f.e['worker']['usage']['cost_microusd'] = 0
+        f.refresh()
+        self.request, self.plan = f.r, f.prepare()
+        self.profile['limits']['cost_microusd'] = 0
+        self.ctx = gate.context(self.request, self.plan, self.profile,
+                                current_head_sha='2'*40, now=110)
+        self.receipt['context'] = copy.deepcopy(self.ctx)
+        self.receipt['reservation']['limits'] = copy.deepcopy(self.profile['limits'])
+        # Independent fixture observation, never inferred from a ceiling.
+        self.output = {'status': 'ok', 'cost_microusd': 0}
+
+    def test_zero_charge_full_path_and_no_replay(self):
+        self.zero_charge()
+        self.assertEqual(self.plan['cost_remaining_microusd'], 0)
+        result = self.run_gate()
+        self.assertEqual(result['status'], 'offline_returned')
+        self.assertEqual(result['cost_microusd'], 0)
+        self.assertIs(type(result['cost_microusd']), int)
+        self.assertTrue(result['reservation_consumed'])
+        self.assertTrue(result['reconciliation_required'])
+        self.assertFalse(result['retry_allowed'])
+        self.assertFalse(result['merge_allowed'])
+        self.assertEqual(self.spent, {'external-1'})
+        self.assertEqual(self.run_gate()['status'], 'reconcile_required')
+        self.assertEqual(self.calls, 1)
+
+    def test_zero_charge_independent_verification_and_custody(self):
+        self.zero_charge()
+        self.refused(registry=gate.DEFAULT_REGISTRY)
+        self.refused(evidence=self.receipt)
+        self.refused(registry={'fixed': gate.VerificationPort(lambda *a: True,
+                     self.port.claim, self.port.invoke)})
+        self.refused(head='3'*40)
+        self.refused(now=111)
+        self.receipt['reservation']['limits']['cost_microusd'] = 1
+        self.refused()
+        self.assertEqual(self.spent, set())
+
+    def test_zero_charge_exact_limits_and_custody_types(self):
+        self.zero_charge()
+        for value in (None, True, False, -1, 1, 0.0, '0'):
+            with self.subTest(value=value):
+                for limits in (self.receipt['reservation']['limits'],
+                               self.receipt['context']['profile']['limits']):
+                    limits['cost_microusd'] = value
+                    self.refused()
+                    limits['cost_microusd'] = 0
+        for key in gate.LIMITS:
+            old = self.profile['limits'].pop(key)
+            with self.assertRaises(ValueError):
+                gate.context(self.request, self.plan, self.profile,
+                             current_head_sha='2'*40, now=110)
+            self.profile['limits'][key] = old
+        for key in gate.LIMITS:
+            old = self.profile['limits'][key]
+            invalid = (None, True, False, -1, 0.0, float('inf'), float('nan'), '0')
+            invalid += (1,) if key == 'cost_microusd' else (0,)
+            for value in invalid:
+                with self.subTest(key=key, value=value):
+                    self.profile['limits'][key] = value
+                    with self.assertRaises(ValueError):
+                        gate.context(self.request, self.plan, self.profile,
+                                     current_head_sha='2'*40, now=110)
+            self.profile['limits'][key] = old
+        self.profile['limits']['unknown_cost'] = 0
+        self.refused()
+        self.assertEqual(self.spent, set())
+
+    def test_zero_charge_actual_cost_not_inferred(self):
+        for output in ({'status': 'ok'}, *({'status': 'ok', 'cost_microusd': cost}
+                       for cost in (None, True, False, -1, 1, 0.0, float('inf'), '0'))):
+            with self.subTest(output=output):
+                self.setUp()
+                self.zero_charge()
+                self.output = output
+                result = self.run_gate()
+                self.assertEqual(result['status'], 'reconcile_required')
+                self.assertIsNone(result['cost_microusd'])
+                self.assertTrue(result['reservation_consumed'])
+                self.assertFalse(result['retry_allowed'])
+                self.run_gate()
+                self.assertEqual(self.calls, 1)
+
+    def test_zero_charge_cancel_loss_remote_ambiguity(self):
+        for output in ('lost', {'status': 'remote_stop_unknown', 'cost_microusd': 0}):
+            with self.subTest(output=output):
+                self.setUp()
+                self.zero_charge()
+                self.output = output
+                result = self.run_gate()
+                self.assertEqual(result['status'], 'reconcile_required')
+                self.assertTrue(result['reservation_consumed'])
+                self.run_gate()
+                self.assertEqual(self.calls, 1)
+        self.setUp()
+        self.zero_charge()
+        self.assertEqual(self.run_gate(cancelled=True)['status'], 'cancelled')
+        self.refused()
+        self.assertEqual(self.spent, {'external-1'})
+
+    def test_zero_charge_ambiguous_claim_never_invokes_or_reuses(self):
+        self.zero_charge()
+        original_claim = self.port.claim
+        def lost(receipt, digest):
+            original_claim(receipt, digest)
+            raise RuntimeError('claim reply lost')
+        self.port = gate.VerificationPort(self.port.verify, lost, self.port.invoke)
+        for _ in range(2):
+            result = self.run_gate()
+            self.assertEqual(result['status'], 'reconcile_required')
+            self.assertIsNone(result['reservation_consumed'])
+            self.assertFalse(result['retry_allowed'])
+        self.assertEqual(self.calls, 0)
+        self.assertEqual(self.spent, {'external-1'})
 
     def test_ambiguous_claim_never_invokes(self):
         def lost(*args):
