@@ -1,0 +1,40 @@
+# Managed by templates/repo-workflow-materialization-manifest.json.
+# Edit templates/starter-workflows/pullfrog-standalone-ci.yml, then rematerialize the live workflow.
+name: Pullfrog Standalone Contract CI
+on:
+  pull_request:
+    branches: ['**', '!main', '!master']
+    paths:
+      - 'scripts/github/**'
+      - 'templates/starter-workflows/pullfrog-standalone-*.yml'
+      - '.github/workflows/pullfrog-standalone-*.yml'
+      - 'templates/repo-workflow-materialization-manifest.json'
+      - 'docs/standalone-pr-automation.md'
+permissions:
+  contents: read
+concurrency:
+  group: standalone-ci-${{ github.repository }}-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+jobs:
+  standalone-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Compile and run all Pullfrog regression fixtures without provider credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/github/pullfrog_standalone_*.py
+          env -u GITHUB_TOKEN -u GH_TOKEN python3 -m unittest discover \
+            -s scripts/github/tests -p 'test_pullfrog*.py' -v
+          python3 -I scripts/github/tests/test_speculoos_pr_contract.py -v
+      - name: Validate pinned workflow syntax and protected policy tests
+        shell: bash
+        run: scripts/github/validate_pullfrog_workflow.sh
+# No provider, credential lookup, publication or merge job is permitted here.

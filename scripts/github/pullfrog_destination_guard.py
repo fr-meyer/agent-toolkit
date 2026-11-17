@@ -51,6 +51,8 @@ FORBIDDEN_EXACT_PATHS = frozenset(
     }
 ) | PROTECTED_AUTOMATION_AUTHORITY_PATHS
 FORBIDDEN_PATH_PREFIXES = (
+    "scripts/github/pullfrog_standalone_",
+    "scripts/github/tests/test_pullfrog_standalone_",
     ".github/actions/",
     ".github/workflows/",
     ".speculoos/",
@@ -171,6 +173,26 @@ def _validate_identity(
         "default_branch": default_branch,
         "protected_refs": protected_refs,
     }
+
+
+def evaluate_destination(identity: dict[str, Any]) -> dict[str, Any]:
+    """Identity-only preflight before a provider call; NEVER a path/write permit."""
+    blockers: list[str] = []
+    observed = _validate_identity("observed", _mapping(identity), blockers)
+    if observed["slug"] and observed["head_repository_slug"] != observed["slug"]:
+        blockers.append("fork_head_forbidden")
+    if observed["head_ref"] and not observed["head_ref"].startswith(ALLOWED_HEAD_PREFIXES):
+        blockers.append("head_prefix_forbidden")
+    if observed["head_ref"] in observed["protected_refs"]:
+        blockers.append("protected_head_forbidden")
+    if observed["head_ref"] in {observed["base_ref"], observed["default_branch"]}:
+        blockers.append("base_or_default_head_forbidden")
+    if observed["base_sha"] and observed["base_sha"] == observed["head_sha"]:
+        blockers.append("base_head_sha_match")
+    return {"schema": "pullfrog-destination-preflight.v1",
+            "status": "blocked" if blockers else "destination_allowed",
+            "blockers": sorted(set(blockers)), "identity": observed,
+            "paths_checked": False, "publication_allowed": False}
 
 
 def evaluate_guard(payload: dict[str, Any]) -> dict[str, Any]:

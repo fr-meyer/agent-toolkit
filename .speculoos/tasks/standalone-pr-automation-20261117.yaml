@@ -1,0 +1,45 @@
+id: standalone-pr-automation-20261117
+title: Standalone explicit-request bounded Pullfrog controller and admission diagnostic
+status: preparing_publication
+owner: fr-meyer
+branch: feat/standalone-pr-automation-20261117
+base_branch: dev
+base_sha: d59277166070dcff82cea88adae15c51d2782b2a
+github:
+  issue: null
+  pull_request: null
+  url: null
+scope:
+  - standalone Pullfrog contract, admission, Decision recommendation, worker and review adapters
+  - local atomic CAS journal and bound restart/publication reconciliation controller
+  - explicit read-only hosted admission diagnostic and credential-free regression CI
+  - canonical workflow sources, materialization, contribution metadata and documentation
+non_goals:
+  - enabling a provider, worker, publisher, credential route or hosted coding loop
+  - auto-merge, merging, production deployment, serving-ref activation or settings changes
+  - billing, new recurring cost, permissions, visibility or branch protection changes
+acceptance:
+  - actual A/B/C/D contracts compose without temporary stubs
+  - immutable request, exact-head successor and evidence bindings survive restart
+  - original aggregate deadline and consumed Decision time cannot be reset by a worker
+  - destination mismatch is rejected before any Decision invocation
+  - authorization, paths, budgets, duplicates, unknown effects and missing providers fail closed
+  - read-only diagnostic is disabled by default and never checks out PR code
+  - full Pullfrog regressions, compilation, workflow materialization and lint pass
+  - independent review findings are repaired and contribution packet is privacy-clean
+delivery_policy:
+  mode: stop_after_review
+  reason: Owner approved a standalone implementation with no auto-merge; hosted runtime, publisher and live write pilot remain qualification gates.
+publication_boundary:
+  statement: Source-only broker-mediated feature PR under owner-approved standalone implementation plan. Hosted activation, exact CLI and Decision routes, durable claim qualification and first live write pilot remain explicit gates. No auto-merge.
+documentation_impact:
+  status: documented
+  rationale: README, catalog and docs/standalone-pr-automation.md distinguish source, diagnostic and live acceptance.
+validation:
+  - python3 -m unittest discover -s scripts/github/tests -p 'test_pullfrog*.py' -v
+  - python3 -m py_compile scripts/github/pullfrog_standalone_*.py
+  - python3 -I scripts/github/tests/test_speculoos_pr_contract.py -v
+  - scripts/github/validate_pullfrog_workflow.sh
+  - git diff --check origin/dev...HEAD
+private_data_scan: required
+publish_authority: Owner approved the complete standalone plan and parallel fastest implementation on 2026-11-17; only the reviewed source PR is prepared here. No serving activation, merge, recurring cost or live provider call.

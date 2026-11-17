@@ -33,6 +33,10 @@ tar -xzf "$tmp_dir/$archive_name" -C "$tmp_dir" actionlint
   "$repo_root/.github/workflows/pullfrog-review-fallback.yml" \
   "$repo_root/templates/starter-workflows/pullfrog-cloud-remediation-loop.yml" \
   "$repo_root/.github/workflows/pullfrog-cloud-remediation-loop.yml" \
+  "$repo_root/templates/starter-workflows/pullfrog-standalone-admission.yml" \
+  "$repo_root/.github/workflows/pullfrog-standalone-admission.yml" \
+  "$repo_root/templates/starter-workflows/pullfrog-standalone-ci.yml" \
+  "$repo_root/.github/workflows/pullfrog-standalone-ci.yml" \
   "$repo_root/templates/starter-workflows/speculoos.yml" \
   "$repo_root/.github/workflows/speculoos.yml"
 

@@ -1,0 +1,5 @@
+feat(pullfrog): add standalone bounded PR controller and gated admission diagnostic
+
+Task: standalone-pr-automation-20261117
+Feature PRs target `dev`; release/promotion PRs target `main`.
+No auto-merge, provider activation, paid call, publisher or deployment.
