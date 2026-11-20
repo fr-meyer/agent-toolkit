@@ -1,0 +1,91 @@
+id: standalone-pr-automation-20261117
+title: Standalone explicit-request bounded Pullfrog controller and admission diagnostic
+status: preparing_publication
+owner: fr-meyer
+branch: feat/standalone-pr-automation-20261117
+base_branch: dev
+base_sha: d59277166070dcff82cea88adae15c51d2782b2a
+github:
+  issue: null
+  pull_request: 113
+  url: https://github.com/fr-meyer/agent-toolkit/pull/113
+scope:
+  - standalone Pullfrog contract, admission, Decision recommendation, worker and review adapters
+  - local atomic CAS journal and bound restart/publication reconciliation controller
+  - pure typed Decision codec, transactional-store conformance and fail-closed execution profile ports
+  - explicit read-only hosted admission diagnostic and credential-free regression CI
+  - canonical workflow sources, materialization, contribution metadata and documentation
+non_goals:
+  - enabling a provider, worker, publisher, credential route or hosted coding loop
+  - auto-merge, merging, production deployment, serving-ref activation or settings changes
+  - billing, new recurring cost, permissions, visibility or branch protection changes
+acceptance:
+  - actual A/B/C/D contracts compose without temporary stubs
+  - immutable request, exact-head successor and evidence bindings survive restart
+  - original aggregate deadline and consumed Decision time cannot be reset by a worker
+  - destination mismatch is rejected before any Decision invocation
+  - authorization, paths, budgets, duplicates, unknown effects and missing providers fail closed
+  - read-only diagnostic is disabled by default and never checks out PR code
+  - full Pullfrog regressions, compilation, workflow materialization and lint pass
+  - independent review findings are repaired and contribution packet is privacy-clean
+  - confirmed late publication updates canonical state without permitting expired work
+  - ordinary Linux descendant cleanup retains owned leader identity until group cleanup
+  - proven-free follow-up attempts conserve original zero-cost, attempt and time limits
+  - offline codec/store/profile fixtures never claim hosted runtime qualification
+delivery_policy:
+  mode: stop_after_review
+  reason: Owner approved a standalone implementation with no auto-merge; hosted runtime, publisher and live write pilot remain qualification gates.
+publication_boundary:
+  statement: Source-only broker-mediated feature PR under owner-approved standalone implementation plan. Hosted activation, exact CLI and Decision routes, durable claim qualification and first live write pilot remain explicit gates. No auto-merge.
+documentation_impact:
+  status: documented
+  rationale: README, catalog and docs/standalone-pr-automation.md distinguish source, diagnostic and live acceptance.
+validation:
+  - python3 -m unittest discover -s scripts/github/tests -p 'test_pullfrog*.py' -v
+  - python3 -m py_compile scripts/github/pullfrog_standalone_*.py
+  - python3 -I scripts/github/tests/test_speculoos_pr_contract.py -v
+  - scripts/github/validate_pullfrog_workflow.sh
+  - git diff --check origin/dev...HEAD
+private_data_scan: required
+publish_authority: Owner approved the complete standalone plan and parallel fastest implementation on 2026-11-17; only the reviewed source PR is prepared here. No serving activation, merge, recurring cost or live provider call.
+next_action_v2_source:
+  branch: feat/standalone-decision-router-20261120
+  baseline: d9155ea274499c8665c8ad21ae51f5cec7caf939
+  authority: Owner approved 2026-11-20 16:49 KST; source-only lane
+  status: independently-accepted-source
+  compatibility: explicit v2; unchanged v1; implement_fix-only lossless worker bridge
+  runtime_gates:
+    - provider entitlement, disclosure, cancellation and enforceable usage/cost controls
+    - fixed retry_ci, request_review and CI completion source ports accepted; hosted permissions and integration unqualified
+    - hosted durable journal qualification, real-event shadow and genuine finite pilot
+  forbidden: provider calls, remote writes, activation, auto-merge, main merge, incremental spend
+routing_repair_source:
+  status: independently-accepted-source
+  supersedes_missing_source_ports: retry_ci, request_review, CI completion collection
+  surfaces:
+    - scripts/github/pullfrog_standalone_actions.py
+    - controller route, dispatch_action, reconcile_action, complete_ci
+    - existing pullfrog.yml workflow_dispatch inputs prompt/name, no workflow changes
+  runtime_still_gated:
+    - approved existing GitHub auth with exact actions and Pullfrog permissions
+    - qualified protected lightweight serving tag at exact trusted source
+    - provider billing/cancellation/usage controls and durable hosted journal
+    - real-event shadow, genuine finite pilot, independent readback
+effect_safety_repair_source:
+  parent: d1373704e600eb6d5350fd8c1e0e31c75062bdd1
+  fixes:
+    - live host policy, conserved monotonic deadline and binding checked at final HTTP send
+    - bounded remaining timeout support in existing authenticated GitHubClient
+    - dispatch and readback elapsed charged while unknown effects retain started intent
+    - startup-failure-before-steps evidence only; code/test timeouts not transient
+    - admitted base/head refs and bounded CI job identity/count evidence preserved
+  runtime_authority: unchanged; no calls, credentials, configuration, activation or publication
+hosted_review_5989789210_source:
+  reviewed_head: 0cb363330c0e62c7a386cb39fe0d3776b051d025
+  status: local-repair-candidate-awaiting-independent-review
+  repairs:
+    - green CI does not suppress scoped admitted implementation
+    - authorized pending intent cancellation terminalizes before dispatch; started effects reconcile
+    - actual Decision transport and relay enforce original aggregate worker deadline before SDK
+    - Python and Node reject unsafe integers instead of receipting rounded evidence
+  live_effects: none; publication, activation, provider execution and merge not performed

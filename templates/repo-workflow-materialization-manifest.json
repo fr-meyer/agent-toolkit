@@ -53,6 +53,14 @@
     {
       "source": "templates/starter-workflows/speculoos.yml",
       "target": ".github/workflows/speculoos.yml"
+    },
+    {
+      "source": "templates/starter-workflows/pullfrog-standalone-admission.yml",
+      "target": ".github/workflows/pullfrog-standalone-admission.yml"
+    },
+    {
+      "source": "templates/starter-workflows/pullfrog-standalone-ci.yml",
+      "target": ".github/workflows/pullfrog-standalone-ci.yml"
     }
   ]
 }

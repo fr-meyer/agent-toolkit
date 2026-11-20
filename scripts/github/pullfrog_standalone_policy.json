@@ -1,0 +1,18 @@
+{
+  "schema": "pullfrog-standalone-policy.v1",
+  "enabled": false,
+  "repository_slug": "fr-meyer/agent-toolkit",
+  "initiators": [],
+  "allowed_paths": [
+    "src"
+  ],
+  "protected_refs": [
+    "dev",
+    "main"
+  ],
+  "budget": {
+    "max_attempts": 2,
+    "max_seconds": 1200,
+    "max_cost_microusd": 0
+  }
+}

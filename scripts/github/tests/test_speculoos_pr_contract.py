@@ -26,6 +26,12 @@ class SpeculoosPrContractUnitTests(unittest.TestCase):
         text = "delivery_policy:\n  mode: inherit_branch_policy\nnotes:\n  - kept\n"
         self.assertEqual(MODULE._nested_scalar(text, "delivery_policy", "mode"), "inherit_branch_policy")
 
+    def test_explicit_no_merge_policy_requires_reason(self):
+        self.assertTrue(MODULE._task_delivery_policy_valid("delivery_policy:\n  mode: stop_after_review\n  reason: Owner requested no merge\n"))
+        for reason in ("", "null", "true", "false"):
+            self.assertFalse(MODULE._task_delivery_policy_valid("delivery_policy:\n  mode: stop_after_review\n  reason: " + reason + "\n"))
+        self.assertFalse(MODULE._task_delivery_policy_valid("delivery_policy:\n  mode: skip_all_gates\n"))
+
     def test_changed_file_packet_parser(self):
         packet = "## Changed Files For Publish\n\n- `b.py`\n- `a.py`\n\n## Validation\n"
         self.assertEqual(MODULE._packet_changed_files(packet), ["a.py", "b.py"])
@@ -139,6 +145,14 @@ class SpeculoosPrContractIntegrationTests(unittest.TestCase):
         report = MODULE.validate(self.args())
         self.assertEqual(report["status"], "ok", report)
         self.assertEqual(report["blockers"], [])
+
+    def test_explicit_stop_after_review_preserves_all_other_gates(self):
+        task_path = self.repo / f".speculoos/tasks/{TASK}.yaml"
+        task_path.write_text(task_path.read_text().replace("mode: inherit_branch_policy", "mode: stop_after_review\n  reason: Owner requires human-controlled no-merge delivery"))
+        self.git("add", "."); self.git("commit", "-qm", "explicit no-merge policy")
+        self.head_sha = self.git("rev-parse", "HEAD").strip()
+        report = MODULE.validate(self.args())
+        self.assertEqual(report["status"], "ok", report)
 
     def test_head_mismatch_fails_closed(self):
         args = self.args()

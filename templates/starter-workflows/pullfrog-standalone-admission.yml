@@ -1,0 +1,70 @@
+# Managed by templates/repo-workflow-materialization-manifest.json.
+# Edit templates/starter-workflows/pullfrog-standalone-admission.yml, then rematerialize the live workflow.
+name: Pullfrog Standalone Explicit Admission (diagnostic)
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Exact existing pull request number
+        required: true
+        type: string
+      task:
+        description: Scoped implementation request (data, never shell)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: standalone-pr-${{ github.repository }}-${{ github.event.issue.number || inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  admission-diagnostic:
+    if: >-
+      vars.STANDALONE_PR_ADMISSION_DIAGNOSTIC == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.issue.pull_request && github.event.comment.body == '/pr-automation run'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require immutable trusted controller
+        env:
+          CONTROLLER_SHA: ${{ vars.STANDALONE_PR_CONTROLLER_SHA }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CONTROLLER_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Missing immutable trusted controller SHA'; exit 1; }
+      - name: Checkout trusted controller only, never PR source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ vars.STANDALONE_PR_CONTROLLER_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Build diagnostic from authenticated read-only observations
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/github/pullfrog_standalone_github.py \
+            --policy scripts/github/pullfrog_standalone_policy.json \
+            --out-dir artifacts/standalone-admission
+      - name: Retain diagnostic checkpoint, not a live claim permit
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: standalone-admission-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/standalone-admission/
+          if-no-files-found: ignore
+          retention-days: 90
+
+# Intentionally no provider, worker, publisher, merge, secrets or write permissions.
+# This opt-in diagnostic does not activate the hosted coding/remediation loop.

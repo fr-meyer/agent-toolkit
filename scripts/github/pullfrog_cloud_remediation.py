@@ -1793,5 +1793,51 @@ def main() -> int:
     return 0
 
 
+def seal_standalone_patch(*, workspace: Path, raw_patch: bytes, source_head_sha: str) -> tuple[dict[str, Any], bytes]:
+    """Rebuild in disposable credential-free checkout; discard checkout on error.
+
+    Reuses legacy canonicalization without fabricating review/Speculoos claims.
+    Caller authenticates provenance, guards destination and runs trusted tests.
+    """
+    if not SHA_RE.fullmatch(source_head_sha):
+        raise RemediationError("invalid_source_head")
+    if not isinstance(raw_patch, bytes) or not 0 < len(raw_patch) <= MAX_PATCH_BYTES:
+        raise RemediationError("invalid_patch_size")
+    if _git_text(workspace, "rev-parse", "HEAD") != source_head_sha:
+        raise RemediationError("candidate_source_mismatch")
+    if _run_git(workspace, "status", "--porcelain=v1").stdout:
+        raise RemediationError("dirty_candidate_workspace")
+    patch_path = workspace / ".git" / "pullfrog-standalone.patch"
+    patch_path.write_bytes(raw_patch)
+    try:
+        _run_git(workspace, "apply", "--check", "--binary", str(patch_path.resolve()))
+        _run_git(workspace, "apply", "--index", "--binary", str(patch_path.resolve()))
+    finally:
+        patch_path.unlink(missing_ok=True)
+    raw_paths = _run_git(workspace, "diff", "--cached", "--name-only", "--no-renames", "-z", source_head_sha, "--").stdout
+    try:
+        paths = sorted({p.decode("utf-8") for p in raw_paths.split(bytes([0])) if p})
+    except UnicodeDecodeError as exc:
+        raise RemediationError("invalid_candidate_path") from exc
+    if not paths or len(paths) > destination_guard.MAX_CHANGED_PATHS:
+        raise RemediationError("invalid_changed_paths")
+    for path in paths:
+        if (not destination_guard._valid_path(path)
+            or path in destination_guard.FORBIDDEN_EXACT_PATHS
+            or path.startswith(destination_guard.FORBIDDEN_PATH_PREFIXES)
+            or path.startswith("scripts/github/pullfrog_standalone_")):
+            raise RemediationError("candidate_destination_blocked")
+        stage = _run_git(workspace, "ls-files", "--stage", "-z", "--", path).stdout
+        if stage.startswith((b"160000 ", b"120000 ")):
+            raise RemediationError("candidate_special_file_forbidden")
+    patch = _run_git(workspace, "diff", "--cached", "--binary", "--full-index", "--no-renames", source_head_sha, "--").stdout
+    if not 0 < len(patch) <= MAX_PATCH_BYTES:
+        raise RemediationError("invalid_patch_size")
+    return {"schema": "pullfrog-standalone-patch-seal.v1",
+            "source_head_sha": source_head_sha, "patch_digest": _bytes_digest(patch),
+            "patch_bytes": len(patch), "changed_paths": paths,
+            "changed_paths_digest": _digest(paths)}, patch
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

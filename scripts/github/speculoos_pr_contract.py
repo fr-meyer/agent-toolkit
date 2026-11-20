@@ -147,6 +147,19 @@ def _actor_contract(repo: Path) -> tuple[bool, str]:
     return True, "non-stable merge actor contract is complete"
 
 
+def _task_delivery_policy_valid(task: str) -> bool:
+    try:
+        mode = _nested_scalar(task, "delivery_policy", "mode")
+        if mode == "inherit_branch_policy":
+            return True
+        if mode != "stop_after_review":
+            return False
+        reason = _nested_scalar(task, "delivery_policy", "reason")
+        return bool(reason) and reason.casefold() not in {"null", "~", "true", "false"}
+    except ContractError:
+        return False
+
+
 def validate(args: argparse.Namespace) -> dict[str, Any]:
     repo = Path(args.repo).resolve()
     checks: list[dict[str, str]] = []
@@ -177,7 +190,7 @@ def validate(args: argparse.Namespace) -> dict[str, Any]:
                 _top_level_scalar(task, "id") == args.task,
                 _top_level_scalar(task, "branch") == args.expected_head_ref,
                 _top_level_scalar(task, "base_branch") == args.expected_base_ref,
-                _nested_scalar(task, "delivery_policy", "mode") == "inherit_branch_policy",
+                _task_delivery_policy_valid(task),
             )
         )
         record("task_identity", identity_ok, task_relative)

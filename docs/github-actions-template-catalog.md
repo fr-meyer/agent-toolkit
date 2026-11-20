@@ -466,6 +466,17 @@ Use this as the repo-local validation entrypoint when the repository-similarity-
 - The local official Speculoos CLI remains the authoring-time validator and publication-packet checker. The hosted job uses the narrower repository-bound contract so the public repository does not need credentials for the private Speculoos source repository.
 - The repository records `dev` explicitly while the independent custom merge controller remains authoritative for the broader any-valid-base-except-`main`/`master` policy.
 
+## 14. Standalone explicit-request admission diagnostic
+
+- **Type:** starter workflow
+- **Canonical source:** `templates/starter-workflows/pullfrog-standalone-admission.yml`
+- **Live/runtime copy:** `.github/workflows/pullfrog-standalone-admission.yml`
+- **Governed by:** repo-workflow materialization manifest
+- **Purpose:** authenticate an exact comment/manual request independently of Speculoos and emit a bounded diagnostic checkpoint.
+- **Security boundary:** disabled by default; immutable trusted controller SHA; read-only token; no PR-source checkout, provider, worker, publisher or merge job; no persisted checkout credentials.
+- **Not qualification:** local CAS and artifact upload do not establish hosted durable claim persistence, coding/Decision runtime isolation, billing hard-stop, authentic live review collection or publisher readiness.
+- See `docs/standalone-pr-automation.md` for acceptance gates and rollback boundaries.
+
 ## Live runtime copies in this repo
 
 These files exist under `.github/workflows/` and should not be treated as the primary authoring location:
@@ -481,6 +492,7 @@ These files exist under `.github/workflows/` and should not be treated as the pr
 - `.github/workflows/pullfrog-cloud-coordinator-dry-run.yml`
 - `.github/workflows/pullfrog-review-fallback.yml`
 - `.github/workflows/pullfrog-cloud-remediation-loop.yml`
+- `.github/workflows/pullfrog-standalone-admission.yml`
 - `.github/workflows/speculoos.yml`
 
 Their canonical sources are:
@@ -496,6 +508,7 @@ Their canonical sources are:
 - `templates/starter-workflows/pullfrog-cloud-coordinator-dry-run.yml`
 - `templates/starter-workflows/pullfrog-review-fallback.yml`
 - `templates/starter-workflows/pullfrog-cloud-remediation-loop.yml`
+- `templates/starter-workflows/pullfrog-standalone-admission.yml`
 - `templates/starter-workflows/speculoos.yml`
 
 ## Maintenance rule for this catalog

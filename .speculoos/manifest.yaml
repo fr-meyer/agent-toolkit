@@ -96,5 +96,5 @@ gates:
     - hosted-review-fallback-pilot-separate-approval
     - composite-review-gate-consumers-validated
     - required-check-migration-separate-approval
-current_task: pullfrog-dualref-custody-current-dev-20261105
-current_task_metadata: .speculoos/tasks/pullfrog-dualref-custody-current-dev-20261105.yaml
+current_task: standalone-pr-automation-20261117
+current_task_metadata: .speculoos/tasks/standalone-pr-automation-20261117.yaml

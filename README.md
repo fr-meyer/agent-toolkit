@@ -120,6 +120,7 @@ remains the guarded publication and merge broker.
 - **Provider-free PR automation dogfood:** `docs/pr-automation-dogfood.md`
 - **Bounded Pullfrog review-only pilot:** `docs/pullfrog-review-only-pilot.md`, with canonical workflow source at `templates/starter-workflows/pullfrog.yml`
 - **Activation-gated Pullfrog review fallback:** `docs/pullfrog-review-model-fallback.md`, with canonical workflow source at `templates/starter-workflows/pullfrog-review-fallback.yml` and composite exact-head check `pullfrog-review-gate`
+- **Standalone explicit-request PR automation:** `docs/standalone-pr-automation.md`; bounded local controller and opt-in read-only admission diagnostic, with live coding/provider/publication qualification still gated.
 - **Independent Speculoos PR gate:** `templates/starter-workflows/speculoos.yml`, materialized to `.github/workflows/speculoos.yml`, with zero-secret hosted contract validation in `scripts/github/speculoos_pr_contract.py`
 - **Materialized live reusable maintenance workflow:** `.github/workflows/sync-starter-workflow-template-refs-reusable.yml`
 - **Live repo entrypoint workflow:** `.github/workflows/sync-starter-workflow-template-refs-trigger.yml`

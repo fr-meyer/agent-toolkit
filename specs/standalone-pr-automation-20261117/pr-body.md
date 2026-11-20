@@ -1,0 +1,112 @@
+## Summary
+
+- Add explicit-request standalone Pullfrog control contracts without mandatory Speculoos, CodeRabbit or auto-merge.
+- Compose real admission, recommendation-only Decision, credential-separated execution plans, exact-head review collection and publication reconciliation.
+- Enforce immutable original deadlines, Decision elapsed time, conserved usage and pre-provider destination binding; fix both independent review findings.
+- Add atomic local CAS/restart journal, an explicitly disabled read-only admission diagnostic and credential-free contract CI.
+- Add a pure typed Decision codec pinned to trusted OpenClaw source, transactional-state conformance and a fail-closed execution-profile verification seam.
+- Repair observed Pullfrog findings for ordinary descendant cleanup, late publication reconciliation and a second proven-free attempt.
+- Preserve prior-attempt artifact history while completing a new authorized attempt, and represent verified zero-charge profiles without weakening resource bounds.
+- Add explicit v2 routing for six typed actions, CI completion/resumption, fixed CI retry and Pullfrog review dispatch with durable intent and independent reconciliation.
+- Recheck live authority, exact base/head refs and conserved deadlines at the actual HTTP effect boundary; reject ambiguous test timeouts as infrastructure retries.
+
+- Repair hosted Pullfrog review 5989789210: retain scoped work under green CI, cancel unstarted action intents, bound actual SDK work by original aggregate deadline, and reject lossy cross-language integers.
+
+## Scope and limitations
+
+Source-only foundation: not a qualified hosted coding loop. No provider/CLI call,
+credential/configuration write, publisher activation, merge, deployment or cost
+change is part of this PR. Local journal/artifact tests do not prove hosted durable
+claims. Live Decision provider custody, disclosure and bounded cost; coding CLI/model
+isolation; protected serving-source provenance; GitHub/Pullfrog permissions;
+hosted event/journal integration and a genuine useful pilot remain live gates.
+A historical API response is not subscription entitlement or a billing hard stop. See docs/standalone-pr-automation.md.
+
+Feature PRs target `dev`; release/promotion PRs target `main`.
+
+## Validation
+
+- Independent source review accepted implementation revision `71e58f74af149a7e67b6d4a4482df60a80bc1cfb`: 509 full Python regressions, including 19 focused action-boundary tests, and 15 relay tests passed. Ten contribution-metadata tests also passed in implementation validation. Publication-only metadata is checked separately.
+- Canonical/materialized workflow equality, checksum-pinned actionlint and protected workflow-policy validator passed.
+- Python compilation and whitespace/privacy checks are required on the exact source candidate before publication.
+- Original and subsequent independent/Pullfrog findings are reproduced and repaired; focused successor verification is recorded before publication. No fixture result qualifies hosted isolation, billing or provider custody.
+
+- Hosted review 5989789210 repair candidate: 516 Python regressions, 17 Node relay tests and 10 contribution-metadata tests. All four findings reproduced against frozen reviewed head 0cb3633, including ~29-second SDK timeout for five aggregate seconds and receipted rounded evidence. Repaired production-boundary regressions pass; this is not a fresh hosted review or live readiness.
+
+## Documentation Impact
+
+README.md, docs/github-actions-template-catalog.md and docs/standalone-pr-automation.md document the new source surfaces, disabled diagnostic, credential-free CI and unresolved live qualification gates.
+
+## Publication Boundary
+
+Source-only branch/PR approval does not authorize any credential change, provider call, deployment, release, serving activation or merge. Those remain separate exact-scope approval and qualification gates. No auto-merge.
+
+## Approval And Rollback
+
+Owner approved the standalone plan and parallel implementation on 2026-11-17
+and the amended Decision-routing implementation on 2026-11-20.
+Only this source PR is proposed. No auto-merge or serving activation. Rollback is
+to close the source PR or revert a separately approved merge; preserve journals,
+recovery branches and evidence. Existing unrelated task holds are unchanged.
+
+## Changed Files For Publish
+
+- .github/workflows/pullfrog-standalone-admission.yml
+- .github/workflows/pullfrog-standalone-ci.yml
+- .speculoos/manifest.yaml
+- .speculoos/tasks/standalone-pr-automation-20261117.yaml
+- README.md
+- docs/github-actions-template-catalog.md
+- docs/pullfrog-standalone-decision-relay.md
+- docs/pullfrog-standalone-decision-transport.md
+- docs/standalone-pr-automation.md
+- docs/standalone-runtime-worker-lane-c.md
+- docs/standalone-sqlite-lane-a.md
+- scripts/github/pullfrog_cloud_remediation.py
+- scripts/github/pullfrog_destination_guard.py
+- scripts/github/pullfrog_review_fallback.py
+- scripts/github/pullfrog_standalone_actions.py
+- scripts/github/pullfrog_standalone_admission.py
+- scripts/github/pullfrog_standalone_collector.py
+- scripts/github/pullfrog_standalone_contract.py
+- scripts/github/pullfrog_standalone_controller.py
+- scripts/github/pullfrog_standalone_decision.py
+- scripts/github/pullfrog_standalone_decision_codec.py
+- scripts/github/pullfrog_standalone_decision_relay.mjs
+- scripts/github/pullfrog_standalone_decision_transport.py
+- scripts/github/pullfrog_standalone_effect_guard.py
+- scripts/github/pullfrog_standalone_execution.py
+- scripts/github/pullfrog_standalone_execution_profile.py
+- scripts/github/pullfrog_standalone_github.py
+- scripts/github/pullfrog_standalone_policy.json
+- scripts/github/pullfrog_standalone_review.py
+- scripts/github/pullfrog_standalone_runtime_worker.py
+- scripts/github/pullfrog_standalone_sqlite.py
+- scripts/github/pullfrog_standalone_store.py
+- scripts/github/pullfrog_standalone_worker.py
+- scripts/github/speculoos_pr_contract.py
+- scripts/github/tests/test_pullfrog_standalone_a.py
+- scripts/github/tests/test_pullfrog_standalone_actions.py
+- scripts/github/tests/test_pullfrog_standalone_c.py
+- scripts/github/tests/test_pullfrog_standalone_collector.py
+- scripts/github/tests/test_pullfrog_standalone_controller.py
+- scripts/github/tests/test_pullfrog_standalone_decision.py
+- scripts/github/tests/test_pullfrog_standalone_decision_codec.py
+- scripts/github/tests/test_pullfrog_standalone_decision_relay.mjs
+- scripts/github/tests/test_pullfrog_standalone_decision_transport.py
+- scripts/github/tests/test_pullfrog_standalone_execution_c.py
+- scripts/github/tests/test_pullfrog_standalone_execution_profile.py
+- scripts/github/tests/test_pullfrog_standalone_github.py
+- scripts/github/tests/test_pullfrog_standalone_pullfrog_fixes.py
+- scripts/github/tests/test_pullfrog_standalone_review.py
+- scripts/github/tests/test_pullfrog_standalone_routing.py
+- scripts/github/tests/test_pullfrog_standalone_runtime_worker.py
+- scripts/github/tests/test_pullfrog_standalone_sqlite.py
+- scripts/github/tests/test_pullfrog_standalone_store.py
+- scripts/github/tests/test_speculoos_pr_contract.py
+- scripts/github/validate_pullfrog_workflow.sh
+- specs/standalone-pr-automation-20261117/commit-message.txt
+- specs/standalone-pr-automation-20261117/pr-body.md
+- templates/repo-workflow-materialization-manifest.json
+- templates/starter-workflows/pullfrog-standalone-admission.yml
+- templates/starter-workflows/pullfrog-standalone-ci.yml

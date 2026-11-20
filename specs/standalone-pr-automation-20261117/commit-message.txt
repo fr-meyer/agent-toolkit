@@ -1,0 +1,5 @@
+feat(pullfrog): add bounded standalone PR control and typed action routing
+
+Task: standalone-pr-automation-20261117
+Feature PRs target `dev`; release/promotion PRs target `main`.
+Source-only publication; no auto-merge, serving activation, paid provider call, credential/configuration change or deployment.
