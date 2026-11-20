@@ -7,21 +7,24 @@
 - Add a pure typed Decision codec pinned to trusted OpenClaw source, transactional-state conformance and a fail-closed execution-profile verification seam.
 - Repair observed Pullfrog findings for ordinary descendant cleanup, late publication reconciliation and a second proven-free attempt.
 - Preserve prior-attempt artifact history while completing a new authorized attempt, and represent verified zero-charge profiles without weakening resource bounds.
+- Add explicit v2 routing for six typed actions, CI completion/resumption, fixed CI retry and Pullfrog review dispatch with durable intent and independent reconciliation.
+- Recheck live authority, exact base/head refs and conserved deadlines at the actual HTTP effect boundary; reject ambiguous test timeouts as infrastructure retries.
 
 ## Scope and limitations
 
 Source-only foundation: not a qualified hosted coding loop. No provider/CLI call,
 credential/configuration write, publisher activation, merge, deployment or cost
 change is part of this PR. Local journal/artifact tests do not prove hosted durable
-claims. Exact Decision transport, coding CLI/model custody and isolation, hard
-billing stop, genuine live Pullfrog identity and separate publisher qualification
-remain live acceptance gates. See docs/standalone-pr-automation.md.
+claims. Live Decision provider custody, disclosure and bounded cost; coding CLI/model
+isolation; protected serving-source provenance; GitHub/Pullfrog permissions;
+hosted event/journal integration and a genuine useful pilot remain live gates.
+A historical API response is not subscription entitlement or a billing hard stop. See docs/standalone-pr-automation.md.
 
 Feature PRs target `dev`; release/promotion PRs target `main`.
 
 ## Validation
 
-- 447 full Pullfrog regression tests and 10 contribution-contract tests passed on the integrated source successor. Exact committed-candidate validation is recorded before publication.
+- Independent source review accepted implementation revision `71e58f74af149a7e67b6d4a4482df60a80bc1cfb`: 509 full Python regressions, including 19 focused action-boundary tests, and 15 relay tests passed. Ten contribution-metadata tests also passed in implementation validation. Publication-only metadata is checked separately.
 - Canonical/materialized workflow equality, checksum-pinned actionlint and protected workflow-policy validator passed.
 - Python compilation and whitespace/privacy checks are required on the exact source candidate before publication.
 - Original and subsequent independent/Pullfrog findings are reproduced and repaired; focused successor verification is recorded before publication. No fixture result qualifies hosted isolation, billing or provider custody.
@@ -36,7 +39,8 @@ Source-only branch/PR approval does not authorize any credential change, provide
 
 ## Approval And Rollback
 
-Owner approved the standalone plan and parallel implementation on 2026-11-17.
+Owner approved the standalone plan and parallel implementation on 2026-11-17
+and the amended Decision-routing implementation on 2026-11-20.
 Only this source PR is proposed. No auto-merge or serving activation. Rollback is
 to close the source PR or revert a separately approved merge; preserve journals,
 recovery branches and evidence. Existing unrelated task holds are unchanged.
@@ -49,34 +53,51 @@ recovery branches and evidence. Existing unrelated task holds are unchanged.
 - .speculoos/tasks/standalone-pr-automation-20261117.yaml
 - README.md
 - docs/github-actions-template-catalog.md
+- docs/pullfrog-standalone-decision-relay.md
+- docs/pullfrog-standalone-decision-transport.md
 - docs/standalone-pr-automation.md
+- docs/standalone-runtime-worker-lane-c.md
+- docs/standalone-sqlite-lane-a.md
 - scripts/github/pullfrog_cloud_remediation.py
 - scripts/github/pullfrog_destination_guard.py
+- scripts/github/pullfrog_review_fallback.py
+- scripts/github/pullfrog_standalone_actions.py
 - scripts/github/pullfrog_standalone_admission.py
 - scripts/github/pullfrog_standalone_collector.py
 - scripts/github/pullfrog_standalone_contract.py
 - scripts/github/pullfrog_standalone_controller.py
 - scripts/github/pullfrog_standalone_decision.py
 - scripts/github/pullfrog_standalone_decision_codec.py
+- scripts/github/pullfrog_standalone_decision_relay.mjs
+- scripts/github/pullfrog_standalone_decision_transport.py
+- scripts/github/pullfrog_standalone_effect_guard.py
 - scripts/github/pullfrog_standalone_execution.py
 - scripts/github/pullfrog_standalone_execution_profile.py
 - scripts/github/pullfrog_standalone_github.py
 - scripts/github/pullfrog_standalone_policy.json
 - scripts/github/pullfrog_standalone_review.py
+- scripts/github/pullfrog_standalone_runtime_worker.py
+- scripts/github/pullfrog_standalone_sqlite.py
 - scripts/github/pullfrog_standalone_store.py
 - scripts/github/pullfrog_standalone_worker.py
 - scripts/github/speculoos_pr_contract.py
 - scripts/github/tests/test_pullfrog_standalone_a.py
+- scripts/github/tests/test_pullfrog_standalone_actions.py
 - scripts/github/tests/test_pullfrog_standalone_c.py
 - scripts/github/tests/test_pullfrog_standalone_collector.py
 - scripts/github/tests/test_pullfrog_standalone_controller.py
 - scripts/github/tests/test_pullfrog_standalone_decision.py
 - scripts/github/tests/test_pullfrog_standalone_decision_codec.py
+- scripts/github/tests/test_pullfrog_standalone_decision_relay.mjs
+- scripts/github/tests/test_pullfrog_standalone_decision_transport.py
 - scripts/github/tests/test_pullfrog_standalone_execution_c.py
 - scripts/github/tests/test_pullfrog_standalone_execution_profile.py
 - scripts/github/tests/test_pullfrog_standalone_github.py
 - scripts/github/tests/test_pullfrog_standalone_pullfrog_fixes.py
 - scripts/github/tests/test_pullfrog_standalone_review.py
+- scripts/github/tests/test_pullfrog_standalone_routing.py
+- scripts/github/tests/test_pullfrog_standalone_runtime_worker.py
+- scripts/github/tests/test_pullfrog_standalone_sqlite.py
 - scripts/github/tests/test_pullfrog_standalone_store.py
 - scripts/github/tests/test_speculoos_pr_contract.py
 - scripts/github/validate_pullfrog_workflow.sh
