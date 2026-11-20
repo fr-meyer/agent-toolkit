@@ -594,7 +594,9 @@ class GitHubClient:
         self.token = token
         self.repository_slug = repository_slug
 
-    def request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+    def request(self, method: str, path: str, payload: dict[str, Any] | None = None, *, timeout: float = 30, before_send=None) -> Any:
+        if type(timeout) not in (int, float) or not 0 < timeout <= 30:
+            raise FallbackError("invalid_github_timeout")
         url = self.api_url + path
         data = None if payload is None else json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
@@ -609,8 +611,13 @@ class GitHubClient:
                 **({"Content-Type": "application/json"} if data is not None else {}),
             },
         )
+        if before_send is not None:
+            remaining = before_send()
+            if type(remaining) not in (int, float) or not 0 < remaining <= 30:
+                raise FallbackError("invalid_github_timeout")
+            timeout = min(timeout, remaining)
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
                 raw = response.read(MAX_RESPONSE_BYTES + 1)
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
             raise FallbackError("github_api_request_failed") from exc
@@ -623,14 +630,14 @@ class GitHubClient:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise FallbackError("github_api_invalid_json") from exc
 
-    def get(self, path: str) -> Any:
-        return self.request("GET", path)
+    def get(self, path: str, **bounds) -> Any:
+        return self.request("GET", path, **bounds)
 
-    def post(self, path: str, payload: dict[str, Any]) -> Any:
-        return self.request("POST", path, payload)
+    def post(self, path: str, payload: dict[str, Any], **bounds) -> Any:
+        return self.request("POST", path, payload, **bounds)
 
-    def graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
-        value = self.request("POST", "/graphql", {"query": query, "variables": variables})
+    def graphql(self, query: str, variables: dict[str, Any], **bounds) -> dict[str, Any]:
+        value = self.request("POST", "/graphql", {"query": query, "variables": variables}, **bounds)
         if not isinstance(value, dict) or value.get("errors"):
             raise FallbackError("github_graphql_invalid_response")
         return value

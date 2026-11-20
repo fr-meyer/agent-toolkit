@@ -72,3 +72,12 @@ routing_repair_source:
     - qualified protected lightweight serving tag at exact trusted source
     - provider billing/cancellation/usage controls and durable hosted journal
     - real-event shadow, genuine finite pilot, independent readback
+effect_safety_repair_source:
+  parent: d1373704e600eb6d5350fd8c1e0e31c75062bdd1
+  fixes:
+    - live host policy, conserved monotonic deadline and binding checked at final HTTP send
+    - bounded remaining timeout support in existing authenticated GitHubClient
+    - dispatch and readback elapsed charged while unknown effects retain started intent
+    - startup-failure-before-steps evidence only; code/test timeouts not transient
+    - admitted base/head refs and bounded CI job identity/count evidence preserved
+  runtime_authority: unchanged; no calls, credentials, configuration, activation or publication

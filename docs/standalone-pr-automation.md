@@ -178,3 +178,38 @@ routing. Generic dependency_running is rejected; no polling/scheduler is added.
 Host completion events call complete_ci only for retained dependencies. Cancel
 and original time/attempt/cost limits remain authoritative. No source test claims
 provider billing, live dispatch, protected-tag policy or hosted durability proof.
+
+### Effect-safety repair (R1/R2/R3)
+
+Action dispatch now constructs a trusted EffectGuard before reservation, preserving
+one monotonic origin and original absolute request/aggregate deadline. Every
+bounded read rechecks host-owned live policy, binding and budget; the production
+GitHubClient invokes the guard again immediately before urlopen/POST, after
+request construction. dispatch_action accepts optional policy_loader (a trusted
+host policy reload function, never an event Boolean) and clock. Reconciliation
+requires policy or policy_loader too. Blocking read, POST and readback elapsed
+seconds are persisted even when an unknown effect remains action_started.
+No expired/unsupported transport gets an implicit constant-timeout fallback.
+
+The existing pullfrog_review_fallback.GitHubClient get/post/graphql now forwards
+optional timeout and before_send bounds to request. Default existing callers
+retain the old 30-second behavior. Guarded action callers supply a finite remaining
+timeout <=30 seconds, and before_send returns the freshly checked remaining bound.
+BoundedClient refuses clients without this explicit supported interface. Effects
+require the bounded client; injected opaque review callbacks are no longer accepted
+for guarded dispatch. The concrete existing-workflow runner uses the same bound
+client for source/workflow/PR reads and POST. SDK/provider wire remains unchanged.
+
+Only positive GitHub startup_failure classification before any job step executes
+can authorize automatic infrastructure retry. General timed_out, including a hung
+repository test, is unclassified and ineligible. Collected observations preserve
+bounded job IDs/run/head and step names/status/conclusions, plus explicit
+classification provenance. Job counts cannot drift across pages; duplicate/wrong
+run/head IDs or evidence overflow fail closed. Both live base_ref and head_ref,
+not merely their SHAs, must match the admitted request before either action.
+
+Transport deadlines are per-request remaining socket timeout bounds, not proof
+of cancellation of an already accepted GitHub effect. A lost/late response remains
+an unknown-effect hold, never a refund or automatic retry. Hosted source-tag,
+workflow-byte provenance, credential/permission and cost qualification remain
+separate from these repaired source controls.

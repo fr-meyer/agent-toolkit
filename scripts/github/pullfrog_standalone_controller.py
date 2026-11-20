@@ -336,41 +336,75 @@ def route(journal, policy, context, execution, destination, *, expected_digest, 
 
 
 
-def dispatch_action(journal, policy, port, *, expected_digest, now):
-    """Persist started before effect. Restart can read back, never redispatch."""
+def dispatch_action(journal, policy, port, *, expected_digest, now, clock=None, policy_loader=None):
+    """Trusted loader is host-owned live policy, never an event boolean."""
+    from pullfrog_standalone_effect_guard import EffectGuard
+    clock = clock or time.monotonic
+    started = clock()
+    loader = policy_loader or (lambda: policy)
+    owned = {}
     def reserve(prior):
         require(prior is not None and prior['phase'] == 'action_pending', 'action_requires_reconciliation')
-        r, s = prior['request'], prior['state']
-        require(admission._authorized(r['initiator'], policy, r), 'authority_revoked')
-        require(not s['terminal'] and now < min(r['expires_at'], s['started_at'] + r['budget']['max_seconds']), 'action_budget_exhausted')
-        require(s['cost_microusd'] <= r['budget']['max_cost_microusd'], 'cost_exhausted')
+        guard = EffectGuard(prior['request'], prior['state'], prior['binding'],
+                            policy_loader=loader, now=now, clock=clock)
+        guard.start = started
+        guard.check()
         require(prior['artifacts']['action_intent']['binding'] == prior['binding'], 'stale_action_binding')
-        port.current(r, s['current_head'])
+        bounded = port.bounded(guard)
+        bounded.current(prior['request'], prior['state']['current_head'])
         prior['phase'] = 'action_started'
-        return prior, dict(request=r, intent=prior['artifacts']['action_intent'])
+        owned.update(guard=guard, port=bounded)
+        return prior, dict(request=prior['request'], intent=prior['artifacts']['action_intent'])
     reserved = journal.transaction(expected_digest, reserve)
+    receipt = None
+    reason = None
     try:
-        port.execute(reserved['output']['request'], reserved['output']['intent'])
-    except Exception:
-        # An exception cannot prove no external effect. Keep the durable hold.
-        return dict(journal_digest=reserved['journal_digest'], status='reconcile_required')
-    return reconcile_action(journal, port, expected_digest=reserved['journal_digest'], now=now)
+        owned['port'].execute(reserved['output']['request'], reserved['output']['intent'])
+        receipt = owned['port'].readback(reserved['output']['request'], reserved['output']['intent'])
+    except Exception as error:
+        reason = getattr(error, 'code', 'effect_unknown')
+    return _finish_action(journal, receipt, owned['guard'], expected_digest=reserved['journal_digest'], reason=reason)
 
 
-def reconcile_action(journal, port, *, expected_digest, now):
+def _finish_action(journal, receipt, guard, *, expected_digest, reason=None):
+    elapsed = guard.elapsed()
     def finish(prior):
         require(prior is not None and prior['phase'] == 'action_started', 'no_started_action')
-        receipt = port.readback(prior['request'], prior['artifacts']['action_intent'])
+        prior['state']['seconds'] = max(prior['state']['seconds'],
+            guard.now + math.ceil(elapsed) - prior['state']['started_at'])
         if receipt is None:
-            return prior, {'status': 'reconcile_required'}
+            return prior, {'status': 'reconcile_required', 'reason': reason}
         prior['artifacts']['action_receipt'] = receipt
         prior['phase'] = 'waiting_dependency'
         prior['state']['in_flight'] = False
-        prior['state']['seconds'] = max(prior['state']['seconds'], now - prior['state']['started_at'])
         if prior['artifacts']['action_intent']['action'] == 'retry_ci':
             prior['artifacts']['ci_dependency'] = receipt
         return prior, {'status': 'observed', 'receipt': receipt}
-    return journal.transaction(expected_digest, finish)
+    result = journal.transaction(expected_digest, finish)
+    # Preserve the previous public top-level unknown-effect status for callers.
+    if result['output']['status'] == 'reconcile_required':
+        result['status'] = 'reconcile_required'
+    return result
+
+
+def reconcile_action(journal, port, *, expected_digest, now, policy=None, policy_loader=None, clock=None):
+    from pullfrog_standalone_effect_guard import EffectGuard
+    require(policy is not None or policy_loader is not None, 'live_policy_required')
+    clock = clock or time.monotonic
+    # No POST exists in reconciliation; nevertheless all reads need bounded
+    # elapsed/deadline accounting and authoritative policy custody.
+    prior = _read(journal.path)
+    require(contract.digest(prior) == expected_digest and prior['phase'] == 'action_started', 'no_started_action')
+    guard = EffectGuard(prior['request'], prior['state'], prior['binding'],
+                        policy_loader=policy_loader or (lambda: policy), now=now, clock=clock)
+    receipt = None
+    reason = None
+    try:
+        bounded = port.bounded(guard)
+        receipt = bounded.readback(prior['request'], prior['artifacts']['action_intent'])
+    except Exception as error:
+        reason = getattr(error, 'code', 'effect_unknown')
+    return _finish_action(journal, receipt, guard, expected_digest=expected_digest, reason=reason)
 
 
 def complete_ci(journal, policy, port, *, expected_digest, now):
