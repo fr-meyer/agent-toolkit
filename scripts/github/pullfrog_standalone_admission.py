@@ -136,6 +136,13 @@ def evaluate(request, event, policy, state=None, *, now):
     if kind in ('issue_comment', 'workflow_dispatch'):
         if s['attempts']:
             return result('ignored', 'none', 'already_admitted')
+    elif kind == 'ci_completed':
+        observed = event.get('observation', {})
+        validate_binding(observed.get('binding'), r, head_sha=s['current_head'])
+        body = {k: v for k, v in observed.items() if k != 'digest'}
+        _require(observed.get('schema') == 'pullfrog-ci-observation.v1'
+                 and observed.get('status') == 'completed' and observed.get('digest') == digest(body), 'invalid_ci_completion')
+        s['evidence_digest'] = observed['digest']
     elif kind == 'pullfrog_review_completed':
         evidence = event.get('observation', {})
         _require(type(evidence) is dict, 'invalid_review_evidence')

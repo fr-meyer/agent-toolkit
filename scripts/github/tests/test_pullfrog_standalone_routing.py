@@ -48,13 +48,11 @@ class RoutingTests(unittest.TestCase):
             self.route(result['journal_digest'], self.provider('implement_fix'))
         self.assertEqual(self.load()['state']['attempts'], 1)
 
-    def test_wait_skips_provider_and_has_no_polling_effect(self):
+    def test_untyped_dependency_rejected_before_model(self):
         self.context['dependency_running'] = True
         first = self.admit()
-        result = self.route(first['journal_digest'], lambda p: self.fail('facts must not invoke model'))
-        self.assertEqual(self.load()['phase'], 'waiting_dependency')
-        self.assertIsNone(result['output']['worker_plan'])
-        self.assertEqual(self.load()['state']['attempts'], 1)
+        with self.assertRaisesRegex(contract.ContractError, 'typed_dependency_required'):
+            self.route(first['journal_digest'], lambda p: self.fail('untyped dependency'))
 
     def test_revoked_authority_precedes_provider(self):
         first = self.admit()

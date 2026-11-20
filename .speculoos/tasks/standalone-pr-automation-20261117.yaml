@@ -60,3 +60,15 @@ next_action_v2_source:
     - CI completion collection unavailable; verified Pullfrog completion supported
     - hosted durable journal qualification, real-event shadow and genuine finite pilot
   forbidden: provider calls, remote writes, activation, auto-merge, main merge, incremental spend
+routing_repair_source:
+  status: local-source-review-candidate
+  supersedes_missing_source_ports: retry_ci, request_review, CI completion collection
+  surfaces:
+    - scripts/github/pullfrog_standalone_actions.py
+    - controller route, dispatch_action, reconcile_action, complete_ci
+    - existing pullfrog.yml workflow_dispatch inputs prompt/name, no workflow changes
+  runtime_still_gated:
+    - approved existing GitHub auth with exact actions and Pullfrog permissions
+    - qualified protected lightweight serving tag at exact trusted source
+    - provider billing/cancellation/usage controls and durable hosted journal
+    - real-event shadow, genuine finite pilot, independent readback

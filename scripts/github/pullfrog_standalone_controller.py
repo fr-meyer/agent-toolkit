@@ -90,7 +90,7 @@ def advance(journal, request, event, policy, *, expected_digest, now):
     def transform(prior):
         if prior is not None:
             require(contract.digest(prior['request']) == contract.digest(request), 'request_conflict')
-            require(prior.get('phase') not in ('decision_started', 'publication_pending'), 'effect_requires_reconciliation')
+            require(prior.get('phase') not in ('decision_started', 'publication_pending', 'action_pending', 'action_started'), 'effect_requires_reconciliation')
             if prior.get('phase') == 'waiting_dependency':
                 require(event.get('kind') in ('pullfrog_review_completed', 'cancel'), 'completion_event_required')
         state = prior['state'] if prior else None
@@ -236,7 +236,7 @@ def main():
 
 
 def route(journal, policy, context, execution, destination, *, expected_digest, now,
-          provider=None, clock=None):
+          provider=None, clock=None, actions_port=None):
     """Opt-in v2, using the existing admission, journal and worker capability.
 
     No CI/reviewer executor is installed here: those choices are not offered.
@@ -253,8 +253,26 @@ def route(journal, policy, context, execution, destination, *, expected_digest, 
         evidence = prepare_evidence(request, state, context, execution, destination, now=now)
         # Facts stay in code. A running dependency requires its completion event,
         # not a provider judgment, polling tick or new scheduler.
-        running = context.get('dependency_running') is True
-        actions = ['wait'] if running else ['implement_fix', 'no_action', 'ask_human']
+        ci = None
+        if actions_port is not None:
+            actions_port.current(request, state['current_head'])
+            run_id = actions_port.policy.get('ci_run_id')
+            ci = actions_port.ci(request, state['current_head'], run_id) if run_id else None
+            published = prior['artifacts'].get('publication_receipt', {}).get('result_head_sha') == state['current_head']
+            actions = actions_port.eligible(request, state['current_head'], ci, published)
+        else:
+            require(context.get('dependency_running') is not True, 'typed_dependency_required')
+            actions = ['implement_fix', 'no_action', 'ask_human']
+        prior_review = None
+        if 'request_review' in actions:
+            prior_review = actions_port.review(request, state['current_head'])
+            prior['artifacts']['review_digest'] = prior_review.get('evidence_digest')
+            prior['artifacts']['prior_review_id'] = prior_review.get('review_identity', {}).get('review_id', 0)
+        if ci:
+            evidence['ci_observation'] = ci
+            evidence.pop('evidence_digest')
+            evidence['evidence_digest'] = contract.digest(evidence)
+            prior['artifacts']['ci_dependency'] = ci
         prior['phase'] = 'decision_started'
         prior['artifacts']['evidence'] = evidence
         prior['artifacts']['eligible_actions'] = actions
@@ -284,7 +302,19 @@ def route(journal, policy, context, execution, destination, *, expected_digest, 
         action = result.get('next_action') if result['status'] == 'ok' and active else None
         prior['artifacts']['decision_v2'] = result
         plan = None
-        if action == 'implement_fix':
+        if actions_port is not None and active:
+            actions_port.current(request, state['current_head'])
+        if action in ('retry_ci', 'request_review'):
+            require(actions_port is not None, 'action_port_unavailable')
+            ci = evidence.get('ci_observation')
+            intent = dict(action=action, binding=result['binding'], ci=ci,
+                          prior_review_digest=prior['artifacts'].get('review_digest'),
+                          prior_review_id=prior['artifacts'].get('prior_review_id', 0),
+                          decision_digest=contract.digest(result))
+            intent['effect_id'] = contract.digest(intent)
+            prior['artifacts']['action_intent'] = intent
+            prior['phase'] = 'action_pending'
+        elif action == 'implement_fix':
             # Explicit, narrowly lossless compatibility bridge, not v1 repurposing.
             legacy = dict(schema=decision.SCHEMA, status='ok', outcome='implement',
                           reason='actionable_work', binding=result['binding'],
@@ -301,8 +331,71 @@ def route(journal, policy, context, execution, destination, *, expected_digest, 
             state.update(terminal=True, in_flight=False,
                          reason=('decision_' + (action or result['status'])) if active else 'decision_expired_or_revoked')
         return prior, dict(decision=result, worker_plan=plan, merge_allowed=False,
-                           capability_gaps=['retry_ci_executor_unavailable', 'request_review_executor_unavailable'])
+                           capability_gaps=[] if actions_port is not None else ['actions_port_unavailable'])
     return journal.transaction(reserved['journal_digest'], finish)
+
+
+
+def dispatch_action(journal, policy, port, *, expected_digest, now):
+    """Persist started before effect. Restart can read back, never redispatch."""
+    def reserve(prior):
+        require(prior is not None and prior['phase'] == 'action_pending', 'action_requires_reconciliation')
+        r, s = prior['request'], prior['state']
+        require(admission._authorized(r['initiator'], policy, r), 'authority_revoked')
+        require(not s['terminal'] and now < min(r['expires_at'], s['started_at'] + r['budget']['max_seconds']), 'action_budget_exhausted')
+        require(s['cost_microusd'] <= r['budget']['max_cost_microusd'], 'cost_exhausted')
+        require(prior['artifacts']['action_intent']['binding'] == prior['binding'], 'stale_action_binding')
+        port.current(r, s['current_head'])
+        prior['phase'] = 'action_started'
+        return prior, dict(request=r, intent=prior['artifacts']['action_intent'])
+    reserved = journal.transaction(expected_digest, reserve)
+    try:
+        port.execute(reserved['output']['request'], reserved['output']['intent'])
+    except Exception:
+        # An exception cannot prove no external effect. Keep the durable hold.
+        return dict(journal_digest=reserved['journal_digest'], status='reconcile_required')
+    return reconcile_action(journal, port, expected_digest=reserved['journal_digest'], now=now)
+
+
+def reconcile_action(journal, port, *, expected_digest, now):
+    def finish(prior):
+        require(prior is not None and prior['phase'] == 'action_started', 'no_started_action')
+        receipt = port.readback(prior['request'], prior['artifacts']['action_intent'])
+        if receipt is None:
+            return prior, {'status': 'reconcile_required'}
+        prior['artifacts']['action_receipt'] = receipt
+        prior['phase'] = 'waiting_dependency'
+        prior['state']['in_flight'] = False
+        prior['state']['seconds'] = max(prior['state']['seconds'], now - prior['state']['started_at'])
+        if prior['artifacts']['action_intent']['action'] == 'retry_ci':
+            prior['artifacts']['ci_dependency'] = receipt
+        return prior, {'status': 'observed', 'receipt': receipt}
+    return journal.transaction(expected_digest, finish)
+
+
+def complete_ci(journal, policy, port, *, expected_digest, now):
+    """Trusted GET collector, no webhook-provided conclusions or run identities."""
+    def finish(prior):
+        require(prior is not None and prior['phase'] == 'waiting_dependency', 'ci_completion_required')
+        r, s = prior['request'], prior['state']
+        require(admission._authorized(r['initiator'], policy, r), 'authority_revoked')
+        dependency = prior['artifacts']['ci_dependency']
+        observed = port.ci(r, s['current_head'], dependency['run_id'])
+        require(observed['workflow_id'] == dependency['workflow_id']
+                and observed['run_attempt'] == dependency['run_attempt'], 'ci_attempt_drift')
+        if observed['status'] != 'completed':
+            return prior, {'status': 'waiting'}
+        event = dict(kind='ci_completed', delivery_id='ci:' + observed['digest'],
+                     head_sha=s['current_head'], observation=observed)
+        reduced = admission.evaluate(r, event, policy, s, now=now)
+        prior.update(state=reduced['state'], binding=reduced['binding'])
+        if reduced['action'] == 'decide':
+            prior['phase'] = 'admitted'
+        elif reduced['state']['terminal']:
+            prior['phase'] = 'terminal'
+        prior['artifacts']['ci_completed'] = observed
+        return prior, reduced
+    return journal.transaction(expected_digest, finish)
 
 
 if __name__ == '__main__':

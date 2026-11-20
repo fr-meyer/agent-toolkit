@@ -134,3 +134,47 @@ controls and existing publication reconciliation remain in force. Usage/cost
 qualification remains mandatory: source does not prove entitlement, actual zero
 cost, enforceable upstream caps, real-event quality or live readiness. No runtime
 setup, provider calls, remote writes, activation or workflow edits occurred.
+
+### Routing repair: typed CI and concrete fixed effects
+
+This section supersedes the earlier missing-handler inventory. Production code
+is in scripts/github/pullfrog_standalone_actions.py. Actions accepts the existing
+pullfrog_review_fallback.GitHubClient (get/post/graphql), backed only by the
+host's already-approved GitHub auth. No credentials are discovered or configured.
+Trusted policy fixes ci_run_id, ci_workflow_id, max_ci_retries, pullfrog_identity,
+review_workflow_id, review_trusted_ref (tags/<qualified lightweight tag>) and
+review_trusted_sha. None may originate in PR/model/webhook prose. Tag must resolve
+to the accepted commit and be protected against mutation by qualified runtime
+controls. No tag is created by source implementation.
+
+CI GETs /actions/runs/{id}, exact attempt /jobs pages and PR identity before and
+after collection. Repository/head/workflow/event/attempt identities must agree.
+Only timed_out/startup_failure jobs with no code-failure jobs qualify transient
+retry, and max_ci_retries bounds run_attempt. The sole retry POST is the existing
+/actions/runs/{id}/rerun-failed-jobs with empty body. No workflow name or command
+is model-supplied. A higher independently fetched run_attempt proves effect;
+unchanged/unknown observation retains the hold and does not authorize retry.
+
+The concrete PullfrogWorkflowRunner dispatches only the existing pullfrog.yml
+interface, with inputs prompt/name, via the verified workflow ID. Fixed prompt
+contains validated PR/base/head identity, never task/model text. Existing workflow
+pins pullfrog/pullfrog@25a837a2b078177c3acdce790506d1fd1acedd82, disables push,
+restricts shell and disables progress comments. Serving-source, credentials,
+permission and spending qualification remain required; this code does not enable
+a workflow or claim that its installed token can submit a review. The existing
+trusted collector independently validates exact-head Pullfrog account/app/checks
+and completed review. Dispatch success is never accepted as review completion.
+
+Controller route(..., actions_port=Actions(...)) offers only observed eligible
+actions, journals intent as action_pending, then dispatch_action commits
+ action_started before any POST. reconcile_action only reads effects, never
+reinvokes. Unknown network effects or process loss remain held. Review intent
+includes the pre-dispatch review digest; the same previous review cannot prove
+new work. Retry receipt carries the successor attempt as typed CI dependency.
+complete_ci accepts no event-provided status: it fetches the retained exact run
+and attempt, passes the bound observation to the existing reducer, deduplicates
+semantically and reserves a bounded successor attempt for meaningful post-CI
+routing. Generic dependency_running is rejected; no polling/scheduler is added.
+Host completion events call complete_ci only for retained dependencies. Cancel
+and original time/attempt/cost limits remain authoritative. No source test claims
+provider billing, live dispatch, protected-tag policy or hosted durability proof.
