@@ -213,3 +213,27 @@ of cancellation of an already accepted GitHub effect. A lost/late response remai
 an unknown-effect hold, never a refund or automatic retry. Hosted source-tag,
 workflow-byte provenance, credential/permission and cost qualification remain
 separate from these repaired source controls.
+
+### Hosted Pullfrog review 5989789210 source corrections
+
+Green CI no longer excludes scoped implementation: CI success alone does not
+complete an explicit admitted task or erase current-head review findings. Running
+dependencies still wait and existing admission/worker scope, state and aggregate
+budgets still gate actual work. Authorized cancel now terminalizes action_pending
+before any POST reservation, preserving its cancelled intent lineage and blocking
+late/restarted dispatch. action_started retains its reconciliation hold; cancellation
+cannot assume an already-started external effect did not happen.
+
+DecisionTransport now requires a typed unexpired evidence.worker.deadline, caps
+its request deadline at that original aggregate bound and request expiry, and
+anchors remaining socket time to its entry monotonic origin. The codec/relay also
+checks this bound before invoking the SDK; absent/malformed/expired bounds fail
+closed. A five-second controller budget reaches the fake SDK with at most five
+seconds, not the previous 30-second default. No provider was invoked by tests.
+
+Decision input integers recursively use JavaScript's safe integer range
+[-9007199254740991, 9007199254740991]. Python rejects larger integers before
+encoding, and Node independently rejects unsafe parsed numbers before SDK
+invocation. Outcome/receipt serialization applies the same safe-integer check.
+Evidence is never silently stringified, rounded or rebound to a different digest.
+This tightens wire validation without repurposing v1 recommendation semantics.

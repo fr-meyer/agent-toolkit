@@ -90,7 +90,9 @@ def advance(journal, request, event, policy, *, expected_digest, now):
     def transform(prior):
         if prior is not None:
             require(contract.digest(prior['request']) == contract.digest(request), 'request_conflict')
-            require(prior.get('phase') not in ('decision_started', 'publication_pending', 'action_pending', 'action_started'), 'effect_requires_reconciliation')
+            pending_cancel = prior.get('phase') == 'action_pending' and event.get('kind') == 'cancel'
+            require(prior.get('phase') not in ('decision_started', 'publication_pending', 'action_started')
+                    and (prior.get('phase') != 'action_pending' or pending_cancel), 'effect_requires_reconciliation')
             if prior.get('phase') == 'waiting_dependency':
                 require(event.get('kind') in ('pullfrog_review_completed', 'cancel'), 'completion_event_required')
         state = prior['state'] if prior else None
@@ -102,6 +104,12 @@ def advance(journal, request, event, policy, *, expected_digest, now):
         if result.get('action') == 'decide':
             updated['phase'] = 'admitted'
         if result['state']['terminal']:
+            if prior and prior.get('phase') == 'action_pending' and result['state']['reason'] == 'cancelled':
+                # No external effect has been reserved yet. Retain lineage but
+                # release this unstarted writer and prohibit late dispatch.
+                updated['state']['in_flight'] = False
+                updated['artifacts']['action_cancelled'] = contract.digest(updated['artifacts']['action_intent'])
+                result['action'] = 'none'
             updated['phase'] = 'terminal'
         return updated, result
     return journal.transaction(expected_digest, transform)

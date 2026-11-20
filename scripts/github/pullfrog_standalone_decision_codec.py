@@ -50,6 +50,9 @@ def encode(payload, *, now, deadline, destination_authorized=False, cancelled=Fa
         decision._bounded(payload, decision.MAX_EVIDENCE_BYTES)
         _require(type(payload) is dict and set(payload) == {
             'schema', 'binding', 'evidence_digest', 'rubric_version', 'rubric', 'request', 'evidence'} | ({'eligible_actions'} if v2 else set()))
+        original_deadline = payload['evidence']['worker']['deadline']
+        _require(type(original_deadline) is int and now < deadline <= original_deadline
+                 <= payload['request']['expires_at'])
         _require(payload['schema'] == (decision.V2_INPUT_SCHEMA if v2 else decision.INPUT_SCHEMA))
         _require(payload['rubric_version'] == version and payload['rubric'] == rubric)
         contract.validate_request(payload['request'], now=now)
@@ -92,10 +95,13 @@ def _finite_json(value):
         nonlocal nodes
         nodes += 1
         _require(nodes <= 4000 and depth <= 12)
-        if v is None or type(v) in (bool, str, int):
+        if type(v) is int:
+            _require(abs(v) <= 9007199254740991)
+            return
+        if v is None or type(v) in (bool, str):
             return
         if type(v) is float:
-            _require(math.isfinite(v))
+            _require(math.isfinite(v) and (not v.is_integer() or abs(v) <= 9007199254740991))
             return
         _require(type(v) in (dict, list) and len(v) <= 200)
         if type(v) is dict:

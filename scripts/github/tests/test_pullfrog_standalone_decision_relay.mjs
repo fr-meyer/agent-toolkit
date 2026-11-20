@@ -13,7 +13,7 @@ function run(code,args=[]) {return new Promise((resolve,reject)=>{
  let out='',err='';p.stdout.on('data',x=>out+=x);p.stderr.on('data',x=>err+=x);
  p.on('error',reject);p.on('close',c=>c?reject(Error(err)):resolve(out));
 });}
-const fixtureCode = "import sys,json,time;sys.path.insert(0,sys.argv[1]);sys.path.insert(0,sys.argv[1]+'/tests');from test_pullfrog_standalone_decision_codec import CodecTests;import pullfrog_standalone_decision_codec as c;import pullfrog_standalone_contract as k;t=CodecTests();t.setUp();p=t.payload;n=int(time.time());p['request'].update(issued_at=n-1,expires_at=n+60);p['binding']=k.binding(p['request']);p['evidence']['binding']=p['binding'];p['evidence_digest']=k.digest(p['evidence']);b,o=c.encode(p,now=n,deadline=n+20,destination_authorized=True);print(json.dumps(dict(operation='pullfrog.standalone.decision.v1',nonce='a'*64,deadline=n+20,payload_digest=k.digest(p),batch=b,options=o)))";
+const fixtureCode = "import sys,json,time;sys.path.insert(0,sys.argv[1]);sys.path.insert(0,sys.argv[1]+'/tests');from test_pullfrog_standalone_decision_codec import CodecTests;import pullfrog_standalone_decision_codec as c;import pullfrog_standalone_contract as k;t=CodecTests();t.setUp();p=t.payload;n=int(time.time());p['request'].update(issued_at=n-1,expires_at=n+60);p['evidence']['worker']['deadline']=n+60;p['binding']=k.binding(p['request']);p['evidence']['binding']=p['binding'];p['evidence_digest']=k.digest(p['evidence']);b,o=c.encode(p,now=n,deadline=n+20,destination_authorized=True);print(json.dumps(dict(operation='pullfrog.standalone.decision.v1',nonce='a'*64,deadline=n+20,payload_digest=k.digest(p),batch=b,options=o)))";
 async function setup(t,evaluate=async()=>({status:'unavailable',reason:'not-configured'}),extra={}) {
  const dir=await mkdtemp('/tmp/relay-node-');const owner=new AbortController();
  let calls=0;const api={runtime:{decisions:{evaluate:async(...a)=>{calls++;return evaluate(...a);}}}};
@@ -134,6 +134,30 @@ test('timeout origin must be bounded integer and consistent with issued request'
  for (const timeout of [0,-1000,true,'20000',30001,31000,20500,1.5,1000,30000]) {
   const request=structuredClone(original);request.options.timeoutMs=timeout;
   assert.equal(await exchange(r.path,wire(JSON.stringify(request))),'');
+ }
+ assert.equal(r.calls(),0);
+});
+
+test('actual controller aggregate deadline bounds Python transport and SDK to five seconds',async t=>{
+ let observed;
+ const r=await setup(t,async(b,o)=>{observed={timeout:o.timeoutMs,deadline:b.state.evidence.worker.deadline};return {status:'unavailable',reason:'not-configured'};});
+ const code="import sys,json,time;sys.path[:0]=[sys.argv[1],sys.argv[1]+'/tests'];import test_pullfrog_standalone_controller as f;import pullfrog_standalone_controller as c;import pullfrog_standalone_decision as d;import pullfrog_standalone_contract as k;import pullfrog_standalone_decision_transport as t;x=f.ControllerTests();x.setUp();n=int(time.time());x.request.update(issued_at=n-20,expires_at=n+60);x.request['budget']['max_seconds']=15;x.context['binding']=k.binding(x.request);a=c.advance(x.journal,x.request,x.event,x.policy,expected_digest=None,now=n-10);e=c.prepare_evidence(x.request,x.load()['state'],x.context,x.execution,x.destination,now=n);client=t.DecisionTransport(sys.argv[2],relay_secret=sys.argv[3],destination_authorized=True);v=d.evaluate(x.request,e,provider=client,now=n);print(json.dumps(v));assert v['status']=='unavailable';x.doCleanups()";
+ const response=JSON.parse(await run(code,[root,r.path,secret]));
+ assert.equal(response.status,'unavailable');assert.equal(r.calls(),1);
+ assert.ok(observed.timeout>0 && observed.timeout<=5000,JSON.stringify(observed));
+});
+
+test('unsafe integer evidence cannot reach SDK or produce a correlation receipt',async t=>{
+ const r=await setup(t);
+ // Authenticated exact original bytes contain an integer JS would round.
+ // Payload and evidence digests must be recomputed on original Python values.
+ const code="import sys,json;sys.path.insert(0,sys.argv[1]);import pullfrog_standalone_contract as k;r=json.loads(sys.argv[2]);p=r['batch']['state'];p['evidence']['context']={'nested':[9007199254740993]};p['evidence_digest']=k.digest(p['evidence']);r['payload_digest']=k.digest(p);print(json.dumps(r))";
+ const body=await run(code,[root,await run(fixtureCode,[root])]);
+ assert.ok(body.includes('9007199254740993'));
+ assert.equal(await exchange(r.path,wire(body)),'');assert.equal(r.calls(),0);
+ // Both signs and exactly representable-but-unsafe integers are also refused.
+ for(const value of ['9007199254740992','-9007199254740993']) {
+  assert.equal(await exchange(r.path,wire(body.replace('9007199254740993',value))),'');
  }
  assert.equal(r.calls(),0);
 });

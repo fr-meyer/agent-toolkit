@@ -10,6 +10,8 @@
 - Add explicit v2 routing for six typed actions, CI completion/resumption, fixed CI retry and Pullfrog review dispatch with durable intent and independent reconciliation.
 - Recheck live authority, exact base/head refs and conserved deadlines at the actual HTTP effect boundary; reject ambiguous test timeouts as infrastructure retries.
 
+- Repair hosted Pullfrog review 5989789210: retain scoped work under green CI, cancel unstarted action intents, bound actual SDK work by original aggregate deadline, and reject lossy cross-language integers.
+
 ## Scope and limitations
 
 Source-only foundation: not a qualified hosted coding loop. No provider/CLI call,
@@ -28,6 +30,8 @@ Feature PRs target `dev`; release/promotion PRs target `main`.
 - Canonical/materialized workflow equality, checksum-pinned actionlint and protected workflow-policy validator passed.
 - Python compilation and whitespace/privacy checks are required on the exact source candidate before publication.
 - Original and subsequent independent/Pullfrog findings are reproduced and repaired; focused successor verification is recorded before publication. No fixture result qualifies hosted isolation, billing or provider custody.
+
+- Hosted review 5989789210 repair candidate: 516 Python regressions, 17 Node relay tests and 10 contribution-metadata tests. All four findings reproduced against frozen reviewed head 0cb3633, including ~29-second SDK timeout for five aggregate seconds and receipted rounded evidence. Repaired production-boundary regressions pass; this is not a fresh hosted review or live readiness.
 
 ## Documentation Impact
 

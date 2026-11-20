@@ -115,5 +115,19 @@ class TransportTests(unittest.TestCase):
         with self.assertRaises(OSError):
             client(self.fixture.payload)
 
+
+# Separate class avoids duplicating inherited transport cases/counts.
+class OriginalDeadlineTests(unittest.TestCase):
+    def test_expired_or_malformed_original_deadline_never_opens_socket(self):
+        from unittest.mock import patch
+        fixture=fixtures.CodecTests();fixture.setUp()
+        for value in (None, True, '155', 150, 149, 201):
+            fixture.payload['evidence']['worker']['deadline']=value
+            client=transport.DecisionTransport('/tmp/not-opened/relay',relay_secret='fixture-only-not-a-credential-00000',destination_authorized=True,clock=lambda:150)
+            with patch.object(client,'_check_path') as path, patch.object(transport.socket,'socket') as sock:
+                with self.assertRaises(ValueError): client(fixture.payload)
+                path.assert_not_called();sock.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

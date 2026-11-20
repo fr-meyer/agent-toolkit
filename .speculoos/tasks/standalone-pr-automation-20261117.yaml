@@ -80,3 +80,12 @@ effect_safety_repair_source:
     - startup-failure-before-steps evidence only; code/test timeouts not transient
     - admitted base/head refs and bounded CI job identity/count evidence preserved
   runtime_authority: unchanged; no calls, credentials, configuration, activation or publication
+hosted_review_5989789210_source:
+  reviewed_head: 0cb363330c0e62c7a386cb39fe0d3776b051d025
+  status: local-repair-candidate-awaiting-independent-review
+  repairs:
+    - green CI does not suppress scoped admitted implementation
+    - authorized pending intent cancellation terminalizes before dispatch; started effects reconcile
+    - actual Decision transport and relay enforce original aggregate worker deadline before SDK
+    - Python and Node reject unsafe integers instead of receipting rounded evidence
+  live_effects: none; publication, activation, provider execution and merge not performed

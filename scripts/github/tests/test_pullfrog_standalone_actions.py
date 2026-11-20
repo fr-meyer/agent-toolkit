@@ -281,3 +281,42 @@ class ActionTests(unittest.TestCase):
         result=ctl.dispatch_action(self.journal,self.policy,port,expected_digest=routed['journal_digest'],now=112,clock=lambda:tick[0])
         self.assertEqual(result['output']['status'],'observed')
         self.assertGreaterEqual(self.load()['state']['seconds'],7)
+
+    def test_green_ci_does_not_erase_scoped_task_implementation(self):
+        port=self.port(); self.client.status='completed'; self.client.conclusion='success'
+        first=self.admit()
+        # Explicit admitted work can remain even when repository CI is green.
+        self.context['remaining_review_findings']=['scoped current-head repair']
+        result=self.route(first['journal_digest'],port,'implement_fix')
+        self.assertIsNotNone(result['output']['worker_plan'])
+        self.assertEqual(self.load()['phase'],'worker_ready')
+        self.assertEqual(result['output']['worker_plan']['binding']['head_sha'],self.request['head_sha'])
+
+    def test_authorized_pending_cancel_blocks_late_dispatch_with_zero_effects(self):
+        port,routed=self.retry_intent()
+        event=dict(kind='cancel',delivery_id='cancel-before-post',head_sha=self.request['head_sha'],actor=self.request['initiator'])
+        cancelled=ctl.advance(self.journal,self.request,event,self.policy,expected_digest=routed['journal_digest'],now=112)
+        self.assertEqual(self.load()['phase'],'terminal')
+        self.assertEqual(self.load()['state']['reason'],'cancelled')
+        self.assertFalse(self.load()['state']['in_flight'])
+        self.assertIn('action_cancelled',self.load()['artifacts'])
+        reopened=ctl.Journal(self.path)
+        with self.assertRaises(k.ContractError):
+            ctl.dispatch_action(reopened,self.policy,port,expected_digest=cancelled['journal_digest'],now=113)
+        self.assertEqual(self.client.posts,[])
+
+    def test_unauthorized_pending_cancel_cannot_terminalize(self):
+        port,routed=self.retry_intent()
+        event=dict(kind='cancel',delivery_id='unauthorized-cancel',head_sha=self.request['head_sha'],actor={'login':'outsider','id':12})
+        ctl.advance(self.journal,self.request,event,self.policy,expected_digest=routed['journal_digest'],now=112)
+        self.assertEqual(self.load()['phase'],'action_pending')
+        self.assertFalse(self.load()['state']['terminal'])
+
+    def test_started_effect_cancel_requires_reconciliation(self):
+        port,routed=self.retry_intent();self.client.lost=True
+        started=ctl.dispatch_action(self.journal,self.policy,port,expected_digest=routed['journal_digest'],now=112)
+        event=dict(kind='cancel',delivery_id='cancel-after-start',head_sha=self.request['head_sha'],actor=self.request['initiator'])
+        with self.assertRaisesRegex(k.ContractError,'effect_requires_reconciliation'):
+            ctl.advance(self.journal,self.request,event,self.policy,expected_digest=started['journal_digest'],now=113)
+        self.assertEqual(self.load()['phase'],'action_started')
+        self.assertEqual(len(self.client.posts),1)

@@ -57,7 +57,7 @@ else:
 function validate(python, value, signal) {
   // Refuse serialization failures before acquiring a subprocess.
   const input = JSON.stringify(value, (key,item) => {
-    requireThat(typeof item !== 'number' || Number.isFinite(item));
+    requireThat(typeof item !== 'number' || (Number.isFinite(item) && (!Number.isInteger(item) || Number.isSafeInteger(item))));
     return item;
   });
   requireThat(Buffer.byteLength(input) <= MAX);
@@ -176,6 +176,7 @@ export async function startDecisionRelay({socketPath, relaySecret, api, owningSi
           const expected = createHmac('sha256',relaySecret).update(envelope.body).digest();
           requireThat(timingSafeEqual(expected,Buffer.from(envelope.mac,'hex')));
           const request = JSON.parse(envelope.body);
+          safeNumbers(request);
           const now = Math.floor(Date.now()/1000);
           await validate(pythonExecutable,{raw:envelope.body,now},controller.signal);
           // Validate original body too: JSON.parse alone would erase duplicate keys.
@@ -254,4 +255,17 @@ function duplicateKeys(text) {
     }
   }
   return false;
+}
+
+
+// Fail before SDK dispatch rather than evaluate rounded evidence while signing
+// its original Python digest. Python's codec applies the identical integer cap.
+function safeNumbers(value) {
+  if (typeof value === 'number') {
+    requireThat(Number.isFinite(value) && (!Number.isInteger(value) || Number.isSafeInteger(value)));
+  } else if (Array.isArray(value)) {
+    for (const item of value) safeNumbers(item);
+  } else if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) safeNumbers(item);
+  }
 }

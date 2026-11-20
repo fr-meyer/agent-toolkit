@@ -97,8 +97,9 @@ class Actions:
             actions.append('retry_ci')
         if ci and ci['conclusion'] == 'success' and published and self.review_runner is not None:
             actions.append('request_review')
-        if not ci or ci['conclusion'] not in ('success', None):
-            actions.append('implement_fix')
+        # CI success is not task completion or review certification. Admission
+        # and guarded worker preparation still enforce scope/state/budget.
+        actions.append('implement_fix')
         return actions
 
     def bounded(self, guard):

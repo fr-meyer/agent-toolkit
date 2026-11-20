@@ -6,6 +6,7 @@ owned call and return its untouched outcome and adapter-owned correlation receip
 from __future__ import annotations
 import hmac
 import json
+import math
 import os
 import secrets
 import socket
@@ -78,8 +79,18 @@ class DecisionTransport:
 
     def __call__(self, payload):
         self.last_receipt = None
-        now = int(self.clock())
-        deadline = min(now + 30, payload.get('request', {}).get('expires_at', now))
+        entered = time.monotonic()
+        wall = self.clock()
+        _require(type(wall) in (int, float) and math.isfinite(wall))
+        now = int(wall)
+        try:
+            expiry = payload['request']['expires_at']
+            original_deadline = payload['evidence']['worker']['deadline']
+            _require(type(expiry) is int and type(original_deadline) is int
+                     and now < original_deadline <= expiry)
+        except (KeyError, TypeError) as exc:
+            raise TransportError('invalid_original_deadline') from exc
+        deadline = min(now + 30, expiry, original_deadline)
         authority = dict(now=now, deadline=deadline, destination_authorized=True)
         batch, options = codec.encode(payload, **authority, cancelled=self.cancelled())
         self._check_path()
@@ -92,7 +103,7 @@ class DecisionTransport:
         wire = json.dumps(dict(body=raw.decode(), mac=hmac.digest(
             self._secret.encode(), raw, 'sha256').hex()), separators=(',', ':')).encode() + b'\n'
         _require(len(wire) <= MAX_BYTES)
-        stop = time.monotonic() + max(0, deadline - self.clock())
+        stop = entered + max(0, deadline - wall)
         def remaining():
             if self.cancelled():
                 raise CancelledError()

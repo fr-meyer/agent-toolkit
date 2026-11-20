@@ -84,3 +84,13 @@ remote private ingress or deployment was created. Those are concrete missing
 capabilities owned by parent. Keep default profile registry empty. An Actions
 runner cannot use a Unix socket on another host; parent must choose a qualified
 same-host worker or separately reviewed scoped ingress, not expose Gateway auth.
+
+## Hosted review corrections
+
+The provider input must carry the controller's original integer
+ evidence.worker.deadline. Deadline = min(entry time + 30 seconds, request expiry,
+original worker deadline), with a monotonic entry origin for socket time remaining.
+Codec and Node relay enforce the worker bound before SDK work. Missing, stale,
+malformed or inconsistent bounds are refused before socket/provider work.
+Recursive input/output integer validation rejects values beyond JavaScript's safe
+integer range rather than allowing a receipt to bind evidence the SDK saw rounded.

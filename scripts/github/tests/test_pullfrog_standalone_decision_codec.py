@@ -10,7 +10,7 @@ import pullfrog_standalone_decision_codec as codec
 class CodecTests(unittest.TestCase):
     def setUp(self):
         r = request()
-        evidence = {'binding': contract.binding(r), 'context': 'bounded'}
+        evidence = {'binding': contract.binding(r), 'context': 'bounded', 'worker': {'deadline': 190}}
         self.payload = dict(schema=decision.INPUT_SCHEMA, binding=contract.binding(r),
                             evidence_digest=contract.digest(evidence), evidence=evidence,
                             request=r, rubric=decision.RUBRIC, rubric_version=decision.RUBRIC_VERSION)
@@ -147,6 +147,30 @@ class CodecTests(unittest.TestCase):
         outcome['provenance']['runtimeGeneration'] = 'x' * 33000
         with self.assertRaises(codec.CodecError):
             self.decode_runtime(outcome)
+
+
+
+class SafeIntegerTests(unittest.TestCase):
+    def test_recursive_input_safe_integer_contract(self):
+        f=CodecTests();f.setUp()
+        for value in (9007199254740992,9007199254740993,-9007199254740993):
+            p=copy.deepcopy(f.payload)
+            p['evidence']['context']={'deep':[value]}
+            p['evidence_digest']=contract.digest(p['evidence'])
+            with self.assertRaises(codec.CodecError):
+                codec.encode(p,**f.authority)
+        for value in (9007199254740991,-9007199254740991):
+            p=copy.deepcopy(f.payload)
+            p['evidence']['context']={'deep':[value]}
+            p['evidence_digest']=contract.digest(p['evidence'])
+            batch,_=codec.encode(p,**f.authority)
+            self.assertEqual(batch['state']['evidence']['context']['deep'],[value])
+
+    def test_recursive_receipt_numbers_reject_unsafe_int_and_integral_float(self):
+        for value in (9007199254740993,9007199254740992.0,-9007199254740992.0):
+            with self.assertRaises(codec.CodecError):
+                codec._finite_json({'nested':[value]})
+
 
 if __name__ == '__main__':
     unittest.main()

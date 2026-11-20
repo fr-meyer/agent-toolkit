@@ -68,3 +68,12 @@ refusal, disconnect and owner cancellation, capacity and unknown SDK status.
 All SDK callbacks and qualification bindings in tests are fake, no model calls.
 Runtime provider readiness, free-cost qualification, exact deployed SDK identity,
 plugin installation and service deployment remain parent-owned missing evidence.
+
+## Lossless numeric and original-deadline boundary
+
+Before SDK dispatch the relay recursively refuses unsafe integer Numbers; Python
+codec validation applies the same +/-9007199254740991 limit to original exact
+input integers and outcome/receipt numbers. No conversion to strings or digest
+substitution is used. The codec requires evidence.worker.deadline and refuses a
+wire deadline beyond that original controller aggregate bound. Relay timeoutMs is
+still reduced to the remaining bounded deadline immediately before SDK invocation.

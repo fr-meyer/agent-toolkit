@@ -48,7 +48,11 @@ def _bounded(value, limit):
         nodes += 1
         if nodes > 4000 or depth > 12:
             raise _Invalid()
-        if item is None or type(item) is bool or type(item) is int:
+        if type(item) is int:
+            if abs(item) > 9007199254740991:
+                raise _Invalid()
+            return
+        if item is None or type(item) is bool:
             return
         if type(item) is str:
             if len(item.encode("utf-8")) > MAX_TEXT_BYTES:
