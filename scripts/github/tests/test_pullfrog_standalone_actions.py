@@ -84,8 +84,8 @@ class ActionTests(unittest.TestCase):
         port=self.port(); self.client.status='completed'; self.client.conclusion='startup_failure'
         first=self.admit(); routed=self.route(first['journal_digest'],port,'retry_ci')
         self.client.head='f'*40
-        with self.assertRaises(k.ContractError):
-            ctl.dispatch_action(self.journal,self.policy,port,expected_digest=routed['journal_digest'],now=112)
+        held=ctl.dispatch_action(self.journal,self.policy,port,expected_digest=routed['journal_digest'],now=112)
+        self.assertEqual(held['status'],'reconcile_required')
         self.client.head=self.request['head_sha']; self.policy['initiators']=[]
         with self.assertRaises(k.ContractError):
             ctl.dispatch_action(self.journal,self.policy,port,expected_digest=routed['journal_digest'],now=112)
@@ -180,7 +180,7 @@ class ActionTests(unittest.TestCase):
             result=raw(path,**bounds)
             if '/pulls/' in path:
                 reads[0]+=1
-                if reads[0] == 4:
+                if reads[0] == 3:
                     self.policy['initiators']=[]
             return result
         self.client.get=get

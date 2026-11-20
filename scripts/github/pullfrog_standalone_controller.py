@@ -351,7 +351,8 @@ def dispatch_action(journal, policy, port, *, expected_digest, now, clock=None, 
         guard.check()
         require(prior['artifacts']['action_intent']['binding'] == prior['binding'], 'stale_action_binding')
         bounded = port.bounded(guard)
-        bounded.current(prior['request'], prior['state']['current_head'])
+        # All blocking destination/source reads run after this durable intent,
+        # so even failed prerequisite collection is charged and held.
         prior['phase'] = 'action_started'
         owned.update(guard=guard, port=bounded)
         return prior, dict(request=prior['request'], intent=prior['artifacts']['action_intent'])
