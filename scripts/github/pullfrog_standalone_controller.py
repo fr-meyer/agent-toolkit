@@ -91,12 +91,16 @@ def advance(journal, request, event, policy, *, expected_digest, now):
         if prior is not None:
             require(contract.digest(prior['request']) == contract.digest(request), 'request_conflict')
             require(prior.get('phase') not in ('decision_started', 'publication_pending'), 'effect_requires_reconciliation')
+            if prior.get('phase') == 'waiting_dependency':
+                require(event.get('kind') in ('pullfrog_review_completed', 'cancel'), 'completion_event_required')
         state = prior['state'] if prior else None
         result = admission.evaluate(request, event, policy, state, now=now)
         if result['state'] is None:
             return prior, result
         updated = prior or {'request': copy.deepcopy(request), 'artifacts': {}, 'phase': 'admitted'}
         updated.update(state=result['state'], binding=result['binding'])
+        if result.get('action') == 'decide':
+            updated['phase'] = 'admitted'
         if result['state']['terminal']:
             updated['phase'] = 'terminal'
         return updated, result
@@ -206,7 +210,7 @@ def reconcile(journal, observation, policy, *, expected_digest, now):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=('advance', 'decide-unavailable'))
+    parser.add_argument('operation', choices=('advance', 'decide-unavailable', 'route-unavailable'))
     parser.add_argument('--bundle', required=True, help='Trusted controller input, never a PR artifact')
     parser.add_argument('--journal', required=True)
     parser.add_argument('--expected-digest', default='absent')
@@ -219,7 +223,8 @@ def main():
         if args.operation == 'advance':
             output = advance(journal, bundle['request'], bundle['event'], bundle['policy'], expected_digest=expected, now=now)
         else:
-            output = decide(journal, bundle['policy'], bundle['context'], bundle['execution'], bundle['destination'], expected_digest=expected, now=now)
+            evaluate = route if args.operation == 'route-unavailable' else decide
+            output = evaluate(journal, bundle['policy'], bundle['context'], bundle['execution'], bundle['destination'], expected_digest=expected, now=now)
         print(json.dumps(output, sort_keys=True))
         return 0
     except (contract.ContractError, worker.WorkerError) as exc:
@@ -228,6 +233,76 @@ def main():
     except (KeyError, TypeError, ValueError, OSError):
         print(json.dumps({'status': 'stopped', 'reason': 'invalid_or_unavailable_trusted_input', 'merge_allowed': False}))
         return 2
+
+
+def route(journal, policy, context, execution, destination, *, expected_digest, now,
+          provider=None, clock=None):
+    """Opt-in v2, using the existing admission, journal and worker capability.
+
+    No CI/reviewer executor is installed here: those choices are not offered.
+    A pending call is a reconciliation hold, never a fresh provider attempt.
+    """
+    clock = clock or time.monotonic
+    start = clock()
+    def reserve(prior):
+        require(prior is not None and prior['phase'] == 'admitted', 'decision_already_started')
+        request, state = prior['request'], prior['state']
+        require(admission._authorized(request['initiator'], policy, request), 'authority_revoked')
+        require(state['cost_microusd'] <= request['budget']['max_cost_microusd']
+                and not (0 < request['budget']['max_cost_microusd'] == state['cost_microusd']), 'cost_exhausted')
+        evidence = prepare_evidence(request, state, context, execution, destination, now=now)
+        # Facts stay in code. A running dependency requires its completion event,
+        # not a provider judgment, polling tick or new scheduler.
+        running = context.get('dependency_running') is True
+        actions = ['wait'] if running else ['implement_fix', 'no_action', 'ask_human']
+        prior['phase'] = 'decision_started'
+        prior['artifacts']['evidence'] = evidence
+        prior['artifacts']['eligible_actions'] = actions
+        return prior, dict(request=request, evidence=evidence, actions=actions)
+    reserved = journal.transaction(expected_digest, reserve)
+    data = reserved['output']
+    request, evidence, actions = data['request'], data['evidence'], data['actions']
+    invocation_elapsed = clock() - start
+    require(math.isfinite(invocation_elapsed) and invocation_elapsed >= 0, 'decision_clock_invalid')
+    invocation_now = now + math.ceil(invocation_elapsed)
+    if actions == ['wait']:
+        result = dict(schema=decision.V2_SCHEMA, status='ok', next_action='wait',
+                      reason='dependency_running', binding=evidence['binding'],
+                      evidence_digest=evidence['evidence_digest'], provenance={'source': 'deterministic'})
+    else:
+        result = decision.evaluate_v2(request, evidence, eligible_actions=actions, provider=provider if invocation_now < evidence['worker']['deadline'] else None, now=invocation_now)
+    elapsed = clock() - start
+    require(math.isfinite(elapsed) and elapsed >= invocation_elapsed, 'decision_clock_invalid')
+    completed = now + math.ceil(elapsed)
+    def finish(prior):
+        require(prior['phase'] == 'decision_started', 'decision_phase_changed')
+        state = prior['state']
+        state['seconds'] = max(state['seconds'], completed - state['started_at'])
+        require(prior['binding'] == evidence['binding'], 'stale_decision_binding')
+        authorized = admission._authorized(request['initiator'], policy, request)
+        active = authorized and completed < evidence['worker']['deadline'] and not state['terminal']
+        action = result.get('next_action') if result['status'] == 'ok' and active else None
+        prior['artifacts']['decision_v2'] = result
+        plan = None
+        if action == 'implement_fix':
+            # Explicit, narrowly lossless compatibility bridge, not v1 repurposing.
+            legacy = dict(schema=decision.SCHEMA, status='ok', outcome='implement',
+                          reason='actionable_work', binding=result['binding'],
+                          evidence_digest=result['evidence_digest'], provenance=result['provenance'])
+            plan = worker.prepare(request, evidence, legacy,
+                                  current_head_sha=state['current_head'], now=completed)
+            prior['artifacts']['worker_plan'] = plan
+            prior['phase'] = 'worker_ready'
+        elif action == 'wait':
+            prior['phase'] = 'waiting_dependency'
+            state['in_flight'] = False
+        else:
+            prior['phase'] = 'terminal'
+            state.update(terminal=True, in_flight=False,
+                         reason=('decision_' + (action or result['status'])) if active else 'decision_expired_or_revoked')
+        return prior, dict(decision=result, worker_plan=plan, merge_allowed=False,
+                           capability_gaps=['retry_ci_executor_unavailable', 'request_review_executor_unavailable'])
+    return journal.transaction(reserved['journal_digest'], finish)
 
 
 if __name__ == '__main__':

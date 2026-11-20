@@ -43,12 +43,15 @@ def encode(payload, *, now, deadline, destination_authorized=False, cancelled=Fa
         raise CancelledError()
     _require(destination_authorized is True)
     _require(type(now) is int and type(deadline) is int and now < deadline <= now + 30)
+    v2 = payload.get('schema') == decision.V2_INPUT_SCHEMA if type(payload) is dict else False
+    rubric = decision.V2_RUBRIC if v2 else decision.RUBRIC
+    version = decision.V2_RUBRIC_VERSION if v2 else decision.RUBRIC_VERSION
     try:
         decision._bounded(payload, decision.MAX_EVIDENCE_BYTES)
         _require(type(payload) is dict and set(payload) == {
-            'schema', 'binding', 'evidence_digest', 'rubric_version', 'rubric', 'request', 'evidence'})
-        _require(payload['schema'] == decision.INPUT_SCHEMA)
-        _require(payload['rubric_version'] == decision.RUBRIC_VERSION and payload['rubric'] == decision.RUBRIC)
+            'schema', 'binding', 'evidence_digest', 'rubric_version', 'rubric', 'request', 'evidence'} | ({'eligible_actions'} if v2 else set()))
+        _require(payload['schema'] == (decision.V2_INPUT_SCHEMA if v2 else decision.INPUT_SCHEMA))
+        _require(payload['rubric_version'] == version and payload['rubric'] == rubric)
         contract.validate_request(payload['request'], now=now)
         _require(deadline <= payload['request']['expires_at'])
         contract.validate_binding(payload['binding'], payload['request'], head_sha=payload['binding']['head_sha'])
@@ -60,8 +63,15 @@ def encode(payload, *, now, deadline, destination_authorized=False, cancelled=Fa
         raise CodecError('invalid_codec_contract') from exc
     questions = {key: {'type': 'choice', 'instructions': decision.RUBRIC, 'criteria': criteria}
                  for key, criteria in [('recommendation', RECOMMENDATIONS), ('reason', REASONS)]}
+    if v2:
+        actions = payload['eligible_actions']
+        _require(type(actions) is list and bool(actions)
+                 and all(type(a) is str and a in decision.ACTIONS for a in actions)
+                 and len(set(actions)) == len(actions))
+        questions = {'next_action': {'type': 'choice', 'instructions': rubric,
+                     'criteria': {a: a for a in actions}}}
     return ({'state': copy.deepcopy(payload), 'questions': copy.deepcopy(questions)},
-            {'agentId': AGENT_ID, 'purpose': PURPOSE, 'rubricVersion': decision.RUBRIC_VERSION,
+            {'agentId': AGENT_ID, 'purpose': PURPOSE, 'rubricVersion': version,
              'timeoutMs': (deadline - now) * 1000})
 
 
@@ -111,8 +121,10 @@ def decode(payload, outcome=None, *, trusted_receipt=None, **authority):
     authenticate their supplier. No caller model/provider/agent override exists.
     """
     encode(payload, **authority)
+    v2 = payload['schema'] == decision.V2_INPUT_SCHEMA
+    version = decision.V2_RUBRIC_VERSION if v2 else decision.RUBRIC_VERSION
     response = {k: copy.deepcopy(payload[k]) for k in ('binding', 'evidence_digest', 'rubric_version')}
-    response.update(schema=decision.PROVIDER_SCHEMA, status='unavailable',
+    response.update(schema=decision.V2_PROVIDER_SCHEMA if v2 else decision.PROVIDER_SCHEMA, status='unavailable',
                     provenance={'provider': 'openclaw', 'model': 'unavailable'})
     if outcome is None:
         _require(trusted_receipt is None)
@@ -136,7 +148,7 @@ def decode(payload, outcome=None, *, trusted_receipt=None, **authority):
     provenance = outcome['provenance']
     _require(type(provenance) is dict and set(provenance) == {
         'providerId', 'rubricVersion', 'runtimeGeneration'})
-    _require(provenance['rubricVersion'] == decision.RUBRIC_VERSION)
+    _require(provenance['rubricVersion'] == version)
     _require(type(provenance['providerId']) is str and decision.IDENTIFIER.fullmatch(provenance['providerId']))
     _require(type(provenance['runtimeGeneration']) is str and 0 < len(provenance['runtimeGeneration']) <= 1024)
     result = outcome['result']
@@ -151,9 +163,10 @@ def decode(payload, outcome=None, *, trusted_receipt=None, **authority):
         _require(all(_number(n) and n >= 0 for n in usage.values()))
         receipt['usage_known'] = bool(usage)
     answers = result['answers']
-    _require(type(answers) is dict and set(answers) == {'recommendation', 'reason'})
+    labels_by_key = [('next_action', {a: a for a in payload['eligible_actions']})] if v2 else [('recommendation', RECOMMENDATIONS), ('reason', REASONS)]
+    _require(type(answers) is dict and set(answers) == {k for k, _ in labels_by_key})
     choices = {}
-    for key, labels in [('recommendation', RECOMMENDATIONS), ('reason', REASONS)]:
+    for key, labels in labels_by_key:
         answer = answers[key]
         _require(type(answer) is dict and {'type', 'choice', 'probabilities'} <= set(answer)
                  and set(answer) <= {'type', 'choice', 'probabilities', 'confidence'})
@@ -164,6 +177,11 @@ def decode(payload, outcome=None, *, trusted_receipt=None, **authority):
         if 'confidence' in answer:
             _require(_number(answer['confidence']))
         choices[key] = answer['choice']
+    if v2:
+        response.update(status='ok', next_action=choices['next_action'],
+                        provenance={'provider': provenance['providerId'], 'model': result['model']})
+        _finite_json(receipt)
+        return response, receipt
     recommendation, reason = choices['recommendation'], choices['reason']
     _require((recommendation == 'implement' and reason == 'actionable_work')
              or (recommendation == 'skip' and reason == 'no_change')

@@ -108,3 +108,29 @@ The runtime-seam source slice adds a typed OpenClaw Decision codec, a transactio
 Confirmed exact publication reconciliation applies canonical successor and cumulative usage before time or event-cap terminalization. At the 256-event limit, the retained audit prefix remains unchanged and the controller journals the receipt; no new attempt is authorized. An already-terminal controller journal remains a manual reconciliation hold, not an automatically reopenable workflow. Cancellation and ambiguous effects never imply replay permission.
 
 Before a live pilot, select and authorize exact hosting/ingress/storage, destination disclosure, coding CLI/build/model/custody and entitlement, enforceable aggregate usage/cost limits, isolation/resource envelope, separate publisher and a finite repository/PR/head activation. No provider call, additional spending, credential/configuration change, deployment, autonomous publisher or merge is authorized by source tests.
+
+## Opt-in next-action routing v2 (source only, 2026-11-20)
+
+The existing controller exposes route and a provider-free route-unavailable
+diagnostic. V1 three-way recommendations remain unchanged. V2 has exactly one
+next_action: implement_fix, retry_ci, request_review, wait, no_action, ask_human.
+The codec explicitly negotiates v2; the fixed transport/relay validates using
+that codec. Only implement_fix bridges losslessly to the existing guarded worker.
+No_action is not readiness certification. Ask_human pauses. Operational failures,
+refusal and cancellation remain non-success, never no_action.
+
+Retry CI and review-request executors are unavailable here: neither action is
+offered or dispatched. Needed ports must bind exact run/head eligibility,
+allowances, persisted dispatch identity and independently read-back receipts,
+never model-selected commands or workflows. No fabricated ready adapter exists.
+A running dependency deterministically waits without a model call. An existing
+verified Pullfrog completion event resumes this path; CI completion collection
+remains unavailable. There is no scheduler or polling. Admission conservatively
+consumes an attempt even when it subsequently waits, without budget refunds.
+
+CAS journaling precedes provider calls. Interrupted calls remain reconciliation
+holds, not retries. Original deadline, attempts, destination and successor-head
+controls and existing publication reconciliation remain in force. Usage/cost
+qualification remains mandatory: source does not prove entitlement, actual zero
+cost, enforceable upstream caps, real-event quality or live readiness. No runtime
+setup, provider calls, remote writes, activation or workflow edits occurred.

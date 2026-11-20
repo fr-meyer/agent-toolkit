@@ -48,3 +48,15 @@ validation:
   - git diff --check origin/dev...HEAD
 private_data_scan: required
 publish_authority: Owner approved the complete standalone plan and parallel fastest implementation on 2026-11-17; only the reviewed source PR is prepared here. No serving activation, merge, recurring cost or live provider call.
+next_action_v2_source:
+  branch: feat/standalone-decision-router-20261120
+  baseline: d9155ea274499c8665c8ad21ae51f5cec7caf939
+  authority: Owner approved 2026-11-20 16:49 KST; source-only lane
+  status: local-source-review-candidate
+  compatibility: explicit v2; unchanged v1; implement_fix-only lossless worker bridge
+  runtime_gates:
+    - provider entitlement, disclosure, cancellation and enforceable usage/cost controls
+    - fixed retry_ci and request_review executors and exact-head effect readback unavailable
+    - CI completion collection unavailable; verified Pullfrog completion supported
+    - hosted durable journal qualification, real-event shadow and genuine finite pilot
+  forbidden: provider calls, remote writes, activation, auto-merge, main merge, incremental spend
